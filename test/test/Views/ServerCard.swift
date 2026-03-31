@@ -2,119 +2,32 @@ import SwiftUI
 
 struct ServerCard: View {
     let config: ServerConfig
-    @State private var stats: ServerStats? = nil
-    @State private var isLoading = true
+    @ObservedObject var store: ServerStore
+    var onOpenDetail: (() -> Void)? = nil
     @State private var showTerminal = false
 
-	    var body: some View {
-	        VStack(alignment: .leading, spacing: 12) {
-            // 顶部
-            HStack {
-                Image(systemName: "server.rack")
-                    .font(.title2)
-                Text(config.name)
-                    .font(.headline)
-                Spacer()
-                
-                if isLoading {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                } else {
-                    Text(stats?.isOnline == true ? "online" : "offline")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(stats?.isOnline == true ? .green : .red)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(stats?.isOnline == true ? Color.green.opacity(0.12) : Color.red.opacity(0.12))
-                        )
-                    
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down").font(.caption2)
-                        Text(stats?.downloadSpeed ?? "0k/s").font(.caption)
-                        Image(systemName: "arrow.up").font(.caption2)
-                        Text(stats?.uploadSpeed ?? "0k/s").font(.caption)
-                    }
-                    .foregroundColor(.secondary)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: openDetail) {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    Divider()
+                    detailSummary
                 }
             }
-
-            Divider()
-
-            if isLoading {
-                HStack {
-                    Spacer()
-                    ProgressView("获取数据中...")
-                    Spacer()
-                }
-                .padding(.vertical, 8)
-            } else if let s = stats, s.isOnline {
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("hostname \(s.hostname)")
-                        Text("cpu \(s.cpuModel)")
-                        Text("\(s.cpuCores) cores · \(s.memTotal) MB")
-                        Text(s.uptime)
-                    }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    VStack(spacing: 8) {
-                        UsageBar(label: "CPU", value: s.cpuUsage, color: .blue)
-                        UsageBar(label: "MEM", value: s.memUsage, color: .green)
-                        UsageBar(label: "DISK", value: s.diskUsage, color: .purple)
-                    }
-                    .frame(width: 160)
-                }
-                
-                if !s.diagnostics.isEmpty || !s.statusMessage.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if !s.statusMessage.isEmpty {
-                            Text("状态: \(s.statusMessage)")
-                        }
-                        ForEach(s.diagnostics, id: \.self) { item in
-                            Text(item)
-                        }
-                    }
-                    .font(.caption2)
-                    .foregroundColor(.orange)
-                    .padding(.top, 4)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(stats?.statusMessage.isEmpty == false ? (stats?.statusMessage ?? "连接失败") : "连接失败")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if let diagnostics = stats?.diagnostics, !diagnostics.isEmpty {
-                        ForEach(diagnostics, id: \.self) { item in
-                            Text(item)
-                                .font(.caption2)
-                                .foregroundColor(.red)
-                        }
-                    }
-                    if let rawOutput = stats?.rawOutput,
-                       !rawOutput.isEmpty {
-                        Text(rawOutput)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .textSelection(.enabled)
-                            .lineLimit(6)
-                    }
-                }
-                .padding(.vertical, 8)
-            }
+            .buttonStyle(.plain)
 
             Divider()
 
             HStack(spacing: 10) {
-                Button(action: fetchData) {
+                Button {
+                    Task {
+                        await store.refreshServer(config, forceDynamic: true)
+                    }
+                } label: {
                     HStack {
                         Image(systemName: "arrow.clockwise")
-                        Text(isLoading ? "连接中..." : "重新连接")
+                        Text(isRefreshing ? "连接中..." : "重新连接")
                             .font(.subheadline)
                     }
                     .frame(maxWidth: .infinity)
@@ -123,8 +36,8 @@ struct ServerCard: View {
                     .cornerRadius(8)
                 }
                 .foregroundColor(.primary)
-                .disabled(isLoading)
-                .opacity(isLoading ? 0.6 : 1)
+                .disabled(isRefreshing)
+                .opacity(isRefreshing ? 0.6 : 1)
                 
                 Button(action: { showTerminal = true }) {
                     HStack {
@@ -138,8 +51,8 @@ struct ServerCard: View {
                     .cornerRadius(8)
                 }
                 .foregroundColor(.primary)
-                .disabled(stats?.isOnline != true || isLoading)
-                .opacity(stats?.isOnline == true && !isLoading ? 1 : 0.4)
+                .disabled(stats?.isOnline != true || isRefreshing)
+                .opacity(stats?.isOnline == true && !isRefreshing ? 1 : 0.4)
             }
         }
         .padding(16)
@@ -149,19 +62,127 @@ struct ServerCard: View {
         .fullScreenCover(isPresented: $showTerminal) {
             TerminalView(server: config)
         }
-        .onAppear {
-            fetchData()
+    }
+
+    private var header: some View {
+        HStack {
+            Image(systemName: "server.rack")
+                .font(.title2)
+            Text(config.name)
+                .font(.headline)
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer()
+
+            if isRefreshing {
+                ProgressView()
+                    .scaleEffect(0.8)
+            }
+
+            if let stats {
+                Text(stats.isOnline ? "online" : "offline")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(stats.isOnline ? .green : .red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(stats.isOnline ? Color.green.opacity(0.12) : Color.red.opacity(0.12))
+                    )
+
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down").font(.caption2)
+                    Text(stats.downloadSpeed).font(.caption)
+                    Image(systemName: "arrow.up").font(.caption2)
+                    Text(stats.uploadSpeed).font(.caption)
+                }
+                .foregroundColor(.secondary)
+            } else {
+                Text(isRefreshing ? "刷新中" : "暂无数据")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
-    func fetchData() {
-        isLoading = true
-        Task {
-            let result = await SSHMonitorService.fetchStats(config: config)
-            await MainActor.run {
-                self.stats = result
-                self.isLoading = false
+    @ViewBuilder
+    private var detailSummary: some View {
+        if let s = stats, s.isOnline {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("hostname \(s.hostname)")
+                    Text("cpu \(s.cpuModel)")
+                    Text("\(s.cpuCores) cores · \(s.memTotal) MB")
+                    Text(s.uptime)
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+                Spacer()
+
+                VStack(spacing: 8) {
+                    UsageBar(label: "CPU", value: s.cpuUsage, color: .blue)
+                    UsageBar(label: "MEM", value: s.memUsage, color: .green)
+                    UsageBar(label: "DISK", value: s.diskUsage, color: .purple)
+                }
+                .frame(width: 160)
             }
+
+            if !s.diagnostics.isEmpty || !s.statusMessage.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !s.statusMessage.isEmpty {
+                        Text("状态: \(s.statusMessage)")
+                    }
+                    ForEach(s.diagnostics, id: \.self) { item in
+                        Text(item)
+                    }
+                }
+                .font(.caption2)
+                .foregroundColor(.orange)
+                .padding(.top, 4)
+            }
+        } else if let stats {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(stats.statusMessage.isEmpty ? "连接失败" : stats.statusMessage)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if !stats.diagnostics.isEmpty {
+                    ForEach(stats.diagnostics, id: \.self) { item in
+                        Text(item)
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                }
+                if !stats.rawOutput.isEmpty {
+                    Text(stats.rawOutput)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(6)
+                }
+            }
+            .padding(.vertical, 8)
+        } else {
+            HStack {
+                Spacer()
+                ProgressView("首次连接中...")
+                Spacer()
+            }
+            .padding(.vertical, 8)
         }
+    }
+
+    private func openDetail() {
+        onOpenDetail?()
+    }
+
+    private var stats: ServerStats? {
+        store.stats(for: config)
+    }
+
+    private var isRefreshing: Bool {
+        store.isRefreshing(config.id)
     }
 }

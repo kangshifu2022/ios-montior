@@ -2,9 +2,10 @@ import SwiftUI
 
 struct DevicesView: View {
     @ObservedObject var store: ServerStore
+    @State private var selectedServer: ServerConfig?
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if store.servers.isEmpty {
@@ -24,8 +25,10 @@ struct DevicesView: View {
                     } else {
                         VStack(spacing: 12) {
                             ForEach(store.servers) { config in
-                                ServerCard(config: config)
-                                    .padding(.horizontal, 16)
+                                ServerCard(config: config, store: store) {
+                                    selectedServer = config
+                                }
+                                .padding(.horizontal, 16)
                             }
                         }
                         .padding(.vertical, 20)
@@ -33,6 +36,14 @@ struct DevicesView: View {
                 }
             }
             .navigationTitle("概览")
+            .onAppear {
+                Task {
+                    await store.refreshAllIfNeeded()
+                }
+            }
+            .navigationDestination(item: $selectedServer) { config in
+                DeviceDetailView(config: config, store: store)
+            }
         }
     }
 }
