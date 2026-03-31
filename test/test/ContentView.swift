@@ -1,61 +1,34 @@
-//
-//  ContentView.swift
-//  test
-//
-//  Created by cbzw008 on 2026/3/31.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @State private var count = 0
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        VStack(spacing: 40) {
+            Text("计数器")
+                .font(.largeTitle)
+                .bold()
+            
+            Text("\(count)")
+                .font(.system(size: 80, weight: .bold))
+                .foregroundColor(.blue)
+            
+            HStack(spacing: 40) {
+                Button("-") { count -= 1 }
+                    .font(.system(size: 50))
+                    .foregroundColor(.red)
+                
+                Button("+") { count += 1 }
+                    .font(.system(size: 50))
+                    .foregroundColor(.green)
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+            
+            Button("重置") { count = 0 }
+                .foregroundColor(.gray)
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
