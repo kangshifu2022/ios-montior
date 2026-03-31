@@ -13,7 +13,7 @@ class SSHMonitorService {
                     username: config.username,
                     password: config.password
                 ),
-                hostKeyValidator: .acceptAnything(),
+                hostKeyValidator: .acceptAnything(),
                 reconnect: .never
             )
             
