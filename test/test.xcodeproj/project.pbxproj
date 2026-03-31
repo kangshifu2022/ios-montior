@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9F5120502F7BEEEF009B3C74 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 9F51204F2F7BEEEF009B3C74 /* Citadel */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		9FAF61252F7BB06E00F66805 /* test-monitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "test-monitor.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -15,9 +19,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				"Vendor/NMSSH-LICENSE",
-				Vendor/NMSSH/Info.plist,
-				"Vendor/NMSSH/NMSSH-Info.plist",
 			);
 			target = 9FAF61242F7BB06E00F66805 /* test */;
 		};
@@ -39,6 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9F5120502F7BEEEF009B3C74 /* Citadel in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,6 +83,7 @@
 			);
 			name = test;
 			packageProductDependencies = (
+				9F51204F2F7BEEEF009B3C74 /* Citadel */,
 			);
 			productName = test;
 			productReference = 9FAF61252F7BB06E00F66805 /* test-monitor.app */;
@@ -111,6 +114,7 @@
 			mainGroup = 9FAF611C2F7BB06E00F66805;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				9F51204E2F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "Citadel" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9FAF61262F7BB06E00F66805 /* Products */;
@@ -146,7 +150,6 @@
 		9FAF61342F7BB07000F66805 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = test/test.entitlements;
@@ -154,15 +157,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UV3V49Y5ZZ;
 				ENABLE_PREVIEWS = YES;
-				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/test/Vendor/NMSSH",
-					"$(SRCROOT)/test/Vendor/NMSSH/Config",
-					"$(SRCROOT)/test/Vendor/NMSSH/Protocols",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/include/libssh2",
-				);
 				INFOPLIST_FILE = test/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -175,32 +170,12 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ObjC",
-					"-lz",
-					"-framework",
-					CFNetwork,
-				);
-				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
-					"$(inherited)",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib/libcrypto.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib/libssl.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib/libssh2.a",
-				);
-				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
-					"$(inherited)",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib-simulator/libcrypto.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib-simulator/libssl.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib-simulator/libssh2.a",
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.wenchaoliu.test;
 				PRODUCT_NAME = "test-monitor";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "test/test-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -210,7 +185,6 @@
 		9FAF61352F7BB07000F66805 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = test/test.entitlements;
@@ -218,15 +192,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UV3V49Y5ZZ;
 				ENABLE_PREVIEWS = YES;
-				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/test/Vendor/NMSSH",
-					"$(SRCROOT)/test/Vendor/NMSSH/Config",
-					"$(SRCROOT)/test/Vendor/NMSSH/Protocols",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/include/libssh2",
-				);
 				INFOPLIST_FILE = test/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -239,32 +205,12 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ObjC",
-					"-lz",
-					"-framework",
-					CFNetwork,
-				);
-				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
-					"$(inherited)",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib/libcrypto.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib/libssl.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib/libssh2.a",
-				);
-				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
-					"$(inherited)",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib-simulator/libcrypto.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib-simulator/libssl.a",
-					"$(SRCROOT)/test/Vendor/NMSSH-iOS/Libraries/lib-simulator/libssh2.a",
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.wenchaoliu.test;
 				PRODUCT_NAME = "test-monitor";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "test/test-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -275,7 +221,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				"ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -340,7 +285,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				"ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -416,6 +360,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9F51204E2F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9F51204F2F7BEEEF009B3C74 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9F51204E2F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9FAF611D2F7BB06E00F66805 /* Project object */;
 }

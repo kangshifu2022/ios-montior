@@ -1,4 +1,6 @@
 import Foundation
+import Citadel
+import NIOCore
 
 class SSHMonitorService {
     
@@ -17,46 +19,72 @@ class SSHMonitorService {
         exit 0
         """
         
-        let commandResult = await Task.detached(priority: .utility) {
-            SSHNMSSHClient.runCommand(
-                withHost: config.host,
-                port: config.port,
-                username: config.username,
-                password: config.password,
-                command: script,
-                timeout: 15
-            )
-        }.value
+        let algorithms = SSHAlgorithms.all
         
-        if commandResult.success {
-            return parseStats(
-                output: commandResult.output,
-                config: config,
-                remoteBanner: commandResult.remoteBanner,
-                fingerprint: commandResult.fingerprint
+        let connectionDiagnostics = [
+            "failure stage: connect",
+            "ssh stack: Citadel",
+            "algorithms: SSHAlgorithms.all"
+        ]
+        let executeDiagnostics = [
+            "failure stage: execute",
+            "ssh stack: Citadel",
+            "algorithms: SSHAlgorithms.all"
+        ]
+        
+        do {
+            let client = try await SSHClient.connect(
+                host: config.host,
+                port: config.port,
+                authenticationMethod: .passwordBased(
+                    username: config.username,
+                    password: config.password
+                ),
+                hostKeyValidator: .acceptAnything(),
+                reconnect: .never,
+                algorithms: algorithms,
+                protocolOptions: [
+                    .maximumPacketSize(1 << 20)
+                ]
             )
-        } else {
+            
+            do {
+                let output = try await client.executeCommand(
+                    script,
+                    maxResponseSize: 1 << 20,
+                    mergeStreams: true
+                )
+                let text = String(buffer: output)
+                try? await client.close()
+                return parseStats(output: text, config: config)
+            } catch {
+                try? await client.close()
+                let message = String(describing: error)
+                return ServerStats(
+                    config: config,
+                    isOnline: false,
+                    statusMessage: describe(errorMessage: message),
+                    diagnostics: executeDiagnostics,
+                    rawOutput: message
+                )
+            }
+        } catch {
+            let message = String(describing: error)
             return ServerStats(
                 config: config,
                 isOnline: false,
-                statusMessage: describe(errorMessage: commandResult.errorMessage),
-                diagnostics: diagnostics(for: commandResult),
-                rawOutput: commandResult.errorMessage
+                statusMessage: describe(errorMessage: message),
+                diagnostics: connectionDiagnostics,
+                rawOutput: message
             )
         }
     }
     
-    private static func parseStats(output: String, config: ServerConfig, remoteBanner: String, fingerprint: String) -> ServerStats {
+    private static func parseStats(output: String, config: ServerConfig) -> ServerStats {
         var stats = ServerStats(config: config)
         stats.isOnline = true
         stats.statusMessage = "connected"
         stats.rawOutput = output
-        if !remoteBanner.isEmpty {
-            stats.diagnostics.append("remote banner: \(remoteBanner)")
-        }
-        if !fingerprint.isEmpty {
-            stats.diagnostics.append("host fingerprint: \(fingerprint)")
-        }
         
         let lines = output.components(separatedBy: "\n")
         var i = 0
@@ -215,19 +243,5 @@ class SSHMonitorService {
             return "host key validation failed"
         }
         return message
-    }
-    
-    private static func diagnostics(for result: SSHCommandResult) -> [String] {
-        var items = ["SSH connection or command execution failed"]
-        if !result.remoteBanner.isEmpty {
-            items.append("remote banner: \(result.remoteBanner)")
-        }
-        if !result.fingerprint.isEmpty {
-            items.append("host fingerprint: \(result.fingerprint)")
-        }
-        if !result.authMethods.isEmpty {
-            items.append("server auth methods: \(result.authMethods)")
-        }
-        return items
     }
 }
