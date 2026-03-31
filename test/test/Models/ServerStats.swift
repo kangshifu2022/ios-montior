@@ -3,6 +3,9 @@ import Foundation
 struct ServerStats {
     var config: ServerConfig
     var isOnline: Bool = false
+    var statusMessage: String = ""
+    var diagnostics: [String] = []
+    var rawOutput: String = ""
     var hostname: String = ""
     var cpuModel: String = ""
     var cpuCores: Int = 0

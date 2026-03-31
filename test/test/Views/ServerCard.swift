@@ -70,11 +70,42 @@ struct ServerCard: View {
                     }
                     .frame(width: 160)
                 }
+                
+                if !s.diagnostics.isEmpty || !s.statusMessage.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !s.statusMessage.isEmpty {
+                            Text("状态: \(s.statusMessage)")
+                        }
+                        ForEach(s.diagnostics, id: \.self) { item in
+                            Text(item)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+                    .padding(.top, 4)
+                }
             } else {
-                Text("连接失败")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 8)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(stats?.statusMessage.isEmpty == false ? (stats?.statusMessage ?? "连接失败") : "连接失败")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let diagnostics = stats?.diagnostics, !diagnostics.isEmpty {
+                        ForEach(diagnostics, id: \.self) { item in
+                            Text(item)
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    if let rawOutput = stats?.rawOutput,
+                       !rawOutput.isEmpty {
+                        Text(rawOutput)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(6)
+                    }
+                }
+                .padding(.vertical, 8)
             }
 
             Divider()
