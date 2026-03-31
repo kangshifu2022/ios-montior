@@ -1,59 +1,62 @@
 import Foundation
-import Citadel
-import NIOCore
 
 class SSHMonitorService {
     
     static func fetchStats(config: ServerConfig) async -> ServerStats {
-        do {
-            let client = try await SSHClient.connect(
-                host: config.host,
+        let script = """
+        echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
+        echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
+        echo "=CPU_INFO="; (awk -F: '/model name|Hardware|system type|machine/ {gsub(/^[ \\t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || uname -m 2>/dev/null || echo unknown)
+        echo "=CPU_CORES="; (awk '/^processor/ {n++} END {print (n > 0 ? n : 1)}' /proc/cpuinfo 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+        echo "=MEM="; (awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} /MemFree:/ {f=$2} END {if (t>0) {u=t-((a>0)?a:f); if (u<0) u=0; printf "%.0f %.0f\\n", t/1024, u/1024} else print "0 0"}' /proc/meminfo 2>/dev/null || echo "0 0")
+        echo "=DISK="; (df -k / 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %s\\n", $2/1024, $3/1024, $5; found=1} END {if (!found) print "0 0 0%"}')
+        echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
+        echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+        sleep 1
+        echo "=NET2="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+        exit 0
+        """
+        
+        let commandResult = await Task.detached(priority: .utility) {
+            SSHNMSSHClient.runCommand(
+                withHost: config.host,
                 port: config.port,
-                authenticationMethod: .passwordBased(
-                    username: config.username,
-                    password: config.password
-                ),
-                hostKeyValidator: .acceptAnything(),
-                reconnect: .never
+                username: config.username,
+                password: config.password,
+                command: script,
+                timeout: 15
             )
-            
-            let script = """
-            echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
-            echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
-            echo "=CPU_INFO="; (awk -F: '/model name|Hardware|system type|machine/ {gsub(/^[ \\t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || uname -m 2>/dev/null || echo unknown)
-            echo "=CPU_CORES="; (awk '/^processor/ {n++} END {print (n > 0 ? n : 1)}' /proc/cpuinfo 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
-            echo "=MEM="; (awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} /MemFree:/ {f=$2} END {if (t>0) {u=t-((a>0)?a:f); if (u<0) u=0; printf "%.0f %.0f\\n", t/1024, u/1024} else print "0 0"}' /proc/meminfo 2>/dev/null || echo "0 0")
-            echo "=DISK="; (df -k / 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %s\\n", $2/1024, $3/1024, $5; found=1} END {if (!found) print "0 0 0%"}')
-            echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
-            echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
-            sleep 1
-            echo "=NET2="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
-            exit 0
-            """
-            
-            let output = try await client.executeCommand(script)
-            let text = String(buffer: output)
-            try await client.close()
-            
-            return parseStats(output: text, config: config)
-            
-        } catch {
-            print("SSH error: \(error)")
+        }.value
+        
+        if commandResult.success {
+            return parseStats(
+                output: commandResult.output,
+                config: config,
+                remoteBanner: commandResult.remoteBanner,
+                fingerprint: commandResult.fingerprint
+            )
+        } else {
             return ServerStats(
                 config: config,
                 isOnline: false,
-                statusMessage: describe(error: error),
-                diagnostics: ["SSH connection or command execution failed"],
-                rawOutput: String(describing: error)
+                statusMessage: describe(errorMessage: commandResult.errorMessage),
+                diagnostics: diagnostics(for: commandResult),
+                rawOutput: commandResult.errorMessage
             )
         }
     }
     
-    private static func parseStats(output: String, config: ServerConfig) -> ServerStats {
+    private static func parseStats(output: String, config: ServerConfig, remoteBanner: String, fingerprint: String) -> ServerStats {
         var stats = ServerStats(config: config)
         stats.isOnline = true
         stats.statusMessage = "connected"
         stats.rawOutput = output
+        if !remoteBanner.isEmpty {
+            stats.diagnostics.append("remote banner: \(remoteBanner)")
+        }
+        if !fingerprint.isEmpty {
+            stats.diagnostics.append("host fingerprint: \(fingerprint)")
+        }
         
         let lines = output.components(separatedBy: "\n")
         var i = 0
@@ -189,12 +192,15 @@ class SSHMonitorService {
         }
     }
     
-    private static func describe(error: Error) -> String {
-        let message = String(describing: error)
+    private static func describe(errorMessage: String) -> String {
+        let message = errorMessage.isEmpty ? "SSH request failed" : errorMessage
         let lowercased = message.lowercased()
         
         if lowercased.contains("authentication") || lowercased.contains("auth") {
             return "authentication failed"
+        }
+        if lowercased.contains("keyexchangenegotiationfailure") || lowercased.contains("key exchange") {
+            return "key exchange negotiation failed; server SSH algorithms are incompatible"
         }
         if lowercased.contains("timeout") {
             return "connection timed out"
@@ -209,5 +215,19 @@ class SSHMonitorService {
             return "host key validation failed"
         }
         return message
+    }
+    
+    private static func diagnostics(for result: SSHCommandResult) -> [String] {
+        var items = ["SSH connection or command execution failed"]
+        if !result.remoteBanner.isEmpty {
+            items.append("remote banner: \(result.remoteBanner)")
+        }
+        if !result.fingerprint.isEmpty {
+            items.append("host fingerprint: \(result.fingerprint)")
+        }
+        if !result.authMethods.isEmpty {
+            items.append("server auth methods: \(result.authMethods)")
+        }
+        return items
     }
 }

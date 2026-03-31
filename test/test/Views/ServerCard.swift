@@ -6,8 +6,8 @@ struct ServerCard: View {
     @State private var isLoading = true
     @State private var showTerminal = false
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+	    var body: some View {
+	        VStack(alignment: .leading, spacing: 12) {
             // 顶部
             HStack {
                 Image(systemName: "server.rack")
@@ -110,20 +110,37 @@ struct ServerCard: View {
 
             Divider()
 
-            Button(action: { showTerminal = true }) {
-                HStack {
-                    Image(systemName: "terminal")
-                    Text("进入终端")
-                        .font(.subheadline)
+            HStack(spacing: 10) {
+                Button(action: fetchData) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text(isLoading ? "连接中..." : "重新连接")
+                            .font(.subheadline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
+                .foregroundColor(.primary)
+                .disabled(isLoading)
+                .opacity(isLoading ? 0.6 : 1)
+                
+                Button(action: { showTerminal = true }) {
+                    HStack {
+                        Image(systemName: "terminal")
+                        Text("进入终端")
+                            .font(.subheadline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                }
+                .foregroundColor(.primary)
+                .disabled(stats?.isOnline != true || isLoading)
+                .opacity(stats?.isOnline == true && !isLoading ? 1 : 0.4)
             }
-            .foregroundColor(.primary)
-            .disabled(stats?.isOnline != true)
-            .opacity(stats?.isOnline == true ? 1 : 0.4)
         }
         .padding(16)
         .background(Color(.systemBackground))
