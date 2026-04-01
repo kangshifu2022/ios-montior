@@ -10,33 +10,31 @@ struct UsageRing: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .stroke(Color(.systemGray5), lineWidth: 7)
+        ZStack {
+            Circle()
+                .stroke(Color(.systemGray5), lineWidth: 6)
 
-                Circle()
-                    .trim(from: 0, to: clampedValue)
-                    .stroke(
-                        (value == nil ? Color(.systemGray4) : color).gradient,
-                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
+            Circle()
+                .trim(from: 0, to: clampedValue)
+                .stroke(
+                    (value == nil ? Color(.systemGray4) : color).gradient,
+                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
 
-                VStack(spacing: 4) {
-                    Text(valueText)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .monospacedDigit()
-                        .foregroundColor(.primary)
+            VStack(spacing: 2) {
+                Text(valueText)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
 
-                    Text(title)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
-            .frame(width: 72, height: 72)
         }
+        .frame(width: 60, height: 60)
         .frame(maxWidth: .infinity, alignment: .center)
         .animation(.easeInOut(duration: 0.35), value: clampedValue)
     }

@@ -26,22 +26,13 @@ struct ServerCard: View {
         .padding(18)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(.systemBackground),
-                            Color(.secondarySystemBackground)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(cardBackgroundColor)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                .stroke(cardBorderColor, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.05), radius: 14, x: 0, y: 8)
+        .shadow(color: shadowColor, radius: 14, x: 0, y: 8)
         .fullScreenCover(isPresented: $showTerminal) {
             TerminalView(server: config)
         }
@@ -73,14 +64,6 @@ struct ServerCard: View {
                 Text(deviceSubtitle)
                     .font(.caption)
                     .foregroundColor(.secondary)
-
-                HStack(spacing: 6) {
-                    Image(systemName: "clock")
-                        .font(.caption)
-                    Text(uptimeText)
-                        .font(.caption)
-                }
-                .foregroundColor(.secondary)
             }
 
             Spacer()
@@ -95,23 +78,34 @@ struct ServerCard: View {
                     Circle()
                         .fill(onlineIndicatorColor)
                         .frame(width: 10, height: 10)
-
-                    Text(statusText)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
                 }
 
-                Text(secondaryStatusText)
+                HStack(spacing: 5) {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                    Text(uptimeText)
+                        .font(.caption)
+                }
+                .foregroundColor(.secondary)
+                .opacity(stats == nil ? 0.8 : 1)
+
+                if let temperatureText {
+                    HStack(spacing: 5) {
+                        Image(systemName: "thermometer")
+                            .font(.caption2)
+                        Text(temperatureText)
+                            .font(.caption)
+                    }
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.trailing)
+                }
             }
         }
     }
 
     private var usageSummary: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 22) {
             UsageRing(
                 title: "CPU",
                 value: stats?.isOnline == true ? stats?.cpuUsage : nil,
@@ -131,17 +125,6 @@ struct ServerCard: View {
         if let stats {
             VStack(alignment: .leading, spacing: 8) {
                 if stats.isOnline {
-                    VStack(alignment: .leading, spacing: 8) {
-                        statPill(
-                            icon: "memorychip",
-                            text: cpuInfoText(for: stats)
-                        )
-                        statPill(
-                            icon: "internaldrive",
-                            text: memoryInfoText(for: stats)
-                        )
-                    }
-
                     if stats.routerInfo.isRouter {
                         statPill(
                             icon: "dot.radiowaves.left.and.right",
@@ -212,26 +195,6 @@ struct ServerCard: View {
         store.isRefreshing(config.id)
     }
 
-    private var statusText: String {
-        if isRefreshing {
-            return "更新中"
-        }
-        guard let stats else {
-            return "等待中"
-        }
-        return stats.isOnline ? "在线" : "离线"
-    }
-
-    private var secondaryStatusText: String {
-        if let stats {
-            if stats.isOnline {
-                return networkSpeedText(for: stats)
-            }
-            return stats.statusMessage.isEmpty ? "暂无连接信息" : stats.statusMessage
-        }
-        return "首次连接中"
-    }
-
     private var uptimeText: String {
         guard let stats, !stats.uptime.isEmpty else {
             return "等待运行时长"
@@ -292,6 +255,13 @@ struct ServerCard: View {
         return stats.isOnline ? .green : .red
     }
 
+    private var temperatureText: String? {
+        guard let stats, stats.isOnline, let temperature = stats.cpuTemperatureC else {
+            return nil
+        }
+        return String(format: "%.0f°C", temperature)
+    }
+
     private var terminalButtonBackground: Color {
         stats?.isOnline == true && !isRefreshing
             ? Color(.secondarySystemBackground)
@@ -299,35 +269,18 @@ struct ServerCard: View {
     }
 
     private var terminalButtonForeground: Color {
-        stats?.isOnline == true && !isRefreshing
-            ? .secondary
-            : .secondary
+        .secondary
     }
 
-    private func cpuInfoText(for stats: ServerStats) -> String {
-        if !stats.cpuModel.isEmpty {
-            return stats.cpuModel
-        }
-        if stats.cpuCores > 0 {
-            return "\(stats.cpuCores) 核 CPU"
-        }
-        return "CPU 信息待获取"
+    private var cardBackgroundColor: Color {
+        Color(.systemBackground)
     }
 
-    private func memoryInfoText(for stats: ServerStats) -> String {
-        guard stats.memTotal > 0 else {
-            return "内存信息待获取"
-        }
-
-        if stats.memTotal >= 1024 {
-            return String(format: "%.1f GB", Double(stats.memTotal) / 1024)
-        }
-        return "\(stats.memTotal) MB"
+    private var cardBorderColor: Color {
+        Color.primary.opacity(0.08)
     }
 
-    private func networkSpeedText(for stats: ServerStats) -> String {
-        let download = stats.downloadSpeed == "0k/s" ? "--" : stats.downloadSpeed
-        let upload = stats.uploadSpeed == "0k/s" ? "--" : stats.uploadSpeed
-        return "下行 \(download) / 上行 \(upload)"
+    private var shadowColor: Color {
+        Color.black.opacity(0.12)
     }
 }
