@@ -32,8 +32,11 @@ workflows:
       - name: Increment build number
         script: |
           LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo "17")
+          NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
           cd $CM_BUILD_DIR/test
-          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
+          agvtool new-version -all $NEW_BUILD_NUMBER
+          echo "New build number: $NEW_BUILD_NUMBER"
+          agvtool what-version
 
       - name: Build ipa for distribution
         script: |
