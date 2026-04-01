@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 struct ServerCard: View {
     let config: ServerConfig
@@ -8,21 +9,17 @@ struct ServerCard: View {
     @State private var showTerminal = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Button(action: openDetail) {
-                VStack(alignment: .leading, spacing: 12) {
-                    header
-                    usageSummary
-                    detailSummary
-                }
-            }
-            .buttonStyle(.plain)
+        HStack(alignment: .center, spacing: 16) {
+            usageSummary
+                .frame(width: 132, alignment: .leading)
 
-            HStack {
-                Spacer()
-                terminalButton
+            VStack(alignment: .leading, spacing: 10) {
+                header
+                detailSummary
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: openDetail)
         .padding(18)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -39,77 +36,68 @@ struct ServerCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(iconAccentColor.opacity(0.14))
-                    .frame(width: 52, height: 52)
+                    .frame(width: 42, height: 42)
 
                 Image(systemName: deviceIconName)
-                    .font(.title3)
+                    .font(.subheadline)
                     .foregroundColor(iconAccentColor)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
                     Text(config.name)
-                        .font(.headline)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
                         .foregroundColor(.primary)
+                        .lineLimit(1)
 
                     Image(systemName: "chevron.right")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
                 }
 
                 Text(deviceSubtitle)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 8) {
-                HStack(spacing: 8) {
-                    if isRefreshing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-
-                    Circle()
-                        .fill(onlineIndicatorColor)
-                        .frame(width: 10, height: 10)
+            HStack(spacing: 8) {
+                if isRefreshing {
+                    ProgressView()
+                        .scaleEffect(0.75)
                 }
 
-                HStack(spacing: 5) {
+                Circle()
+                    .fill(onlineIndicatorColor)
+                    .frame(width: 9, height: 9)
+
+                HStack(spacing: 4) {
                     Image(systemName: "clock")
                         .font(.caption2)
                     Text(uptimeText)
-                        .font(.caption)
+                        .font(.caption2)
+                        .lineLimit(1)
                 }
                 .foregroundColor(.secondary)
-                .opacity(stats == nil ? 0.8 : 1)
 
-                if let temperatureText {
-                    HStack(spacing: 5) {
-                        Image(systemName: "thermometer")
-                            .font(.caption2)
-                        Text(temperatureText)
-                            .font(.caption)
-                    }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.trailing)
-                }
+                terminalButton
             }
         }
     }
 
     private var usageSummary: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 10) {
             UsageRing(
                 title: "CPU",
                 value: stats?.isOnline == true ? stats?.cpuUsage : nil,
-                color: .blue
+                color: .green
             )
 
             UsageRing(
@@ -123,33 +111,33 @@ struct ServerCard: View {
     @ViewBuilder
     private var detailSummary: some View {
         if let stats {
-            VStack(alignment: .leading, spacing: 8) {
-                if stats.isOnline {
-                    if stats.routerInfo.isRouter {
-                        statPill(
-                            icon: "dot.radiowaves.left.and.right",
-                            text: "接入设备 \(stats.routerInfo.connectedDevices.count) 台"
-                        )
-                    }
-                } else {
-                    Text(stats.statusMessage.isEmpty ? "设备当前离线" : stats.statusMessage)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                if !stats.diagnostics.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(stats.diagnostics.prefix(2), id: \.self) { item in
-                            Text(item)
+            if stats.isOnline {
+                if temperatureText != nil || wifi24TemperatureText != nil || wifi5TemperatureText != nil {
+                    HStack(spacing: 8) {
+                        if let temperatureText {
+                            temperaturePill(label: "CPU", value: temperatureText)
                         }
+
+                        if let wifi24TemperatureText {
+                            temperaturePill(label: "2.4G", value: wifi24TemperatureText)
+                        }
+
+                        if let wifi5TemperatureText {
+                            temperaturePill(label: "5G", value: wifi5TemperatureText)
+                        }
+
+                        Spacer(minLength: 0)
                     }
-                    .font(.caption2)
-                    .foregroundColor(.orange)
                 }
+            } else {
+                Text(stats.statusMessage.isEmpty ? "设备当前离线" : stats.statusMessage)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
             }
         } else {
             Text("正在获取设备状态…")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundColor(.secondary)
         }
     }
@@ -157,28 +145,30 @@ struct ServerCard: View {
     private var terminalButton: some View {
         Button(action: { showTerminal = true }) {
             Image(systemName: "terminal")
-                .font(.subheadline)
+                .font(.caption)
                 .foregroundColor(terminalButtonForeground)
-                .frame(width: 34, height: 34)
+                .frame(width: 26, height: 26)
                 .background(terminalButtonBackground)
                 .clipShape(Circle())
         }
+        .buttonStyle(.plain)
         .disabled(stats?.isOnline != true || isRefreshing)
-        .opacity(stats?.isOnline == true && !isRefreshing ? 1 : 0.55)
+        .opacity(stats?.isOnline == true && !isRefreshing ? 1 : 0.45)
     }
 
-    private func statPill(icon: String, text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption)
-            Text(text)
-                .lineLimit(1)
-                .truncationMode(.tail)
+    private func temperaturePill(label: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "thermometer")
+                .font(.caption2)
+            Text(label)
+                .font(.caption2)
+            Text(value)
+                .font(.caption2)
+                .monospacedDigit()
         }
-        .font(.caption)
         .foregroundColor(.secondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
         .background(Color(.secondarySystemBackground))
         .clipShape(Capsule())
     }
@@ -197,7 +187,7 @@ struct ServerCard: View {
 
     private var uptimeText: String {
         guard let stats, !stats.uptime.isEmpty else {
-            return "等待运行时长"
+            return "--"
         }
         return stats.uptime
     }
@@ -259,7 +249,25 @@ struct ServerCard: View {
         guard let stats, stats.isOnline, let temperature = stats.cpuTemperatureC else {
             return nil
         }
-        return String(format: "%.0f°C", temperature)
+        return temperatureValueText(temperature)
+    }
+
+    private var wifi24TemperatureText: String? {
+        guard let stats, stats.isOnline, let temperature = stats.wifi24TemperatureC else {
+            return nil
+        }
+        return temperatureValueText(temperature)
+    }
+
+    private var wifi5TemperatureText: String? {
+        guard let stats, stats.isOnline, let temperature = stats.wifi5TemperatureC else {
+            return nil
+        }
+        return temperatureValueText(temperature)
+    }
+
+    private func temperatureValueText(_ temperature: Double) -> String {
+        String(format: "%.0f°C", temperature)
     }
 
     private var terminalButtonBackground: Color {
@@ -273,14 +281,24 @@ struct ServerCard: View {
     }
 
     private var cardBackgroundColor: Color {
-        Color(.systemBackground)
+        Color(uiColor: UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor(red: 0.15, green: 0.18, blue: 0.22, alpha: 1)
+            }
+            return .systemBackground
+        })
     }
 
     private var cardBorderColor: Color {
-        Color.primary.opacity(0.08)
+        Color(uiColor: UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor.white.withAlphaComponent(0.08)
+            }
+            return UIColor.black.withAlphaComponent(0.06)
+        })
     }
 
     private var shadowColor: Color {
-        Color.black.opacity(0.12)
+        Color.black.opacity(0.16)
     }
 }

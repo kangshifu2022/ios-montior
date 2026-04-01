@@ -40,9 +40,12 @@ struct DevicesView: View {
                 await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
             }
             .navigationTitle("概览")
-            .onAppear {
-                Task {
-                    await store.refreshAllIfNeeded()
+            .task(id: store.servers.map(\.id)) {
+                await store.refreshAllIfNeeded()
+
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    await store.refreshAllIfNeeded(forceDynamic: true)
                 }
             }
             .navigationDestination(item: $selectedServer) { config in
