@@ -29,6 +29,14 @@ workflows:
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
 
+      - name: Increment build number
+        script: |
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo "18")
+          NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
+          echo "Setting build number to: $NEW_BUILD_NUMBER"
+          sed -i "" "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $NEW_BUILD_NUMBER/g" "$CM_BUILD_DIR/test/test.xcodeproj/project.pbxproj"
+          echo "Done. Current value:"
+          grep "CURRENT_PROJECT_VERSION" "$CM_BUILD_DIR/test/test.xcodeproj/project.pbxproj"
 
       - name: Build ipa for distribution
         script: |
