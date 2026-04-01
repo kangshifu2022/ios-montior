@@ -19,6 +19,8 @@ struct DeviceDetailView: View {
                 if let stats {
                     systemCard(stats)
                     cpuCard(stats)
+                    wirelessTemperatureCard(stats)
+                    nssCard(stats)
                     memoryCard(stats)
                     diskCard(stats)
                     
@@ -76,6 +78,25 @@ struct DeviceDetailView: View {
             DetailRow(label: "核心数", value: "\(stats.cpuCores)")
             DetailRow(label: "占用率", value: percentText(stats.cpuUsage))
             DetailRow(label: "频率", value: stats.cpuFrequency.isEmpty ? "unknown" : stats.cpuFrequency)
+            DetailRow(label: "温度", value: cpuTemperatureText(stats.cpuTemperatureC))
+        }
+    }
+
+    @ViewBuilder
+    private func wirelessTemperatureCard(_ stats: ServerStats) -> some View {
+        if isOpenWrt(stats),
+           stats.wifi24TemperatureC != nil || stats.wifi5TemperatureC != nil || !stats.additionalTemperatureSensors.isEmpty {
+            DetailSectionCard(title: "温度传感器") {
+                if let wifi24 = stats.wifi24TemperatureC {
+                    DetailRow(label: "WiFi 2.4G", value: cpuTemperatureText(wifi24))
+                }
+                if let wifi5 = stats.wifi5TemperatureC {
+                    DetailRow(label: "WiFi 5G", value: cpuTemperatureText(wifi5))
+                }
+                ForEach(Array(stats.additionalTemperatureSensors.enumerated()), id: \.offset) { _, sensor in
+                    DetailRow(label: sensor.label, value: cpuTemperatureText(sensor.valueC))
+                }
+            }
         }
     }
     
@@ -90,18 +111,45 @@ struct DeviceDetailView: View {
 
     @ViewBuilder
     private func diskCard(_ stats: ServerStats) -> some View {
-        if let disk = stats.rootDisk {
+        if stats.rootDisk != nil || stats.overlayDisk != nil || stats.diskUsage > 0 {
             DetailSectionCard(title: "磁盘") {
-                DetailRow(label: "挂载点", value: disk.mountPoint)
-                DetailRow(label: "总空间", value: formattedCapacity(disk.totalMB))
-                DetailRow(label: "已用", value: formattedCapacity(disk.usedMB))
-                DetailRow(label: "可用", value: formattedCapacity(disk.availableMB))
-                DetailRow(label: "占用率", value: percentText(disk.usage))
+                if let rootDisk = stats.rootDisk {
+                    diskGroup(rootDisk, title: "/")
+                } else if stats.diskUsage > 0 {
+                    fallbackDiskGroup
+                }
+
+                if stats.rootDisk != nil && stats.overlayDisk != nil {
+                    Divider()
+                }
+
+                if let overlayDisk = stats.overlayDisk {
+                    diskGroup(overlayDisk, title: "/overlay")
+                }
             }
-        } else if stats.diskUsage > 0 {
-            DetailSectionCard(title: "磁盘") {
-                DetailRow(label: "挂载点", value: "/")
-                DetailRow(label: "占用率", value: percentText(stats.diskUsage))
+        }
+    }
+
+    @ViewBuilder
+    private func nssCard(_ stats: ServerStats) -> some View {
+        if !stats.nssCores.isEmpty || stats.nssFrequencyMHz != nil {
+            DetailSectionCard(title: "NSS") {
+                if let frequency = stats.nssFrequencyMHz {
+                    DetailRow(label: "频率", value: String(format: "%.0f MHz", frequency))
+                }
+
+                ForEach(stats.nssCores.indices, id: \.self) { index in
+                    let core = stats.nssCores[index]
+                    if index > 0 || stats.nssFrequencyMHz != nil {
+                        Divider()
+                    }
+                    Text(core.name)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    DetailRow(label: "最小占用", value: percentText(core.minUsage))
+                    DetailRow(label: "平均占用", value: percentText(core.avgUsage))
+                    DetailRow(label: "峰值占用", value: percentText(core.maxUsage))
+                }
             }
         }
     }
@@ -141,12 +189,47 @@ struct DeviceDetailView: View {
         return "\(megabytes) MB"
     }
 
+    private func cpuTemperatureText(_ value: Double?) -> String {
+        guard let value else { return "unknown" }
+        return String(format: "%.1f°C", value)
+    }
+
+    private func cpuTemperatureText(_ value: Double) -> String {
+        String(format: "%.1f°C", value)
+    }
+
     private var stats: ServerStats? {
         store.stats(for: config)
     }
 
     private var isRefreshing: Bool {
         store.isRefreshing(config.id)
+    }
+
+    private func isOpenWrt(_ stats: ServerStats) -> Bool {
+        stats.osName.lowercased().contains("openwrt")
+    }
+
+    @ViewBuilder
+    private func diskGroup(_ disk: ServerDiskInfo, title: String) -> some View {
+        Text(title)
+            .font(.subheadline)
+            .fontWeight(.semibold)
+        DetailRow(label: "挂载点", value: disk.mountPoint)
+        DetailRow(label: "总空间", value: formattedCapacity(disk.totalMB))
+        DetailRow(label: "已用", value: formattedCapacity(disk.usedMB))
+        DetailRow(label: "可用", value: formattedCapacity(disk.availableMB))
+        DetailRow(label: "占用率", value: percentText(disk.usage))
+    }
+
+    private var fallbackDiskGroup: some View {
+        Group {
+            Text("/")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            DetailRow(label: "挂载点", value: "/")
+            DetailRow(label: "占用率", value: percentText(stats?.diskUsage ?? 0))
+        }
     }
 }
 
