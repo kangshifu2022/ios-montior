@@ -244,9 +244,6 @@ final class SSHMonitorService {
             "=CPU_INFO=",
             "=CPU_CORES=",
             "=CPU_FREQ=",
-            "=WIFI_PHY_BANDS=",
-            "=TEMP_SENSORS=",
-            "=CPU_TEMP=",
             "=MEM=",
             "=DISK=",
             "=DISK_OVERLAY=",
@@ -345,9 +342,6 @@ final class SSHMonitorService {
 
         let expectedMarkers = [
             "=UPTIME=",
-            "=WIFI_PHY_BANDS=",
-            "=TEMP_SENSORS=",
-            "=CPU_TEMP=",
             "=MEM=",
             "=DISK=",
             "=DISK_OVERLAY=",
