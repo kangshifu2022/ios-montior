@@ -31,7 +31,7 @@ workflows:
 
       - name: Increment build number
         script: |
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo "0")
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo "17")
           cd $CM_BUILD_DIR/test
           agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
 
