@@ -127,23 +127,36 @@ final class ServerStore: ObservableObject {
             }
         }
 
-        await withTaskGroup(of: RefreshResult.self) { group in
+        var pendingIDs = Set<UUID>()
+        for request in deduped {
+            switch request {
+            case .full(let config), .dynamic(let config):
+                pendingIDs.insert(config.id)
+            }
+        }
+
+        await withTaskGroup(of: RefreshResult?.self) { group in
             for request in deduped {
                 switch request {
                 case .full(let config):
                     group.addTask {
+                        if Task.isCancelled { return nil }
                         let stats = await SSHMonitorService.fetchStats(config: config)
+                        if Task.isCancelled { return nil }
                         return .full(config.id, stats)
                     }
                 case .dynamic(let config):
                     group.addTask {
+                        if Task.isCancelled { return nil }
                         let dynamic = await SSHMonitorService.fetchDynamicInfo(config: config)
+                        if Task.isCancelled { return nil }
                         return .dynamic(config.id, dynamic)
                     }
                 }
             }
 
             for await result in group {
+                guard let result else { continue }
                 switch result {
                 case .full(let id, let stats):
                     let mergedStaticInfo = mergeStaticInfo(
@@ -162,8 +175,17 @@ final class ServerStore: ObservableObject {
                     lastDynamicRefreshDates[id] = Date()
                     refreshingServerIDs.remove(id)
                 }
+                switch result {
+                case .full(let id, _), .dynamic(let id, _):
+                    pendingIDs.remove(id)
+                }
                 saveCachedInfo()
             }
+        }
+
+        // Requests canceled by view/task lifecycle should not keep "refreshing" stuck
+        for id in pendingIDs {
+            refreshingServerIDs.remove(id)
         }
     }
 
