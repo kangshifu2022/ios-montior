@@ -100,9 +100,7 @@ struct DeviceDetailView: View {
                     DetailRow(label: "WiFi 5G", value: cpuTemperatureText(wifi5))
                 }
 
-                ForEach(Array(stats.additionalTemperatureSensors.enumerated()), id: \.offset) { _, sensor in
-                    DetailRow(label: sensor.label, value: cpuTemperatureText(sensor.valueC))
-                }
+
             }
         }
     }
