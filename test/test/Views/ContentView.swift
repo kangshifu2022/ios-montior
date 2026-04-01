@@ -7,7 +7,7 @@ struct ContentView: View {
         TabView {
             DevicesView(store: store)
                 .tabItem {
-                    Label("设备", systemImage: "server.rack")
+                    Label("概览", systemImage: "server.rack")
                 }
             
             Text("容器")
