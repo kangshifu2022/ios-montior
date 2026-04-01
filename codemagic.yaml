@@ -1,6 +1,6 @@
 workflows:
-  ios-testflight:
-    name: iOS TestFlight
+  ios-adhoc:
+    name: iOS Ad Hoc
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -9,13 +9,12 @@ workflows:
 
     environment:
       ios_signing:
-        distribution_type: app_store
+        distribution_type: ad_hoc
         bundle_identifier: com.wenchaoliu.test
       vars:
         XCODE_PROJECT: "test/test.xcodeproj"
         XCODE_SCHEME: "test"
         BUNDLE_ID: "com.wenchaoliu.test"
-        APP_STORE_APPLE_ID: 6761410448
       xcode: latest
 
     triggering:
@@ -31,12 +30,10 @@ workflows:
 
       - name: Increment build number
         script: |
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo "18")
-          NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
-          echo "Setting build number to: $NEW_BUILD_NUMBER"
-          sed -i "" "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $NEW_BUILD_NUMBER/g" "$CM_BUILD_DIR/test/test.xcodeproj/project.pbxproj"
-          echo "Done. Current value:"
-          grep "CURRENT_PROJECT_VERSION" "$CM_BUILD_DIR/test/test.xcodeproj/project.pbxproj"
+          cd $CM_BUILD_DIR
+          BUILD_NUMBER=$(git rev-list --count HEAD)
+          echo "Setting build number to: $BUILD_NUMBER"
+          sed -i "" "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/g" "$CM_BUILD_DIR/test/test.xcodeproj/project.pbxproj"
 
       - name: Build ipa for distribution
         script: |
@@ -49,9 +46,6 @@ workflows:
       - /tmp/xcodebuild_logs/*.log
 
     publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
       email:
         recipients:
           - linus_liu@qq.com
