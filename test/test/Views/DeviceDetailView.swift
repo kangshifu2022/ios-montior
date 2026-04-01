@@ -20,6 +20,7 @@ struct DeviceDetailView: View {
                     systemCard(stats)
                     cpuCard(stats)
                     memoryCard(stats)
+                    diskCard(stats)
                     
                     if !stats.isOnline {
                         detailError(stats)
@@ -86,6 +87,24 @@ struct DeviceDetailView: View {
             DetailRow(label: "占用率", value: percentText(stats.memUsage))
         }
     }
+
+    @ViewBuilder
+    private func diskCard(_ stats: ServerStats) -> some View {
+        if let disk = stats.rootDisk {
+            DetailSectionCard(title: "磁盘") {
+                DetailRow(label: "挂载点", value: disk.mountPoint)
+                DetailRow(label: "总空间", value: formattedCapacity(disk.totalMB))
+                DetailRow(label: "已用", value: formattedCapacity(disk.usedMB))
+                DetailRow(label: "可用", value: formattedCapacity(disk.availableMB))
+                DetailRow(label: "占用率", value: percentText(disk.usage))
+            }
+        } else if stats.diskUsage > 0 {
+            DetailSectionCard(title: "磁盘") {
+                DetailRow(label: "挂载点", value: "/")
+                DetailRow(label: "占用率", value: percentText(stats.diskUsage))
+            }
+        }
+    }
     
     @ViewBuilder
     private func detailError(_ stats: ServerStats) -> some View {
@@ -109,6 +128,17 @@ struct DeviceDetailView: View {
     
     private func percentText(_ value: Double) -> String {
         String(format: "%.1f%%", value * 100)
+    }
+
+    private func formattedCapacity(_ megabytes: Int) -> String {
+        let gigabytes = Double(megabytes) / 1024
+        if gigabytes >= 1024 {
+            return String(format: "%.2f TB", gigabytes / 1024)
+        }
+        if gigabytes >= 1 {
+            return String(format: "%.1f GB", gigabytes)
+        }
+        return "\(megabytes) MB"
     }
 
     private var stats: ServerStats? {

@@ -79,7 +79,7 @@ final class SSHMonitorService {
     echo "=CPU_CORES="; (awk '/^processor/ {n++} END {print (n > 0 ? n : 1)}' /proc/cpuinfo 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
     echo "=CPU_FREQ="; (if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf "%.0f MHz\\n", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null; elif [ -r /proc/cpuinfo ]; then awk -F: '/cpu MHz/ {gsub(/^[ \\t]+/, "", $2); printf "%.0f MHz\\n", $2; found=1; exit} /clock/ {gsub(/^[ \\t]+/, "", $2); print $2; found=1; exit} END {if (!found) print "unknown"}' /proc/cpuinfo 2>/dev/null; else echo "unknown"; fi)
     echo "=MEM="; (awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} /MemFree:/ {f=$2} END {avail=(a>0)?a:f; if (t>0) {u=t-avail; if (u<0) u=0; printf "%.0f %.0f %.0f\\n", t/1024, avail/1024, u/1024} else print "0 0 0"}' /proc/meminfo 2>/dev/null || echo "0 0 0")
-    echo "=DISK="; (df -k / 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %s\\n", $2/1024, $3/1024, $5; found=1} END {if (!found) print "0 0 0%"}')
+    echo "=DISK="; (df -kP / 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %.0f %s %s\\n", $2/1024, $3/1024, $4/1024, $5, $6; found=1} END {if (!found) print "0 0 0 0% /"}')
     echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
     echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
     sleep 1
@@ -90,7 +90,7 @@ final class SSHMonitorService {
     private static let dynamicStatsScript = """
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
     echo "=MEM="; (awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} /MemFree:/ {f=$2} END {avail=(a>0)?a:f; if (t>0) {u=t-avail; if (u<0) u=0; printf "%.0f %.0f %.0f\\n", t/1024, avail/1024, u/1024} else print "0 0 0"}' /proc/meminfo 2>/dev/null || echo "0 0 0")
-    echo "=DISK="; (df -k / 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %s\\n", $2/1024, $3/1024, $5; found=1} END {if (!found) print "0 0 0%"}')
+    echo "=DISK="; (df -kP / 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %.0f %s %s\\n", $2/1024, $3/1024, $4/1024, $5, $6; found=1} END {if (!found) print "0 0 0 0% /"}')
     echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
     echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
     sleep 1
@@ -190,7 +190,7 @@ final class SSHMonitorService {
                 applyMemoryValues(from: lines[i + 1], to: &stats)
             } else if line == "=DISK=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                stats.diskUsage = parseDiskUsage(from: lines[i + 1])
+                applyDiskValues(from: lines[i + 1], to: &stats)
             } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 stats.cpuUsage = parseCPUUsage(from: lines[i + 1])
@@ -269,7 +269,7 @@ final class SSHMonitorService {
                 applyMemoryValues(from: lines[i + 1], to: &dynamic)
             } else if line == "=DISK=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                dynamic.diskUsage = parseDiskUsage(from: lines[i + 1])
+                applyDiskValues(from: lines[i + 1], to: &dynamic)
             } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 dynamic.cpuUsage = parseCPUUsage(from: lines[i + 1])
@@ -327,6 +327,42 @@ final class SSHMonitorService {
             dynamic.memAvailable = Int(available)
             dynamic.memUsage = total > 0 ? used / total : 0
         }
+    }
+
+    private static func applyDiskValues(from line: String, to stats: inout ServerStats) {
+        if let disk = parseDiskInfo(from: line) {
+            stats.rootDisk = disk
+            stats.diskUsage = disk.usage
+        } else {
+            stats.rootDisk = nil
+            stats.diskUsage = parseDiskUsage(from: line)
+        }
+    }
+
+    private static func applyDiskValues(from line: String, to dynamic: inout ServerDynamicInfo) {
+        if let disk = parseDiskInfo(from: line) {
+            dynamic.rootDisk = disk
+            dynamic.diskUsage = disk.usage
+        } else {
+            dynamic.rootDisk = nil
+            dynamic.diskUsage = parseDiskUsage(from: line)
+        }
+    }
+
+    private static func parseDiskInfo(from line: String) -> ServerDiskInfo? {
+        let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ")
+        guard parts.count >= 5 else { return nil }
+
+        let pct = String(parts[3]).replacingOccurrences(of: "%", with: "")
+        let mountPoint = parts[4...].joined(separator: " ")
+
+        return ServerDiskInfo(
+            mountPoint: mountPoint.isEmpty ? "/" : mountPoint,
+            totalMB: Int(Double(parts[0]) ?? 0),
+            usedMB: Int(Double(parts[1]) ?? 0),
+            availableMB: Int(Double(parts[2]) ?? 0),
+            usage: (Double(pct) ?? 0) / 100.0
+        )
     }
 
     private static func parseDiskUsage(from line: String) -> Double {

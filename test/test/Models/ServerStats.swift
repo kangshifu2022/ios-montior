@@ -1,5 +1,13 @@
 import Foundation
 
+struct ServerDiskInfo: Codable, Sendable {
+    var mountPoint: String = "/"
+    var totalMB: Int = 0
+    var usedMB: Int = 0
+    var availableMB: Int = 0
+    var usage: Double = 0
+}
+
 struct ServerStaticInfo: Codable, Sendable {
     var osName: String = ""
     var hostname: String = ""
@@ -30,6 +38,7 @@ struct ServerDynamicInfo: Codable, Sendable {
     var cpuUsage: Double = 0
     var memUsage: Double = 0
     var diskUsage: Double = 0
+    var rootDisk: ServerDiskInfo? = nil
     var downloadSpeed: String = "0k/s"
     var uploadSpeed: String = "0k/s"
 
@@ -45,6 +54,7 @@ struct ServerDynamicInfo: Codable, Sendable {
         cpuUsage = stats.cpuUsage
         memUsage = stats.memUsage
         diskUsage = stats.diskUsage
+        rootDisk = stats.rootDisk
         downloadSpeed = stats.downloadSpeed
         uploadSpeed = stats.uploadSpeed
     }
@@ -67,6 +77,7 @@ struct ServerStats: Codable, Sendable {
     var cpuUsage: Double = 0
     var memUsage: Double = 0
     var diskUsage: Double = 0
+    var rootDisk: ServerDiskInfo? = nil
     var downloadSpeed: String = "0k/s"
     var uploadSpeed: String = "0k/s"
 
@@ -96,6 +107,7 @@ struct ServerStats: Codable, Sendable {
             cpuUsage = dynamicInfo.cpuUsage
             memUsage = dynamicInfo.memUsage
             diskUsage = dynamicInfo.diskUsage
+            rootDisk = dynamicInfo.rootDisk
             downloadSpeed = dynamicInfo.downloadSpeed
             uploadSpeed = dynamicInfo.uploadSpeed
         }
