@@ -23,7 +23,7 @@ struct DevicesView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 80)
                     } else {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 16) {
                             ForEach(store.servers) { config in
                                 ServerCard(config: config, store: store) {
                                     selectedServer = config
@@ -34,6 +34,10 @@ struct DevicesView: View {
                         .padding(.vertical, 20)
                     }
                 }
+            }
+            .background(Color(.systemGroupedBackground))
+            .refreshable {
+                await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
             }
             .navigationTitle("概览")
             .onAppear {
