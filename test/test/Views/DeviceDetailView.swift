@@ -23,7 +23,8 @@ struct DeviceDetailView: View {
                     nssCard(stats)
                     memoryCard(stats)
                     diskCard(stats)
-                    
+                    connectedDevicesCard(stats)
+
                     if !stats.isOnline {
                         detailError(stats)
                     }
@@ -156,6 +157,146 @@ struct DeviceDetailView: View {
                     DetailRow(label: "峰值占用", value: percentText(core.maxUsage))
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func connectedDevicesCard(_ stats: ServerStats) -> some View {
+        if stats.routerInfo.isRouter {
+            let devices = stats.routerInfo.connectedDevices
+            let wiredCount = devices.filter { $0.connectionType == .wired }.count
+            let wifi24Count = devices.filter { $0.connectionType == .wifi24 }.count
+            let wifi5Count = devices.filter { $0.connectionType == .wifi5 }.count
+            let unknownCount = devices.filter { $0.connectionType == .unknown }.count
+
+            DetailSectionCard(title: "接入设备 (\(devices.count))") {
+                // Summary
+                HStack(spacing: 16) {
+                    if wiredCount > 0 {
+                        connectionBadge(icon: "cable.connector", label: "有线", count: wiredCount, color: .blue)
+                    }
+                    if wifi24Count > 0 {
+                        connectionBadge(icon: "wifi", label: "2.4G", count: wifi24Count, color: .green)
+                    }
+                    if wifi5Count > 0 {
+                        connectionBadge(icon: "wifi", label: "5G", count: wifi5Count, color: .purple)
+                    }
+                    if unknownCount > 0 {
+                        connectionBadge(icon: "questionmark.circle", label: "未知", count: unknownCount, color: .gray)
+                    }
+                    Spacer()
+                }
+
+                if !devices.isEmpty {
+                    Divider()
+
+                    ForEach(devices) { device in
+                        connectedDeviceRow(device)
+
+                        if device.id != devices.last?.id {
+                            Divider().padding(.leading, 28)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func connectionBadge(icon: String, label: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundColor(color)
+            Text("\(label) \(count)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.1))
+        .cornerRadius(8)
+    }
+
+    @ViewBuilder
+    private func connectedDeviceRow(_ device: ConnectedDevice) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: deviceIcon(for: device.connectionType))
+                .font(.subheadline)
+                .foregroundColor(deviceColor(for: device.connectionType))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(device.displayName)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    if !device.ip.isEmpty {
+                        Text(device.ip)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Text(device.mac)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(device.connectionType.displayName)
+                    .font(.caption)
+                    .foregroundColor(deviceColor(for: device.connectionType))
+
+                if let signal = device.signalDBm {
+                    HStack(spacing: 2) {
+                        Image(systemName: signalIcon(for: signal))
+                            .font(.caption2)
+                        Text("\(signal) dBm")
+                            .font(.caption)
+                    }
+                    .foregroundColor(signalColor(for: signal))
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func deviceIcon(for type: ConnectedDeviceConnectionType) -> String {
+        switch type {
+        case .wired: return "cable.connector"
+        case .wifi24, .wifi5: return "wifi"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    private func deviceColor(for type: ConnectedDeviceConnectionType) -> Color {
+        switch type {
+        case .wired: return .blue
+        case .wifi24: return .green
+        case .wifi5: return .purple
+        case .unknown: return .gray
+        }
+    }
+
+    private func signalIcon(for dBm: Int) -> String {
+        switch dBm {
+        case -50...0: return "wifi"
+        case -70...(-51): return "wifi"
+        case -85...(-71): return "wifi.exclamationmark"
+        default: return "wifi.slash"
+        }
+    }
+
+    private func signalColor(for dBm: Int) -> Color {
+        switch dBm {
+        case -50...0: return .green
+        case -70...(-51): return .orange
+        case -85...(-71): return .red
+        default: return .red
         }
     }
     

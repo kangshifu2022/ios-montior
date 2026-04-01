@@ -66,7 +66,7 @@ struct ServerCard: View {
 
     private var header: some View {
         HStack {
-            Image(systemName: "server.rack")
+            Image(systemName: stats?.routerInfo.isRouter == true ? "wifi.router" : "server.rack")
                 .font(.title2)
             Text(config.name)
                 .font(.headline)
@@ -116,6 +116,9 @@ struct ServerCard: View {
                     Text("cpu \(s.cpuModel)")
                     Text("\(s.cpuCores) cores · \(s.memTotal) MB")
                     Text(s.uptime)
+                    if s.routerInfo.isRouter {
+                        Text("接入设备: \(s.routerInfo.connectedDevices.count) 台")
+                    }
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)

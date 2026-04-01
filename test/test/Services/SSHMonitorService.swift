@@ -90,6 +90,9 @@ final class SSHMonitorService {
     echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
     sleep 1
     echo "=NET2="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+    echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
+    echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
+    echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/\[.*\]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
     exit 0
     """
 
@@ -107,6 +110,9 @@ final class SSHMonitorService {
     echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
     sleep 1
     echo "=NET2="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+    echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
+    echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
+    echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/\[.*\]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
     exit 0
     """
 
@@ -233,6 +239,19 @@ final class SSHMonitorService {
             } else if line == "=NET2=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyNetworkSpeeds(firstSample: net1, secondLine: lines[i + 1], to: &stats)
+            } else if line == "=IS_ROUTER=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                stats.routerInfo.isRouter = lines[i + 1].trimmingCharacters(in: .whitespaces) == "yes"
+            } else if line == "=CONNECTED_DEVICES=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                if stats.routerInfo.isRouter {
+                    stats.routerInfo.connectedDevices = parseConnectedDevices(from: lines[i + 1])
+                }
+            } else if line == "=WIFI_CLIENTS=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                if stats.routerInfo.isRouter {
+                    applyWiFiClients(from: lines[i + 1], to: &stats.routerInfo)
+                }
             }
             i += 1
         }
@@ -336,6 +355,19 @@ final class SSHMonitorService {
             } else if line == "=NET2=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyNetworkSpeeds(firstSample: net1, secondLine: lines[i + 1], to: &dynamic)
+            } else if line == "=IS_ROUTER=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                dynamic.routerInfo.isRouter = lines[i + 1].trimmingCharacters(in: .whitespaces) == "yes"
+            } else if line == "=CONNECTED_DEVICES=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                if dynamic.routerInfo.isRouter {
+                    dynamic.routerInfo.connectedDevices = parseConnectedDevices(from: lines[i + 1])
+                }
+            } else if line == "=WIFI_CLIENTS=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                if dynamic.routerInfo.isRouter {
+                    applyWiFiClients(from: lines[i + 1], to: &dynamic.routerInfo)
+                }
             }
             i += 1
         }
@@ -755,5 +787,103 @@ final class SSHMonitorService {
             return "host key validation failed"
         }
         return message
+    }
+
+    // MARK: - Router / Connected Devices
+
+    /// Parses DHCP lease entries: "ip,mac,hostname;ip,mac,hostname;..."
+    private static func parseConnectedDevices(from line: String) -> [ConnectedDevice] {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "none" else { return [] }
+
+        var devices: [ConnectedDevice] = []
+        var seen = Set<String>()
+
+        for entry in trimmed.split(separator: ";") {
+            let parts = entry.split(separator: ",", maxSplits: 2)
+            guard parts.count >= 2 else { continue }
+
+            let ip = String(parts[0]).trimmingCharacters(in: .whitespaces)
+            let mac = String(parts[1]).trimmingCharacters(in: .whitespaces).uppercased()
+            let hostname = parts.count >= 3
+                ? String(parts[2]).trimmingCharacters(in: .whitespaces)
+                : ""
+
+            guard !mac.isEmpty, !seen.contains(mac) else { continue }
+            seen.insert(mac)
+
+            devices.append(ConnectedDevice(
+                ip: ip,
+                mac: mac,
+                hostname: hostname,
+                connectionType: .unknown,
+                signalDBm: nil
+            ))
+        }
+
+        return devices
+    }
+
+    /// Parses WiFi station dump: "mac,signal,band;mac,signal,band;..."
+    /// Merges WiFi info (connection type + signal) into existing DHCP devices, or adds new entries.
+    private static func applyWiFiClients(from line: String, to routerInfo: inout RouterInfo) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "none" else {
+            // If no WiFi data, all existing devices without WiFi info are assumed wired
+            for i in routerInfo.connectedDevices.indices {
+                if routerInfo.connectedDevices[i].connectionType == .unknown {
+                    routerInfo.connectedDevices[i].connectionType = .wired
+                }
+            }
+            return
+        }
+
+        var wifiMACs = Set<String>()
+
+        for entry in trimmed.split(separator: ";") {
+            let parts = entry.split(separator: ",", maxSplits: 2)
+            guard parts.count >= 1 else { continue }
+
+            let mac = String(parts[0]).trimmingCharacters(in: .whitespaces).uppercased()
+            guard !mac.isEmpty else { continue }
+
+            let signal: Int? = parts.count >= 2
+                ? Int(String(parts[1]).trimmingCharacters(in: .whitespaces))
+                : nil
+
+            let bandStr = parts.count >= 3
+                ? String(parts[2]).trimmingCharacters(in: .whitespaces).lowercased()
+                : "unknown"
+
+            let connectionType: ConnectedDeviceConnectionType
+            switch bandStr {
+            case "24g": connectionType = .wifi24
+            case "5g": connectionType = .wifi5
+            default: connectionType = .unknown
+            }
+
+            wifiMACs.insert(mac)
+
+            if let idx = routerInfo.connectedDevices.firstIndex(where: { $0.mac == mac }) {
+                routerInfo.connectedDevices[idx].connectionType = connectionType
+                routerInfo.connectedDevices[idx].signalDBm = signal
+            } else {
+                routerInfo.connectedDevices.append(ConnectedDevice(
+                    ip: "",
+                    mac: mac,
+                    hostname: "",
+                    connectionType: connectionType,
+                    signalDBm: signal
+                ))
+            }
+        }
+
+        // Devices not seen in WiFi station dump are wired
+        for i in routerInfo.connectedDevices.indices {
+            if routerInfo.connectedDevices[i].connectionType == .unknown
+                && !wifiMACs.contains(routerInfo.connectedDevices[i].mac) {
+                routerInfo.connectedDevices[i].connectionType = .wired
+            }
+        }
     }
 }

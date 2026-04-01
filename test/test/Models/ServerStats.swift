@@ -1,5 +1,42 @@
 import Foundation
 
+enum ConnectedDeviceConnectionType: String, Codable, Sendable {
+    case wired = "wired"
+    case wifi24 = "wifi24"
+    case wifi5 = "wifi5"
+    case unknown = "unknown"
+
+    var displayName: String {
+        switch self {
+        case .wired: return "有线"
+        case .wifi24: return "WiFi 2.4G"
+        case .wifi5: return "WiFi 5G"
+        case .unknown: return "未知"
+        }
+    }
+}
+
+struct ConnectedDevice: Codable, Sendable, Identifiable {
+    var id: String { mac }
+    var ip: String = ""
+    var mac: String = ""
+    var hostname: String = ""
+    var connectionType: ConnectedDeviceConnectionType = .unknown
+    var signalDBm: Int? = nil
+
+    var displayName: String {
+        if !hostname.isEmpty && hostname != "*" && hostname != "?" {
+            return hostname
+        }
+        return ip.isEmpty ? mac : ip
+    }
+}
+
+struct RouterInfo: Codable, Sendable {
+    var isRouter: Bool = false
+    var connectedDevices: [ConnectedDevice] = []
+}
+
 struct ServerDiskInfo: Codable, Sendable {
     var mountPoint: String = "/"
     var totalMB: Int = 0
@@ -60,6 +97,7 @@ struct ServerDynamicInfo: Codable, Sendable {
     var nssFrequencyMHz: Double? = nil
     var downloadSpeed: String = "0k/s"
     var uploadSpeed: String = "0k/s"
+    var routerInfo: RouterInfo = RouterInfo()
 
     init() {}
 
@@ -83,6 +121,7 @@ struct ServerDynamicInfo: Codable, Sendable {
         nssFrequencyMHz = stats.nssFrequencyMHz
         downloadSpeed = stats.downloadSpeed
         uploadSpeed = stats.uploadSpeed
+        routerInfo = stats.routerInfo
     }
 }
 
@@ -113,6 +152,7 @@ struct ServerStats: Codable, Sendable {
     var nssFrequencyMHz: Double? = nil
     var downloadSpeed: String = "0k/s"
     var uploadSpeed: String = "0k/s"
+    var routerInfo: RouterInfo = RouterInfo()
 
     init(config: ServerConfig) {
         self.config = config
@@ -150,6 +190,7 @@ struct ServerStats: Codable, Sendable {
             nssFrequencyMHz = dynamicInfo.nssFrequencyMHz
             downloadSpeed = dynamicInfo.downloadSpeed
             uploadSpeed = dynamicInfo.uploadSpeed
+            routerInfo = dynamicInfo.routerInfo
         }
     }
 }
