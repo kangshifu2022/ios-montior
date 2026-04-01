@@ -608,17 +608,15 @@ final class SSHMonitorService {
     }
 
     private static func inferWiFiBand(from label: String, wifiPhyBands: [String: String]) -> String? {
+        // Only match exact "phyN" (e.g. phy0, phy1), not phyaN or other variants
+        // label has already been normalized (lowercased, dashes/underscores removed)
         for (phy, band) in wifiPhyBands {
-            guard !phy.isEmpty else { continue }
-            if label.contains(phy) {
+            guard phy.hasPrefix("phy"), !phy.isEmpty else { continue }
+            guard let range = label.range(of: phy) else { continue }
+            let afterIndex = range.upperBound
+            // phyN must be at end of label, or followed by a non-digit character
+            if afterIndex == label.endIndex || !label[afterIndex].isNumber {
                 return band
-            }
-
-            if phy.hasPrefix("phy") {
-                let suffix = String(phy.dropFirst(3))
-                if label.contains("phya\(suffix)") || label.contains("phy\(suffix)") {
-                    return band
-                }
             }
         }
         return nil
