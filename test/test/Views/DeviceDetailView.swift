@@ -83,8 +83,9 @@ struct DeviceDetailView: View {
 
     @ViewBuilder
     private func temperatureCard(_ stats: ServerStats) -> some View {
-        let shouldShow = stats.cpuTemperatureC != nil ||
-            (isOpenWrt(stats) && (stats.wifi24TemperatureC != nil || stats.wifi5TemperatureC != nil || !stats.additionalTemperatureSensors.isEmpty))
+        let hasWiFiTemps = stats.wifi24TemperatureC != nil || stats.wifi5TemperatureC != nil
+        let hasAdditionalTemps = !stats.additionalTemperatureSensors.isEmpty
+        let shouldShow = stats.cpuTemperatureC != nil || hasWiFiTemps || hasAdditionalTemps
 
         if shouldShow {
             DetailSectionCard(title: "温度") {
@@ -92,19 +93,15 @@ struct DeviceDetailView: View {
                     DetailRow(label: "CPU", value: cpuTemperatureText(cpuTemp))
                 }
 
-                if isOpenWrt(stats) {
-                    if let wifi24 = stats.wifi24TemperatureC {
-                        DetailRow(label: "WiFi 2.4G", value: cpuTemperatureText(wifi24))
-                    }
-                    if let wifi5 = stats.wifi5TemperatureC {
-                        DetailRow(label: "WiFi 5G", value: cpuTemperatureText(wifi5))
-                    }
+                if let wifi24 = stats.wifi24TemperatureC {
+                    DetailRow(label: "WiFi 2.4G", value: cpuTemperatureText(wifi24))
+                }
+                if let wifi5 = stats.wifi5TemperatureC {
+                    DetailRow(label: "WiFi 5G", value: cpuTemperatureText(wifi5))
                 }
 
-                if isOpenWrt(stats) {
-                    ForEach(Array(stats.additionalTemperatureSensors.enumerated()), id: \.offset) { _, sensor in
-                        DetailRow(label: sensor.label, value: cpuTemperatureText(sensor.valueC))
-                    }
+                ForEach(Array(stats.additionalTemperatureSensors.enumerated()), id: \.offset) { _, sensor in
+                    DetailRow(label: sensor.label, value: cpuTemperatureText(sensor.valueC))
                 }
             }
         }
@@ -214,10 +211,6 @@ struct DeviceDetailView: View {
 
     private var isRefreshing: Bool {
         store.isRefreshing(config.id)
-    }
-
-    private func isOpenWrt(_ stats: ServerStats) -> Bool {
-        stats.osName.lowercased().contains("openwrt")
     }
 
     @ViewBuilder
