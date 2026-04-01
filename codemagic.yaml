@@ -15,6 +15,7 @@ workflows:
         XCODE_PROJECT: "test.xcodeproj"
         XCODE_SCHEME: "test"
         BUNDLE_ID: "com.wenchaoliu.test"
+        APP_STORE_APPLE_ID: 6761410448
       xcode: latest
 
     triggering:
@@ -25,9 +26,14 @@ workflows:
           include: true
 
     scripts:
-      - name: Set build number
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
+
+      - name: Increment build number
         script: |
-          agvtool new-version -all $(($(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID") + 1))
+          cd $CM_BUILD_DIR
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID")
+          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
 
       - name: Build ipa for distribution
         script: |
