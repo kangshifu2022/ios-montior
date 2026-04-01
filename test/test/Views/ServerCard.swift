@@ -8,7 +8,7 @@ struct ServerCard: View {
     @State private var showTerminal = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             Button(action: openDetail) {
                 VStack(alignment: .leading, spacing: 12) {
                     header
@@ -111,7 +111,7 @@ struct ServerCard: View {
     }
 
     private var usageSummary: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 18) {
             UsageRing(
                 title: "CPU",
                 value: stats?.isOnline == true ? stats?.cpuUsage : nil,
@@ -173,15 +173,13 @@ struct ServerCard: View {
 
     private var terminalButton: some View {
         Button(action: { showTerminal = true }) {
-            Label("进入终端", systemImage: "terminal")
+            Image(systemName: "terminal")
                 .font(.subheadline)
-                .fontWeight(.medium)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .foregroundColor(terminalButtonForeground)
+                .frame(width: 34, height: 34)
                 .background(terminalButtonBackground)
-                .clipShape(Capsule())
+                .clipShape(Circle())
         }
-        .foregroundColor(terminalButtonForeground)
         .disabled(stats?.isOnline != true || isRefreshing)
         .opacity(stats?.isOnline == true && !isRefreshing ? 1 : 0.55)
     }
@@ -296,13 +294,13 @@ struct ServerCard: View {
 
     private var terminalButtonBackground: Color {
         stats?.isOnline == true && !isRefreshing
-            ? Color.accentColor.opacity(0.14)
+            ? Color(.secondarySystemBackground)
             : Color(.systemGray5)
     }
 
     private var terminalButtonForeground: Color {
         stats?.isOnline == true && !isRefreshing
-            ? .accentColor
+            ? .secondary
             : .secondary
     }
 

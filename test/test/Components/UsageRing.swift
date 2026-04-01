@@ -10,16 +10,16 @@ struct UsageRing: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .stroke(Color(.systemGray5), lineWidth: 10)
+                    .stroke(Color(.systemGray5), lineWidth: 7)
 
                 Circle()
                     .trim(from: 0, to: clampedValue)
                     .stroke(
                         (value == nil ? Color(.systemGray4) : color).gradient,
-                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
 
@@ -35,16 +35,9 @@ struct UsageRing: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 92, height: 92)
-
-            Text("实时占用")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            .frame(width: 72, height: 72)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .center)
         .animation(.easeInOut(duration: 0.35), value: clampedValue)
     }
 
