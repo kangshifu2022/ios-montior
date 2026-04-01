@@ -19,7 +19,7 @@ struct DeviceDetailView: View {
                 if let stats {
                     systemCard(stats)
                     cpuCard(stats)
-                    wirelessTemperatureCard(stats)
+                    temperatureCard(stats)
                     nssCard(stats)
                     memoryCard(stats)
                     diskCard(stats)
@@ -78,23 +78,33 @@ struct DeviceDetailView: View {
             DetailRow(label: "核心数", value: "\(stats.cpuCores)")
             DetailRow(label: "占用率", value: percentText(stats.cpuUsage))
             DetailRow(label: "频率", value: stats.cpuFrequency.isEmpty ? "unknown" : stats.cpuFrequency)
-            DetailRow(label: "温度", value: cpuTemperatureText(stats.cpuTemperatureC))
         }
     }
 
     @ViewBuilder
-    private func wirelessTemperatureCard(_ stats: ServerStats) -> some View {
-        if isOpenWrt(stats),
-           stats.wifi24TemperatureC != nil || stats.wifi5TemperatureC != nil || !stats.additionalTemperatureSensors.isEmpty {
-            DetailSectionCard(title: "温度传感器") {
-                if let wifi24 = stats.wifi24TemperatureC {
-                    DetailRow(label: "WiFi 2.4G", value: cpuTemperatureText(wifi24))
+    private func temperatureCard(_ stats: ServerStats) -> some View {
+        let shouldShow = stats.cpuTemperatureC != nil ||
+            (isOpenWrt(stats) && (stats.wifi24TemperatureC != nil || stats.wifi5TemperatureC != nil || !stats.additionalTemperatureSensors.isEmpty))
+
+        if shouldShow {
+            DetailSectionCard(title: "温度") {
+                if let cpuTemp = stats.cpuTemperatureC {
+                    DetailRow(label: "CPU", value: cpuTemperatureText(cpuTemp))
                 }
-                if let wifi5 = stats.wifi5TemperatureC {
-                    DetailRow(label: "WiFi 5G", value: cpuTemperatureText(wifi5))
+
+                if isOpenWrt(stats) {
+                    if let wifi24 = stats.wifi24TemperatureC {
+                        DetailRow(label: "WiFi 2.4G", value: cpuTemperatureText(wifi24))
+                    }
+                    if let wifi5 = stats.wifi5TemperatureC {
+                        DetailRow(label: "WiFi 5G", value: cpuTemperatureText(wifi5))
+                    }
                 }
-                ForEach(Array(stats.additionalTemperatureSensors.enumerated()), id: \.offset) { _, sensor in
-                    DetailRow(label: sensor.label, value: cpuTemperatureText(sensor.valueC))
+
+                if isOpenWrt(stats) {
+                    ForEach(Array(stats.additionalTemperatureSensors.enumerated()), id: \.offset) { _, sensor in
+                        DetailRow(label: sensor.label, value: cpuTemperatureText(sensor.valueC))
+                    }
                 }
             }
         }
