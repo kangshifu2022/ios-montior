@@ -12,7 +12,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.wenchaoliu.test
       vars:
-        XCODE_PROJECT: "test.xcodeproj"
+        XCODE_PROJECT: "test/test.xcodeproj"
         XCODE_SCHEME: "test"
         BUNDLE_ID: "com.wenchaoliu.test"
         APP_STORE_APPLE_ID: 6761410448
@@ -31,8 +31,8 @@ workflows:
 
       - name: Increment build number
         script: |
-          cd $CM_BUILD_DIR
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" || echo "0")
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo "0")
+          cd $CM_BUILD_DIR/test
           agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
 
       - name: Build ipa for distribution
