@@ -2,31 +2,19 @@ import Foundation
 import Combine
 import SwiftUI
 
-struct TerminalEntry: Identifiable, Equatable {
-    enum Kind {
-        case system
-        case output
-        case error
-    }
-
-    let id = UUID()
-    let kind: Kind
-    let text: String
-}
-
 @MainActor
 final class TerminalViewModel: ObservableObject {
-    @Published var entries: [TerminalEntry] = []
-    @Published var input: String = ""
     @Published var isConnected = false
     @Published var isConnecting = false
+    @Published var terminalTitle: String?
+    @Published var lastError: String?
 
     let server: ServerConfig
 
     private let session: TerminalSession
     private var sessionTask: Task<Void, Never>?
-    private var history: [String] = []
-    private var historyIndex: Int?
+    private var outputSink: (([UInt8]) -> Void)?
+    private var pendingOutput: [[UInt8]] = []
 
     init(server: ServerConfig) {
         self.server = server
@@ -40,8 +28,16 @@ final class TerminalViewModel: ObservableObject {
         return isConnected ? "已连接" : "未连接"
     }
 
+    var displayTitle: String {
+        if let terminalTitle, !terminalTitle.isEmpty {
+            return terminalTitle
+        }
+        return server.name
+    }
+
     func connectIfNeeded() {
         guard sessionTask == nil else { return }
+        lastError = nil
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
@@ -49,6 +45,11 @@ final class TerminalViewModel: ObservableObject {
                 await self.handle(event)
             }
         }
+    }
+
+    func reconnect() {
+        disconnect()
+        connectIfNeeded()
     }
 
     func disconnect() {
@@ -63,95 +64,81 @@ final class TerminalViewModel: ObservableObject {
         isConnecting = false
     }
 
-    func sendCurrentCommand() {
-        let command = input
-        guard !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    func attachOutputSink(_ sink: @escaping ([UInt8]) -> Void) {
+        outputSink = sink
+        flushPendingOutput()
+    }
 
-        if history.last != command {
-            history.append(command)
-        }
-        historyIndex = nil
-        input = ""
+    func detachOutputSink() {
+        outputSink = nil
+    }
 
+    func send(text: String) {
+        send(bytes: Array(text.utf8))
+    }
+
+    func send(bytes: [UInt8]) {
         Task {
             do {
-                try await session.send(command + "\n")
+                try await session.send(bytes)
             } catch {
-                append(.error, "发送失败: \(describe(error))")
+                await MainActor.run {
+                    self.lastError = self.describe(error)
+                }
             }
         }
     }
 
     func sendInterrupt() {
-        Task {
-            do {
-                try await session.send("\u{03}")
-            } catch {
-                append(.error, "中断失败: \(describe(error))")
-            }
-        }
+        send(bytes: [3])
     }
 
-    func clearOutput() {
-        entries.removeAll()
+    func sendEscape() {
+        send(bytes: [27])
     }
 
-    func moveHistoryBackward() {
-        guard !history.isEmpty else { return }
-
-        if let historyIndex {
-            self.historyIndex = max(historyIndex - 1, 0)
-        } else {
-            historyIndex = history.count - 1
-        }
-
-        if let historyIndex {
-            input = history[historyIndex]
-        }
+    func sendTab() {
+        send(bytes: [9])
     }
 
-    func moveHistoryForward() {
-        guard !history.isEmpty, let historyIndex else { return }
+    func clearError() {
+        lastError = nil
+    }
 
-        let nextIndex = historyIndex + 1
-        if nextIndex < history.count {
-            self.historyIndex = nextIndex
-            input = history[nextIndex]
-        } else {
-            self.historyIndex = nil
-            input = ""
-        }
+    func updateTerminalTitle(_ title: String?) {
+        terminalTitle = title
     }
 
     private func handle(_ event: TerminalSession.Event) async {
         switch event {
-        case .connecting(let host):
+        case .connecting:
             isConnecting = true
             isConnected = false
-            append(.system, "Connecting to \(host)...")
+            lastError = nil
         case .connected:
             isConnecting = false
             isConnected = true
-            append(.system, "Connected. Interactive shell ready.")
-        case .output(let text):
-            append(.output, text)
+        case .output(let bytes):
+            if let outputSink {
+                outputSink(bytes)
+            } else {
+                pendingOutput.append(bytes)
+            }
         case .error(let message):
             isConnecting = false
             isConnected = false
-            append(.error, message)
+            lastError = message
         case .disconnected:
             isConnecting = false
-            if isConnected {
-                append(.system, "Connection closed.")
-            }
             isConnected = false
             sessionTask = nil
         }
     }
 
-    private func append(_ kind: TerminalEntry.Kind, _ text: String) {
-        guard !text.isEmpty else { return }
-        entries.append(TerminalEntry(kind: kind, text: text))
+    private func flushPendingOutput() {
+        guard let outputSink, !pendingOutput.isEmpty else { return }
+        pendingOutput.forEach(outputSink)
+        pendingOutput.removeAll()
     }
 
     private func describe(_ error: Error) -> String {

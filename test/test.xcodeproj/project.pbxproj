@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		9F5120502F7BEEEF009B3C74 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 9F51204F2F7BEEEF009B3C74 /* Citadel */; };
+		A1B2C3D42F7BEEEF009B3C74 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D32F7BEEEF009B3C74 /* SwiftTerm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9F5120502F7BEEEF009B3C74 /* Citadel in Frameworks */,
+				A1B2C3D42F7BEEEF009B3C74 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -84,6 +86,7 @@
 			name = test;
 			packageProductDependencies = (
 				9F51204F2F7BEEEF009B3C74 /* Citadel */,
+				A1B2C3D32F7BEEEF009B3C74 /* SwiftTerm */,
 			);
 			productName = test;
 			productReference = 9FAF61252F7BB06E00F66805 /* test-monitor.app */;
@@ -115,6 +118,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				9F51204E2F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "Citadel" */,
+				A1B2C3D22F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9FAF61262F7BB06E00F66805 /* Products */;
@@ -370,6 +374,14 @@
 				minimumVersion = 0.12.0;
 			};
 		};
+		A1B2C3D22F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.13.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -377,6 +389,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9F51204E2F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "Citadel" */;
 			productName = Citadel;
+		};
+		A1B2C3D32F7BEEEF009B3C74 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D22F7BEEEF009B3C74 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

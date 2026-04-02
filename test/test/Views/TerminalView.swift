@@ -3,7 +3,6 @@ import SwiftUI
 struct TerminalView: View {
     let server: ServerConfig
     @StateObject private var viewModel: TerminalViewModel
-    @FocusState private var inputFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     init(server: ServerConfig) {
@@ -15,16 +14,23 @@ struct TerminalView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            terminalOutput
-            inputBar
+            TerminalSurfaceView(viewModel: viewModel)
+                .background(Color.black)
+            toolBar
         }
         .background(Color.black)
         .task {
             viewModel.connectIfNeeded()
-            inputFocused = true
         }
         .onDisappear {
             viewModel.disconnect()
+        }
+        .alert("终端错误", isPresented: errorPresented) {
+            Button("知道了", role: .cancel) {
+                viewModel.clearError()
+            }
+        } message: {
+            Text(viewModel.lastError ?? "未知错误")
         }
     }
 
@@ -41,7 +47,7 @@ struct TerminalView: View {
             Spacer()
 
             VStack(spacing: 2) {
-                Text(server.name)
+                Text(viewModel.displayTitle)
                     .font(.headline)
                     .foregroundColor(.primary)
                 Text("\(server.username)@\(server.host):\(server.port)")
@@ -65,110 +71,53 @@ struct TerminalView: View {
         .background(Color(.systemBackground))
     }
 
-    private var terminalOutput: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(viewModel.entries) { entry in
-                        Text(entry.text)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(color(for: entry.kind))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .id(entry.id)
-                    }
-                }
-                .padding(12)
+    private var toolBar: some View {
+        HStack(spacing: 12) {
+            toolButton(icon: "arrow.clockwise", label: "重连") {
+                viewModel.reconnect()
             }
-            .background(Color.black)
-            .onChange(of: viewModel.entries.count) {
-                if let lastID = viewModel.entries.last?.id {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
+
+            toolButton(icon: "xmark.circle", label: "Ctrl+C") {
+                viewModel.sendInterrupt()
             }
-        }
-    }
 
-    private var inputBar: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                terminalControlButton(icon: "clock.arrow.circlepath") {
-                    viewModel.moveHistoryBackward()
-                    inputFocused = true
-                }
-
-                terminalControlButton(icon: "clock") {
-                    viewModel.moveHistoryForward()
-                    inputFocused = true
-                }
-
-                terminalControlButton(icon: "xmark.circle") {
-                    viewModel.sendInterrupt()
-                }
-
-                terminalControlButton(icon: "trash") {
-                    viewModel.clearOutput()
-                }
+            toolButton(icon: "chevron.backward.circle", label: "Esc") {
+                viewModel.sendEscape()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 10) {
-                Text(">")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.green)
-
-                TextField("输入命令", text: $viewModel.input)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.white)
-                    .focused($inputFocused)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        viewModel.sendCurrentCommand()
-                    }
-
-                Button(action: {
-                    viewModel.sendCurrentCommand()
-                    inputFocused = true
-                }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(viewModel.isConnected ? .green : .gray)
-                }
-                .disabled(!viewModel.isConnected)
+            toolButton(icon: "arrow.right.to.line", label: "Tab") {
+                viewModel.sendTab()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(white: 0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .background(Color.black)
+        .padding(.vertical, 10)
+        .background(Color(white: 0.08))
     }
 
-    private func terminalControlButton(icon: String, action: @escaping () -> Void) -> some View {
+    private func toolButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.85))
-                .frame(width: 32, height: 32)
-                .background(Color.white.opacity(0.08))
-                .clipShape(Circle())
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                Text(label)
+            }
+            .font(.caption)
+            .foregroundColor(.white.opacity(0.88))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
 
-    private func color(for kind: TerminalEntry.Kind) -> Color {
-        switch kind {
-        case .system:
-            return Color.white.opacity(0.72)
-        case .output:
-            return Color.green
-        case .error:
-            return Color.red.opacity(0.9)
-        }
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.lastError != nil },
+            set: { newValue in
+                if !newValue {
+                    viewModel.clearError()
+                }
+            }
+        )
     }
 }

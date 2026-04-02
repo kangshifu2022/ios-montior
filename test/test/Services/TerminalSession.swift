@@ -7,13 +7,13 @@ actor TerminalSession {
     enum Event: Sendable {
         case connecting(String)
         case connected
-        case output(String)
+        case output([UInt8])
         case error(String)
         case disconnected
     }
 
     private let server: ServerConfig
-    private var stdinWriter: (@Sendable (String) async throws -> Void)?
+    private var stdinWriter: (@Sendable ([UInt8]) async throws -> Void)?
     private var closeConnection: (@Sendable () async -> Void)?
 
     init(server: ServerConfig) {
@@ -57,21 +57,19 @@ actor TerminalSession {
                 )
             ) { ttyOutput, ttyStdinWriter in
                 await self.setStdinWriter { input in
-                    try await ttyStdinWriter.write(ByteBuffer(string: input))
+                    try await ttyStdinWriter.write(ByteBuffer(bytes: input))
                 }
 
                 await onEvent(.connected)
 
                 for try await event in ttyOutput {
-                    let text: String
-
+                    let bytes: [UInt8]
                     switch event {
                     case .stdout(let buffer), .stderr(let buffer):
-                        text = TerminalANSI.sanitize(String(buffer: buffer))
+                        bytes = Array(buffer.readableBytesView)
                     }
-
-                    guard !text.isEmpty else { continue }
-                    await onEvent(.output(text))
+                    guard !bytes.isEmpty else { continue }
+                    await onEvent(.output(bytes))
                 }
             }
         } catch is CancellationError {
@@ -84,7 +82,7 @@ actor TerminalSession {
         clearState()
     }
 
-    func send(_ input: String) async throws {
+    func send(_ input: [UInt8]) async throws {
         guard let stdinWriter else {
             throw TerminalSessionError.notReady
         }
@@ -99,7 +97,7 @@ actor TerminalSession {
         closeConnection = nil
     }
 
-    private func setStdinWriter(_ writer: @escaping @Sendable (String) async throws -> Void) {
+    private func setStdinWriter(_ writer: @escaping @Sendable ([UInt8]) async throws -> Void) {
         stdinWriter = writer
     }
 
@@ -130,32 +128,4 @@ actor TerminalSession {
 
 enum TerminalSessionError: Error {
     case notReady
-}
-
-private enum TerminalANSI {
-    static func sanitize(_ raw: String) -> String {
-        guard !raw.isEmpty else { return raw }
-
-        let escape = "\u{001B}"
-        var text = raw
-            .replacingOccurrences(of: "\u{0007}", with: "")
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-
-        let patterns = [
-            "\(escape)\\[[0-9;?]*[ -/]*[@-~]",
-            "\(escape)\\][^\u{0007}]*\u{0007}",
-            "\(escape)[@-_]"
-        ]
-
-        for pattern in patterns {
-            text = text.replacingOccurrences(
-                of: pattern,
-                with: "",
-                options: .regularExpression
-            )
-        }
-
-        return text
-    }
 }
