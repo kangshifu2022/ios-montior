@@ -8,6 +8,7 @@ final class TerminalViewModel: ObservableObject {
     @Published var isConnecting = false
     @Published var terminalTitle: String?
     @Published var lastError: String?
+    @Published var shouldDismissTerminal = false
 
     let server: ServerConfig
 
@@ -17,6 +18,7 @@ final class TerminalViewModel: ObservableObject {
     private var pendingOutput: [[UInt8]] = []
     private var terminalSize = TerminalSize.fallback
     private var suspendedForBackground = false
+    private var exitRequestedByUser = false
 
     init(server: ServerConfig) {
         self.server = server
@@ -50,12 +52,14 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func reconnect() {
+        exitRequestedByUser = false
         suspendedForBackground = false
         disconnect(clearError: true)
         connectIfNeeded()
     }
 
     func disconnect(clearError: Bool = false) {
+        exitRequestedByUser = false
         sessionTask?.cancel()
         sessionTask = nil
 
@@ -112,6 +116,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func sendExit() {
+        exitRequestedByUser = true
         send(text: "exit\n")
     }
 
@@ -125,6 +130,10 @@ final class TerminalViewModel: ObservableObject {
 
     func clearError() {
         lastError = nil
+    }
+
+    func acknowledgeDismissRequest() {
+        shouldDismissTerminal = false
     }
 
     func updateTerminalTitle(_ title: String?) {
@@ -175,6 +184,7 @@ final class TerminalViewModel: ObservableObject {
         case .connected:
             isConnecting = false
             isConnected = true
+            shouldDismissTerminal = false
             Task {
                 try? await session.resize(to: terminalSize)
             }
@@ -193,6 +203,10 @@ final class TerminalViewModel: ObservableObject {
             isConnecting = false
             isConnected = false
             sessionTask = nil
+            if exitRequestedByUser {
+                shouldDismissTerminal = true
+            }
+            exitRequestedByUser = false
         }
     }
 

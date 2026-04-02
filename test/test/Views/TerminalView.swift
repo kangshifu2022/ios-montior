@@ -24,6 +24,11 @@ struct TerminalView: View {
         .onChange(of: scenePhase) { _, newPhase in
             viewModel.handleScenePhaseChange(newPhase)
         }
+        .onChange(of: viewModel.shouldDismissTerminal) { _, shouldDismiss in
+            guard shouldDismiss else { return }
+            dismiss()
+            viewModel.acknowledgeDismissRequest()
+        }
         .onDisappear {
             viewModel.disconnect(clearError: true)
         }
