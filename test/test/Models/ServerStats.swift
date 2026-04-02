@@ -57,6 +57,14 @@ struct ServerTemperatureSensor: Codable, Sendable {
     var valueC: Double = 0
 }
 
+struct PressureMetrics: Codable, Sendable {
+    var cpuSomeAvg10: Double? = nil
+    var memorySomeAvg10: Double? = nil
+    var memoryFullAvg10: Double? = nil
+    var ioSomeAvg10: Double? = nil
+    var ioFullAvg10: Double? = nil
+}
+
 struct ServerStaticInfo: Codable, Sendable {
     var osName: String = ""
     var hostname: String = ""
@@ -100,6 +108,7 @@ struct ServerDynamicInfo: Codable, Sendable {
     var loadAverage1m: Double? = nil
     var loadAverage5m: Double? = nil
     var loadAverage15m: Double? = nil
+    var pressure: PressureMetrics = PressureMetrics()
     var routerInfo: RouterInfo = RouterInfo()
 
     init() {}
@@ -127,6 +136,7 @@ struct ServerDynamicInfo: Codable, Sendable {
         loadAverage1m = stats.loadAverage1m
         loadAverage5m = stats.loadAverage5m
         loadAverage15m = stats.loadAverage15m
+        pressure = stats.pressure
         routerInfo = stats.routerInfo
     }
 }
@@ -161,6 +171,7 @@ struct ServerStats: Codable, Sendable {
     var loadAverage1m: Double? = nil
     var loadAverage5m: Double? = nil
     var loadAverage15m: Double? = nil
+    var pressure: PressureMetrics = PressureMetrics()
     var routerInfo: RouterInfo = RouterInfo()
 
     init(config: ServerConfig) {
@@ -202,6 +213,7 @@ struct ServerStats: Codable, Sendable {
             loadAverage1m = dynamicInfo.loadAverage1m
             loadAverage5m = dynamicInfo.loadAverage5m
             loadAverage15m = dynamicInfo.loadAverage15m
+            pressure = dynamicInfo.pressure
             routerInfo = dynamicInfo.routerInfo
         }
     }

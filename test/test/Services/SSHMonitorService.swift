@@ -87,6 +87,9 @@ final class SSHMonitorService {
     echo "=NSS_LOAD="; (if [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null; elif [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load 2>/dev/null; else echo "unavailable"; fi)
     echo "=NSS_FREQ="; (if [ -r /proc/sys/dev/nss/clock/current_freq ]; then awk '{v=$1+0; if (v > 1000000) printf "%.0f\\n", v/1000000; else if (v > 1000) printf "%.0f\\n", v/1000; else printf "%.0f\\n", v; found=1} END {if (!found) print "unknown"}' /proc/sys/dev/nss/clock/current_freq 2>/dev/null; else echo "unknown"; fi)
     echo "=LOADAVG="; (awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null || uptime 2>/dev/null | awk -F'load average: ' 'NF > 1 {gsub(/,/, "", $2); split($2, a, " "); if (length(a) >= 3) print a[1], a[2], a[3]}' || echo "0 0 0")
+    echo "=PSI_CPU="; (if [ -r /proc/pressure/cpu ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/cpu 2>/dev/null; echo; else echo "unavailable"; fi)
+    echo "=PSI_MEMORY="; (if [ -r /proc/pressure/memory ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/memory 2>/dev/null; echo; else echo "unavailable"; fi)
+    echo "=PSI_IO="; (if [ -r /proc/pressure/io ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/io 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
     NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
@@ -111,6 +114,9 @@ final class SSHMonitorService {
     echo "=NSS_LOAD="; (if [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null; elif [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load 2>/dev/null; else echo "unavailable"; fi)
     echo "=NSS_FREQ="; (if [ -r /proc/sys/dev/nss/clock/current_freq ]; then awk '{v=$1+0; if (v > 1000000) printf "%.0f\\n", v/1000000; else if (v > 1000) printf "%.0f\\n", v/1000; else printf "%.0f\\n", v; found=1} END {if (!found) print "unknown"}' /proc/sys/dev/nss/clock/current_freq 2>/dev/null; else echo "unknown"; fi)
     echo "=LOADAVG="; (awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null || uptime 2>/dev/null | awk -F'load average: ' 'NF > 1 {gsub(/,/, "", $2); split($2, a, " "); if (length(a) >= 3) print a[1], a[2], a[3]}' || echo "0 0 0")
+    echo "=PSI_CPU="; (if [ -r /proc/pressure/cpu ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/cpu 2>/dev/null; echo; else echo "unavailable"; fi)
+    echo "=PSI_MEMORY="; (if [ -r /proc/pressure/memory ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/memory 2>/dev/null; echo; else echo "unavailable"; fi)
+    echo "=PSI_IO="; (if [ -r /proc/pressure/io ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/io 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
     NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
@@ -241,6 +247,15 @@ final class SSHMonitorService {
             } else if line == "=LOADAVG=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyLoadAverage(from: lines[i + 1], to: &stats)
+            } else if line == "=PSI_CPU=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyPressureValues(from: lines[i + 1], resource: .cpu, to: &stats)
+            } else if line == "=PSI_MEMORY=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyPressureValues(from: lines[i + 1], resource: .memory, to: &stats)
+            } else if line == "=PSI_IO=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyPressureValues(from: lines[i + 1], resource: .io, to: &stats)
             } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 stats.cpuUsage = parseCPUUsage(from: lines[i + 1])
@@ -280,6 +295,9 @@ final class SSHMonitorService {
             "=NSS_LOAD=",
             "=NSS_FREQ=",
             "=LOADAVG=",
+            "=PSI_CPU=",
+            "=PSI_MEMORY=",
+            "=PSI_IO=",
             "=CPU_USAGE=",
             "=NET=",
             "=NET2="
@@ -361,6 +379,15 @@ final class SSHMonitorService {
             } else if line == "=LOADAVG=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyLoadAverage(from: lines[i + 1], to: &dynamic)
+            } else if line == "=PSI_CPU=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyPressureValues(from: lines[i + 1], resource: .cpu, to: &dynamic)
+            } else if line == "=PSI_MEMORY=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyPressureValues(from: lines[i + 1], resource: .memory, to: &dynamic)
+            } else if line == "=PSI_IO=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyPressureValues(from: lines[i + 1], resource: .io, to: &dynamic)
             } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 dynamic.cpuUsage = parseCPUUsage(from: lines[i + 1])
@@ -395,6 +422,9 @@ final class SSHMonitorService {
             "=NSS_LOAD=",
             "=NSS_FREQ=",
             "=LOADAVG=",
+            "=PSI_CPU=",
+            "=PSI_MEMORY=",
+            "=PSI_IO=",
             "=CPU_USAGE=",
             "=NET=",
             "=NET2="
@@ -495,6 +525,42 @@ final class SSHMonitorService {
         dynamic.loadAverage15m = load.fifteenMinute
     }
 
+    private enum PressureResource {
+        case cpu
+        case memory
+        case io
+    }
+
+    private static func applyPressureValues(from line: String, resource: PressureResource, to stats: inout ServerStats) {
+        let parsed = parsePressureMetrics(from: line)
+
+        switch resource {
+        case .cpu:
+            stats.pressure.cpuSomeAvg10 = parsed.someAvg10
+        case .memory:
+            stats.pressure.memorySomeAvg10 = parsed.someAvg10
+            stats.pressure.memoryFullAvg10 = parsed.fullAvg10
+        case .io:
+            stats.pressure.ioSomeAvg10 = parsed.someAvg10
+            stats.pressure.ioFullAvg10 = parsed.fullAvg10
+        }
+    }
+
+    private static func applyPressureValues(from line: String, resource: PressureResource, to dynamic: inout ServerDynamicInfo) {
+        let parsed = parsePressureMetrics(from: line)
+
+        switch resource {
+        case .cpu:
+            dynamic.pressure.cpuSomeAvg10 = parsed.someAvg10
+        case .memory:
+            dynamic.pressure.memorySomeAvg10 = parsed.someAvg10
+            dynamic.pressure.memoryFullAvg10 = parsed.fullAvg10
+        case .io:
+            dynamic.pressure.ioSomeAvg10 = parsed.someAvg10
+            dynamic.pressure.ioFullAvg10 = parsed.fullAvg10
+        }
+    }
+
     private static func applyTemperatureSensors(
         from line: String,
         wifiPhyBands: [String: String],
@@ -576,6 +642,36 @@ final class SSHMonitorService {
             fiveMinute: parts.count > 1 ? Double(parts[1]) : nil,
             fifteenMinute: parts.count > 2 ? Double(parts[2]) : nil
         )
+    }
+
+    private static func parsePressureMetrics(from line: String) -> (someAvg10: Double?, fullAvg10: Double?) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "unavailable" else {
+            return (nil, nil)
+        }
+
+        var someAvg10: Double?
+        var fullAvg10: Double?
+
+        for segment in trimmed.split(separator: ";") {
+            let entry = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !entry.isEmpty else { continue }
+
+            if entry.hasPrefix("some ") {
+                someAvg10 = parsePressureAvg10(from: entry)
+            } else if entry.hasPrefix("full ") {
+                fullAvg10 = parsePressureAvg10(from: entry)
+            }
+        }
+
+        return (someAvg10, fullAvg10)
+    }
+
+    private static func parsePressureAvg10(from entry: String) -> Double? {
+        for token in entry.split(separator: " ") where token.hasPrefix("avg10=") {
+            return Double(String(token).replacingOccurrences(of: "avg10=", with: ""))
+        }
+        return nil
     }
 
     private static func parseTemperatureSensors(from line: String) -> [ServerTemperatureSensor] {

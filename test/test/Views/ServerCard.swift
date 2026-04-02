@@ -28,11 +28,6 @@ struct ServerCard: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(cardBorderColor, lineWidth: 1)
         )
-        .overlay(alignment: .topTrailing) {
-            terminalButton
-                .padding(.top, 18)
-                .padding(.trailing, 18)
-        }
         .shadow(color: shadowColor, radius: 14, x: 0, y: 8)
         .fullScreenCover(isPresented: $showTerminal) {
             TerminalView(server: config)
@@ -77,6 +72,8 @@ struct ServerCard: View {
                 Circle()
                     .fill(onlineIndicatorColor)
                     .frame(width: 9, height: 9)
+
+                terminalButton
             }
         }
     }
@@ -133,16 +130,21 @@ struct ServerCard: View {
                 )
             }
 
-            if stats?.isOnline == true, !temperatureItems.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(temperatureItems) { item in
-                        temperatureBadge(item)
-                    }
+            temperatureRow
+        }
+    }
 
-                    Spacer(minLength: 0)
+    private var temperatureRow: some View {
+        HStack(spacing: 6) {
+            if stats?.isOnline == true {
+                ForEach(temperatureItems) { item in
+                    temperatureBadge(item)
                 }
             }
+
+            Spacer(minLength: 0)
         }
+        .frame(height: 24, alignment: .leading)
     }
 
     private var metricsSummary: some View {
@@ -159,11 +161,7 @@ struct ServerCard: View {
                 value: uploadSpeedText
             )
 
-            metricRow(
-                icon: "speedometer",
-                label: "Load",
-                value: loadAverageText
-            )
+            SystemHealthBadge(stats: stats)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -303,16 +301,6 @@ struct ServerCard: View {
             return "--"
         }
         return stats.uploadSpeed
-    }
-
-    private var loadAverageText: String {
-        guard let stats, stats.isOnline else {
-            return "--"
-        }
-        if let load = stats.loadAverage1m {
-            return String(format: "%.2f", load)
-        }
-        return "--"
     }
 
     private var temperatureText: String? {
