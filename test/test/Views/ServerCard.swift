@@ -13,11 +13,13 @@ struct ServerCard: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             usageSummary
+            Spacer(minLength: 0)
             detailSummary
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: openDetail)
         .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(cardBackgroundColor)
