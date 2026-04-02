@@ -16,12 +16,14 @@ actor TerminalSession {
     private var stdinWriter: (@Sendable ([UInt8]) async throws -> Void)?
     private var resizePTY: (@Sendable (TerminalSize) async throws -> Void)?
     private var closeConnection: (@Sendable () async -> Void)?
+    private var isStopping = false
 
     init(server: ServerConfig) {
         self.server = server
     }
 
     func start(terminalSize: TerminalSize, onEvent: @escaping @Sendable (Event) async -> Void) async {
+        isStopping = false
         await onEvent(.connecting(server.host))
 
         let algorithms = SSHAlgorithms.all
@@ -84,7 +86,9 @@ actor TerminalSession {
         } catch is CancellationError {
             await onEvent(.disconnected)
         } catch {
-            await onEvent(.error(Self.describe(error)))
+            if !isStopping, !Self.isBenignClosure(error) {
+                await onEvent(.error(Self.describe(error)))
+            }
             await onEvent(.disconnected)
         }
 
@@ -106,6 +110,7 @@ actor TerminalSession {
     }
 
     func stop() async {
+        isStopping = true
         stdinWriter = nil
         resizePTY = nil
         if let closeConnection {
@@ -126,6 +131,7 @@ actor TerminalSession {
         stdinWriter = nil
         resizePTY = nil
         closeConnection = nil
+        isStopping = false
     }
 
     private static func describe(_ error: Error) -> String {
@@ -145,6 +151,13 @@ actor TerminalSession {
             return "host unreachable"
         }
         return message
+    }
+
+    private static func isBenignClosure(_ error: Error) -> Bool {
+        let lowercased = String(describing: error).lowercased()
+        return lowercased.contains("already closed")
+            || lowercased.contains("channel closed")
+            || lowercased.contains("eof")
     }
 }
 

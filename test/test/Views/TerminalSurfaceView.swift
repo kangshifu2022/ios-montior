@@ -4,6 +4,7 @@ import SwiftTerm
 
 struct TerminalSurfaceView: UIViewRepresentable {
     @ObservedObject var viewModel: TerminalViewModel
+    let colorScheme: ColorScheme
 
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
@@ -11,9 +12,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SwiftTerm.TerminalView {
         let terminalView = SwiftTerm.TerminalView(frame: .zero)
-        terminalView.backgroundColor = .black
         terminalView.terminalDelegate = context.coordinator
         context.coordinator.terminalView = terminalView
+        terminalView.inputAccessoryView = makeShortcutAccessory()
+        applyAppearance(to: terminalView)
 
         viewModel.attachOutputSink { [weak terminalView] bytes in
             guard let terminalView else { return }
@@ -36,10 +38,61 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {
         context.coordinator.terminalView = uiView
+        applyAppearance(to: uiView)
     }
 
     static func dismantleUIView(_ uiView: SwiftTerm.TerminalView, coordinator: Coordinator) {
         coordinator.viewModel.detachOutputSink()
+    }
+
+    private func applyAppearance(to terminalView: SwiftTerm.TerminalView) {
+        let palette = Self.palette(for: colorScheme)
+        terminalView.backgroundColor = palette.background
+        terminalView.nativeBackgroundColor = palette.background
+        terminalView.nativeForegroundColor = palette.foreground
+        terminalView.caretColor = palette.caret
+        terminalView.selectedTextBackgroundColor = palette.selection
+    }
+
+    private func makeShortcutAccessory() -> UIView {
+        TerminalShortcutAccessoryView(items: [
+            .init(title: "重连", action: { viewModel.reconnect() }),
+            .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
+            .init(title: "Esc", action: { viewModel.sendEscape() }),
+            .init(title: "Tab", action: { viewModel.sendTab() }),
+            .init(title: "/", action: { viewModel.sendSlash() }),
+            .init(title: "exit", action: { viewModel.sendExit() }),
+            .init(title: "Home", action: { viewModel.sendHome() }),
+            .init(title: "End", action: { viewModel.sendEnd() })
+        ])
+    }
+
+    private static func palette(for colorScheme: ColorScheme) -> TerminalPalette {
+        switch colorScheme {
+        case .dark:
+            return TerminalPalette(
+                background: UIColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1.0),
+                foreground: UIColor(red: 0.89, green: 0.92, blue: 0.96, alpha: 1.0),
+                caret: UIColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 1.0),
+                selection: UIColor(red: 0.22, green: 0.39, blue: 0.61, alpha: 0.45)
+            )
+        case .light:
+            return TerminalPalette(
+                background: UIColor(red: 0.97, green: 0.98, blue: 0.99, alpha: 1.0),
+                foreground: UIColor(red: 0.10, green: 0.12, blue: 0.16, alpha: 1.0),
+                caret: UIColor(red: 0.00, green: 0.42, blue: 0.88, alpha: 1.0),
+                selection: UIColor(red: 0.56, green: 0.74, blue: 0.98, alpha: 0.45)
+            )
+        @unknown default:
+            return palette(for: .light)
+        }
+    }
+
+    private struct TerminalPalette {
+        let background: UIColor
+        let foreground: UIColor
+        let caret: UIColor
+        let selection: UIColor
     }
 
     final class Coordinator: NSObject, TerminalViewDelegate {

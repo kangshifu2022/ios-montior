@@ -16,6 +16,7 @@ final class TerminalViewModel: ObservableObject {
     private var outputSink: (([UInt8]) -> Void)?
     private var pendingOutput: [[UInt8]] = []
     private var terminalSize = TerminalSize.fallback
+    private var suspendedForBackground = false
 
     init(server: ServerConfig) {
         self.server = server
@@ -49,11 +50,12 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func reconnect() {
-        disconnect()
+        suspendedForBackground = false
+        disconnect(clearError: true)
         connectIfNeeded()
     }
 
-    func disconnect() {
+    func disconnect(clearError: Bool = false) {
         sessionTask?.cancel()
         sessionTask = nil
 
@@ -63,6 +65,9 @@ final class TerminalViewModel: ObservableObject {
 
         isConnected = false
         isConnecting = false
+        if clearError {
+            lastError = nil
+        }
     }
 
     func attachOutputSink(_ sink: @escaping ([UInt8]) -> Void) {
@@ -102,12 +107,45 @@ final class TerminalViewModel: ObservableObject {
         send(bytes: [9])
     }
 
+    func sendSlash() {
+        send(text: "/")
+    }
+
+    func sendExit() {
+        send(text: "exit\n")
+    }
+
+    func sendHome() {
+        send(bytes: [27, 91, 72])
+    }
+
+    func sendEnd() {
+        send(bytes: [27, 91, 70])
+    }
+
     func clearError() {
         lastError = nil
     }
 
     func updateTerminalTitle(_ title: String?) {
         terminalTitle = title
+    }
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .active:
+            guard suspendedForBackground else { return }
+            suspendedForBackground = false
+            connectIfNeeded()
+        case .background:
+            guard sessionTask != nil else { return }
+            suspendedForBackground = true
+            disconnect(clearError: true)
+        case .inactive:
+            break
+        @unknown default:
+            break
+        }
     }
 
     func updateTerminalSize(columns: Int, rows: Int, pixelWidth: Int = 0, pixelHeight: Int = 0) {
@@ -150,6 +188,7 @@ final class TerminalViewModel: ObservableObject {
             isConnecting = false
             isConnected = false
             lastError = message
+            suspendedForBackground = false
         case .disconnected:
             isConnecting = false
             isConnected = false
