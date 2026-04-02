@@ -14,10 +14,10 @@ struct TerminalView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(terminalBackground)
+                .ignoresSafeArea(edges: .top)
             toolBar
         }
         .background(screenBackground)
@@ -41,46 +41,13 @@ struct TerminalView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            Button(action: { dismiss() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                    Text("返回")
-                }
-            }
-            .foregroundColor(.primary)
-
-            Spacer()
-
-            VStack(spacing: 2) {
-                Text(viewModel.displayTitle)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                Text("\(server.username)@\(server.host):\(server.port)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(viewModel.isConnected ? Color.green : (viewModel.isConnecting ? Color.orange : Color.red))
-                    .frame(width: 8, height: 8)
-                Text(viewModel.statusText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-    }
-
     private var toolBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
+                toolButton(icon: "xmark", label: "关闭") {
+                    dismiss()
+                }
+
                 toolButton(icon: "arrow.clockwise", label: "重连") {
                     viewModel.reconnect()
                 }

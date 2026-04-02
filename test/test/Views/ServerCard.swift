@@ -7,6 +7,7 @@ struct ServerCard: View {
     @ObservedObject var store: ServerStore
     var onOpenDetail: (() -> Void)? = nil
     @State private var showTerminal = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -215,7 +216,7 @@ struct ServerCard: View {
         .foregroundColor(.secondary)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color(.secondarySystemBackground))
+        .background(cardSecondaryFill)
         .clipShape(Capsule())
     }
 
@@ -322,8 +323,8 @@ struct ServerCard: View {
 
     private var terminalButtonBackground: Color {
         stats?.isOnline == true
-            ? Color(.secondarySystemBackground)
-            : Color(.systemGray5)
+            ? cardSecondaryFill
+            : offlineButtonBackground
     }
 
     private var terminalButtonForeground: Color {
@@ -333,7 +334,7 @@ struct ServerCard: View {
     private var cardBackgroundColor: Color {
         Color(uiColor: UIColor { traitCollection in
             if traitCollection.userInterfaceStyle == .dark {
-                return UIColor(red: 0.15, green: 0.18, blue: 0.22, alpha: 1)
+                return UIColor(red: 25.0 / 255.0, green: 26.0 / 255.0, blue: 27.0 / 255.0, alpha: 1)
             }
             return .systemBackground
         })
@@ -350,5 +351,27 @@ struct ServerCard: View {
 
     private var shadowColor: Color {
         Color.black.opacity(0.16)
+    }
+
+    private var cardSecondaryFill: Color {
+        switch colorScheme {
+        case .dark:
+            return Color(red: 0.23, green: 0.24, blue: 0.26)
+        case .light:
+            return Color(.secondarySystemBackground)
+        @unknown default:
+            return Color(.secondarySystemBackground)
+        }
+    }
+
+    private var offlineButtonBackground: Color {
+        switch colorScheme {
+        case .dark:
+            return Color(red: 0.18, green: 0.19, blue: 0.21)
+        case .light:
+            return Color(.systemGray5)
+        @unknown default:
+            return Color(.systemGray5)
+        }
     }
 }

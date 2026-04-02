@@ -4,6 +4,7 @@ struct UsageRing: View {
     let title: String
     let value: Double?
     let color: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     private var clampedValue: Double {
         min(max(value ?? 0, 0), 1)
@@ -12,7 +13,7 @@ struct UsageRing: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color(.systemGray5), lineWidth: 6)
+                .stroke(trackColor, lineWidth: 6)
 
             Circle()
                 .trim(from: 0, to: clampedValue)
@@ -36,6 +37,17 @@ struct UsageRing: View {
         }
         .frame(width: 60, height: 60)
         .animation(.easeInOut(duration: 0.35), value: clampedValue)
+    }
+
+    private var trackColor: Color {
+        switch colorScheme {
+        case .dark:
+            return Color(red: 0.30, green: 0.32, blue: 0.35)
+        case .light:
+            return Color(.systemGray5)
+        @unknown default:
+            return Color(.systemGray5)
+        }
     }
 
     private var valueText: String {
