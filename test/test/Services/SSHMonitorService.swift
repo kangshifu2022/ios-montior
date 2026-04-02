@@ -86,10 +86,14 @@ final class SSHMonitorService {
     echo "=DISK_OVERLAY="; (df -kP /overlay 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %.0f %s %s\\n", $2/1024, $3/1024, $4/1024, $5, $6; found=1} END {if (!found) print "none"}')
     echo "=NSS_LOAD="; (if [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null; elif [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load 2>/dev/null; else echo "unavailable"; fi)
     echo "=NSS_FREQ="; (if [ -r /proc/sys/dev/nss/clock/current_freq ]; then awk '{v=$1+0; if (v > 1000000) printf "%.0f\\n", v/1000000; else if (v > 1000) printf "%.0f\\n", v/1000; else printf "%.0f\\n", v; found=1} END {if (!found) print "unknown"}' /proc/sys/dev/nss/clock/current_freq 2>/dev/null; else echo "unknown"; fi)
+    echo "=LOADAVG="; (awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null || uptime 2>/dev/null | awk -F'load average: ' 'NF > 1 {gsub(/,/, "", $2); split($2, a, " "); if (length(a) >= 3) print a[1], a[2], a[3]}' || echo "0 0 0")
     echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
-    echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+    NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+    [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
+    [ -n "$NET_IFACE" ] || NET_IFACE=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
+    echo "=NET="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     sleep 1
-    echo "=NET2="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+    echo "=NET2="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -106,10 +110,14 @@ final class SSHMonitorService {
     echo "=DISK_OVERLAY="; (df -kP /overlay 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %.0f %s %s\\n", $2/1024, $3/1024, $4/1024, $5, $6; found=1} END {if (!found) print "none"}')
     echo "=NSS_LOAD="; (if [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null; elif [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load 2>/dev/null; else echo "unavailable"; fi)
     echo "=NSS_FREQ="; (if [ -r /proc/sys/dev/nss/clock/current_freq ]; then awk '{v=$1+0; if (v > 1000000) printf "%.0f\\n", v/1000000; else if (v > 1000) printf "%.0f\\n", v/1000; else printf "%.0f\\n", v; found=1} END {if (!found) print "unknown"}' /proc/sys/dev/nss/clock/current_freq 2>/dev/null; else echo "unknown"; fi)
+    echo "=LOADAVG="; (awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null || uptime 2>/dev/null | awk -F'load average: ' 'NF > 1 {gsub(/,/, "", $2); split($2, a, " "); if (length(a) >= 3) print a[1], a[2], a[3]}' || echo "0 0 0")
     echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
-    echo "=NET="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+    NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+    [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
+    [ -n "$NET_IFACE" ] || NET_IFACE=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
+    echo "=NET="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     sleep 1
-    echo "=NET2="; (awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null || echo "0 0")
+    echo "=NET2="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -230,6 +238,9 @@ final class SSHMonitorService {
             } else if line == "=NSS_FREQ=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyNSSFrequency(from: lines[i + 1], to: &stats)
+            } else if line == "=LOADAVG=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyLoadAverage(from: lines[i + 1], to: &stats)
             } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 stats.cpuUsage = parseCPUUsage(from: lines[i + 1])
@@ -268,6 +279,7 @@ final class SSHMonitorService {
             "=DISK_OVERLAY=",
             "=NSS_LOAD=",
             "=NSS_FREQ=",
+            "=LOADAVG=",
             "=CPU_USAGE=",
             "=NET=",
             "=NET2="
@@ -346,6 +358,9 @@ final class SSHMonitorService {
             } else if line == "=NSS_FREQ=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyNSSFrequency(from: lines[i + 1], to: &dynamic)
+            } else if line == "=LOADAVG=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyLoadAverage(from: lines[i + 1], to: &dynamic)
             } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 dynamic.cpuUsage = parseCPUUsage(from: lines[i + 1])
@@ -379,6 +394,7 @@ final class SSHMonitorService {
             "=DISK_OVERLAY=",
             "=NSS_LOAD=",
             "=NSS_FREQ=",
+            "=LOADAVG=",
             "=CPU_USAGE=",
             "=NET=",
             "=NET2="
@@ -465,6 +481,20 @@ final class SSHMonitorService {
         dynamic.nssFrequencyMHz = parseNSSFrequency(from: line)
     }
 
+    private static func applyLoadAverage(from line: String, to stats: inout ServerStats) {
+        let load = parseLoadAverage(from: line)
+        stats.loadAverage1m = load.oneMinute
+        stats.loadAverage5m = load.fiveMinute
+        stats.loadAverage15m = load.fifteenMinute
+    }
+
+    private static func applyLoadAverage(from line: String, to dynamic: inout ServerDynamicInfo) {
+        let load = parseLoadAverage(from: line)
+        dynamic.loadAverage1m = load.oneMinute
+        dynamic.loadAverage5m = load.fiveMinute
+        dynamic.loadAverage15m = load.fifteenMinute
+    }
+
     private static func applyTemperatureSensors(
         from line: String,
         wifiPhyBands: [String: String],
@@ -537,6 +567,15 @@ final class SSHMonitorService {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "unknown" else { return nil }
         return Double(trimmed)
+    }
+
+    private static func parseLoadAverage(from line: String) -> (oneMinute: Double?, fiveMinute: Double?, fifteenMinute: Double?) {
+        let parts = line.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ")
+        return (
+            oneMinute: parts.count > 0 ? Double(parts[0]) : nil,
+            fiveMinute: parts.count > 1 ? Double(parts[1]) : nil,
+            fifteenMinute: parts.count > 2 ? Double(parts[2]) : nil
+        )
     }
 
     private static func parseTemperatureSensors(from line: String) -> [ServerTemperatureSensor] {

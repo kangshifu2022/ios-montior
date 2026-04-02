@@ -35,7 +35,6 @@ struct UsageRing: View {
             }
         }
         .frame(width: 60, height: 60)
-        .frame(maxWidth: .infinity, alignment: .center)
         .animation(.easeInOut(duration: 0.35), value: clampedValue)
     }
 

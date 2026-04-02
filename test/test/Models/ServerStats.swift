@@ -97,6 +97,9 @@ struct ServerDynamicInfo: Codable, Sendable {
     var nssFrequencyMHz: Double? = nil
     var downloadSpeed: String = "0k/s"
     var uploadSpeed: String = "0k/s"
+    var loadAverage1m: Double? = nil
+    var loadAverage5m: Double? = nil
+    var loadAverage15m: Double? = nil
     var routerInfo: RouterInfo = RouterInfo()
 
     init() {}
@@ -121,6 +124,9 @@ struct ServerDynamicInfo: Codable, Sendable {
         nssFrequencyMHz = stats.nssFrequencyMHz
         downloadSpeed = stats.downloadSpeed
         uploadSpeed = stats.uploadSpeed
+        loadAverage1m = stats.loadAverage1m
+        loadAverage5m = stats.loadAverage5m
+        loadAverage15m = stats.loadAverage15m
         routerInfo = stats.routerInfo
     }
 }
@@ -152,6 +158,9 @@ struct ServerStats: Codable, Sendable {
     var nssFrequencyMHz: Double? = nil
     var downloadSpeed: String = "0k/s"
     var uploadSpeed: String = "0k/s"
+    var loadAverage1m: Double? = nil
+    var loadAverage5m: Double? = nil
+    var loadAverage15m: Double? = nil
     var routerInfo: RouterInfo = RouterInfo()
 
     init(config: ServerConfig) {
@@ -190,6 +199,9 @@ struct ServerStats: Codable, Sendable {
             nssFrequencyMHz = dynamicInfo.nssFrequencyMHz
             downloadSpeed = dynamicInfo.downloadSpeed
             uploadSpeed = dynamicInfo.uploadSpeed
+            loadAverage1m = dynamicInfo.loadAverage1m
+            loadAverage5m = dynamicInfo.loadAverage5m
+            loadAverage15m = dynamicInfo.loadAverage15m
             routerInfo = dynamicInfo.routerInfo
         }
     }

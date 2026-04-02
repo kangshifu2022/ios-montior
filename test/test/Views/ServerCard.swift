@@ -56,11 +56,6 @@ struct ServerCard: View {
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
-
-                    Text(deviceSubtitle)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
                 }
             }
 
@@ -68,11 +63,6 @@ struct ServerCard: View {
 
             VStack(alignment: .trailing, spacing: 8) {
                 HStack(spacing: 8) {
-                    if isRefreshing {
-                        ProgressView()
-                            .scaleEffect(0.75)
-                    }
-
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
                             .font(.caption2)
@@ -101,18 +91,22 @@ struct ServerCard: View {
     }
 
     private var usageSummary: some View {
-        HStack(spacing: 10) {
-            UsageRing(
-                title: "CPU",
-                value: stats?.isOnline == true ? stats?.cpuUsage : nil,
-                color: .green
-            )
+        HStack(alignment: .center, spacing: 14) {
+            HStack(spacing: 8) {
+                UsageRing(
+                    title: "CPU",
+                    value: stats?.isOnline == true ? stats?.cpuUsage : nil,
+                    color: .green
+                )
 
-            UsageRing(
-                title: "内存",
-                value: stats?.isOnline == true ? stats?.memUsage : nil,
-                color: .green
-            )
+                UsageRing(
+                    title: "内存",
+                    value: stats?.isOnline == true ? stats?.memUsage : nil,
+                    color: .green
+                )
+            }
+
+            metricsSummary
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -161,8 +155,51 @@ struct ServerCard: View {
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(stats?.isOnline != true || isRefreshing)
-        .opacity(stats?.isOnline == true && !isRefreshing ? 1 : 0.45)
+        .disabled(stats?.isOnline != true)
+        .opacity(stats?.isOnline == true ? 1 : 0.45)
+    }
+
+    private var metricsSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            metricRow(
+                icon: "arrow.down.circle",
+                label: "下载",
+                value: downloadSpeedText
+            )
+
+            metricRow(
+                icon: "arrow.up.circle",
+                label: "上传",
+                value: uploadSpeedText
+            )
+
+            metricRow(
+                icon: "speedometer",
+                label: "Load",
+                value: loadAverageText
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func metricRow(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 14)
+
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            Text(value)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
     }
 
     private func temperaturePill(label: String, value: String) -> some View {
@@ -190,35 +227,11 @@ struct ServerCard: View {
         store.stats(for: config)
     }
 
-    private var isRefreshing: Bool {
-        store.isRefreshing(config.id)
-    }
-
     private var uptimeText: String {
         guard let stats, !stats.uptime.isEmpty else {
             return "--"
         }
         return stats.uptime
-    }
-
-    private var deviceSubtitle: String {
-        guard let stats else {
-            return config.host
-        }
-
-        if stats.routerInfo.isRouter {
-            return "路由器"
-        }
-
-        if !stats.hostname.isEmpty {
-            return stats.hostname
-        }
-
-        if !stats.osName.isEmpty {
-            return stats.osName
-        }
-
-        return config.host
     }
 
     private var deviceIconName: String {
@@ -245,9 +258,6 @@ struct ServerCard: View {
     }
 
     private var onlineIndicatorColor: Color {
-        if isRefreshing {
-            return .orange
-        }
         guard let stats else {
             return .gray
         }
@@ -255,13 +265,34 @@ struct ServerCard: View {
     }
 
     private var onlineStatusText: String {
-        if isRefreshing {
-            return "刷新中"
-        }
         guard let stats else {
             return "未知"
         }
         return stats.isOnline ? "在线" : "离线"
+    }
+
+    private var downloadSpeedText: String {
+        guard let stats, stats.isOnline else {
+            return "--"
+        }
+        return stats.downloadSpeed
+    }
+
+    private var uploadSpeedText: String {
+        guard let stats, stats.isOnline else {
+            return "--"
+        }
+        return stats.uploadSpeed
+    }
+
+    private var loadAverageText: String {
+        guard let stats, stats.isOnline else {
+            return "--"
+        }
+        if let load = stats.loadAverage1m {
+            return String(format: "%.2f", load)
+        }
+        return "--"
     }
 
     private var temperatureText: String? {
@@ -290,7 +321,7 @@ struct ServerCard: View {
     }
 
     private var terminalButtonBackground: Color {
-        stats?.isOnline == true && !isRefreshing
+        stats?.isOnline == true
             ? Color(.secondarySystemBackground)
             : Color(.systemGray5)
     }
