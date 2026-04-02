@@ -13,12 +13,16 @@ struct TerminalView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(terminalBackground)
-                .ignoresSafeArea(edges: .top)
-            toolBar
+        ZStack {
+            terminalBackground
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(terminalBackground)
+                toolBar
+            }
         }
         .background(screenBackground)
         .onChange(of: scenePhase) { _, newPhase in
@@ -44,10 +48,6 @@ struct TerminalView: View {
     private var toolBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                toolButton(icon: "xmark", label: "关闭") {
-                    dismiss()
-                }
-
                 toolButton(icon: "arrow.clockwise", label: "重连") {
                     viewModel.reconnect()
                 }

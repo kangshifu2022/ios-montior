@@ -10,7 +10,7 @@ struct ServerCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             header
             usageSummary
             Spacer(minLength: 0)
@@ -28,6 +28,11 @@ struct ServerCard: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(cardBorderColor, lineWidth: 1)
         )
+        .overlay(alignment: .topTrailing) {
+            terminalButton
+                .padding(.top, 18)
+                .padding(.trailing, 18)
+        }
         .shadow(color: shadowColor, radius: 14, x: 0, y: 8)
         .fullScreenCover(isPresented: $showTerminal) {
             TerminalView(server: config)
@@ -48,67 +53,37 @@ struct ServerCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text(config.name)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
+                    Text(config.name)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
 
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
+                    Text(osDisplayText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
             }
 
             Spacer(minLength: 12)
 
-            VStack(alignment: .trailing, spacing: 8) {
-                HStack(spacing: 8) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock")
-                            .font(.caption2)
-                        Text(uptimeText)
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
+            HStack(spacing: 8) {
+                Text(uptimeText)
+                    .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
 
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(onlineIndicatorColor)
-                            .frame(width: 9, height: 9)
-
-                        Text(onlineStatusText)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(.secondary)
-                }
-
-                terminalButton
+                Circle()
+                    .fill(onlineIndicatorColor)
+                    .frame(width: 9, height: 9)
             }
         }
     }
 
     private var usageSummary: some View {
-        HStack(alignment: .center, spacing: 14) {
-            HStack(spacing: 8) {
-                UsageRing(
-                    title: "CPU",
-                    value: stats?.isOnline == true ? stats?.cpuUsage : nil,
-                    color: .green
-                )
-
-                UsageRing(
-                    title: "内存",
-                    value: stats?.isOnline == true ? stats?.memUsage : nil,
-                    color: .green
-                )
-            }
-
+        HStack(alignment: .top, spacing: 14) {
+            ringsSummary
             metricsSummary
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,25 +92,7 @@ struct ServerCard: View {
     @ViewBuilder
     private var detailSummary: some View {
         if let stats {
-            if stats.isOnline {
-                if temperatureText != nil || wifi24TemperatureText != nil || wifi5TemperatureText != nil {
-                    HStack(spacing: 8) {
-                        if let temperatureText {
-                            temperaturePill(label: "CPU", value: temperatureText)
-                        }
-
-                        if let wifi24TemperatureText {
-                            temperaturePill(label: "2.4G", value: wifi24TemperatureText)
-                        }
-
-                        if let wifi5TemperatureText {
-                            temperaturePill(label: "5G", value: wifi5TemperatureText)
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-                }
-            } else {
+            if !stats.isOnline {
                 Text(stats.statusMessage.isEmpty ? "设备当前离线" : stats.statusMessage)
                     .font(.caption2)
                     .foregroundColor(.secondary)
@@ -154,12 +111,38 @@ struct ServerCard: View {
                 .font(.caption)
                 .foregroundColor(terminalButtonForeground)
                 .frame(width: 26, height: 26)
-                .background(terminalButtonBackground)
-                .clipShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(stats?.isOnline != true)
         .opacity(stats?.isOnline == true ? 1 : 0.45)
+    }
+
+    private var ringsSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                UsageRing(
+                    title: "CPU",
+                    value: stats?.isOnline == true ? stats?.cpuUsage : nil,
+                    color: .green
+                )
+
+                UsageRing(
+                    title: "内存",
+                    value: stats?.isOnline == true ? stats?.memUsage : nil,
+                    color: .green
+                )
+            }
+
+            if stats?.isOnline == true, !temperatureItems.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(temperatureItems) { item in
+                        temperatureBadge(item)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+            }
+        }
     }
 
     private var metricsSummary: some View {
@@ -205,19 +188,17 @@ struct ServerCard: View {
         }
     }
 
-    private func temperaturePill(label: String, value: String) -> some View {
+    private func temperatureBadge(_ item: TemperatureItem) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "thermometer")
+            Text(item.label)
                 .font(.caption2)
-            Text(label)
-                .font(.caption2)
-            Text(value)
+            Text(item.value)
                 .font(.caption2)
                 .monospacedDigit()
         }
         .foregroundColor(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
         .background(cardSecondaryFill)
         .clipShape(Capsule())
     }
@@ -235,6 +216,49 @@ struct ServerCard: View {
             return "--"
         }
         return stats.uptime
+    }
+
+    private var osDisplayText: String {
+        guard let stats else {
+            return "Unknown OS"
+        }
+
+        let osName = stats.osName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !osName.isEmpty else {
+            return stats.routerInfo.isRouter ? "Router OS" : "Unknown OS"
+        }
+
+        let lowercased = osName.lowercased()
+
+        if lowercased.contains("openwrt") {
+            return "OpenWrt"
+        }
+        if lowercased.contains("ubuntu") {
+            return "Ubuntu"
+        }
+        if lowercased.contains("debian") {
+            return "Debian"
+        }
+        if lowercased.contains("centos") {
+            return "CentOS"
+        }
+        if lowercased.contains("fedora") {
+            return "Fedora"
+        }
+        if lowercased.contains("arch") {
+            return "Arch Linux"
+        }
+        if lowercased.contains("macos") || lowercased.contains("darwin") {
+            return "macOS"
+        }
+        if lowercased.contains("raspbian") {
+            return "Raspbian"
+        }
+        if lowercased.contains("linux") {
+            return "Linux"
+        }
+
+        return osName
     }
 
     private var deviceIconName: String {
@@ -265,13 +289,6 @@ struct ServerCard: View {
             return .gray
         }
         return stats.isOnline ? .green : .red
-    }
-
-    private var onlineStatusText: String {
-        guard let stats else {
-            return "未知"
-        }
-        return stats.isOnline ? "在线" : "离线"
     }
 
     private var downloadSpeedText: String {
@@ -323,10 +340,22 @@ struct ServerCard: View {
         String(format: "%.0f°C", temperature)
     }
 
-    private var terminalButtonBackground: Color {
-        stats?.isOnline == true
-            ? cardSecondaryFill
-            : offlineButtonBackground
+    private var temperatureItems: [TemperatureItem] {
+        var items: [TemperatureItem] = []
+
+        if let temperatureText {
+            items.append(.init(label: "CPU", value: temperatureText))
+        }
+
+        if let wifi24TemperatureText {
+            items.append(.init(label: "2.4G", value: wifi24TemperatureText))
+        }
+
+        if let wifi5TemperatureText {
+            items.append(.init(label: "5G", value: wifi5TemperatureText))
+        }
+
+        return items
     }
 
     private var terminalButtonForeground: Color {
@@ -365,15 +394,11 @@ struct ServerCard: View {
             return Color(.secondarySystemBackground)
         }
     }
+}
 
-    private var offlineButtonBackground: Color {
-        switch colorScheme {
-        case .dark:
-            return Color(red: 0.18, green: 0.19, blue: 0.21)
-        case .light:
-            return Color(.systemGray5)
-        @unknown default:
-            return Color(.systemGray5)
-        }
-    }
+private struct TemperatureItem: Identifiable {
+    let label: String
+    let value: String
+
+    var id: String { label }
 }

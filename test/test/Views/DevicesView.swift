@@ -89,9 +89,9 @@ struct DevicesView: View {
         let columnsCount = max(1, min(3, estimatedColumns))
         let totalSpacing = spacing * CGFloat(max(columnsCount - 1, 0))
         let cardWidth = (usableWidth - totalSpacing) / CGFloat(columnsCount)
-        let portraitReferenceHeight = width / 2
-        let proportionalHeight = cardWidth * 0.62
-        let cardHeight = min(portraitReferenceHeight, max(184, proportionalHeight))
+        let portraitReferenceHeight = width * 0.4
+        let proportionalHeight = cardWidth * 0.52
+        let cardHeight = min(portraitReferenceHeight, max(172, proportionalHeight))
 
         return DeviceGridLayout(
             columns: Array(repeating: GridItem(.flexible(), spacing: spacing, alignment: .top), count: columnsCount),
