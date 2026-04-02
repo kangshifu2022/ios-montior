@@ -28,6 +28,10 @@ workflows:
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
 
+      - name: Install Metal Toolchain
+        script: |
+          xcodebuild -downloadComponent MetalToolchain
+
       - name: Increment build number
         script: |
           cd $CM_BUILD_DIR
