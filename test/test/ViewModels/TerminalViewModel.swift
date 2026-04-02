@@ -15,6 +15,7 @@ final class TerminalViewModel: ObservableObject {
     private var sessionTask: Task<Void, Never>?
     private var outputSink: (([UInt8]) -> Void)?
     private var pendingOutput: [[UInt8]] = []
+    private var terminalSize = TerminalSize.fallback
 
     init(server: ServerConfig) {
         self.server = server
@@ -41,7 +42,7 @@ final class TerminalViewModel: ObservableObject {
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
-            await self.session.start { event in
+            await self.session.start(terminalSize: self.terminalSize) { event in
                 await self.handle(event)
             }
         }
@@ -109,6 +110,24 @@ final class TerminalViewModel: ObservableObject {
         terminalTitle = title
     }
 
+    func updateTerminalSize(columns: Int, rows: Int, pixelWidth: Int = 0, pixelHeight: Int = 0) {
+        let newSize = TerminalSize(
+            columns: columns,
+            rows: rows,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight
+        )
+
+        guard newSize != terminalSize else { return }
+        terminalSize = newSize
+
+        guard isConnected else { return }
+
+        Task {
+            try? await session.resize(to: newSize)
+        }
+    }
+
     private func handle(_ event: TerminalSession.Event) async {
         switch event {
         case .connecting:
@@ -118,6 +137,9 @@ final class TerminalViewModel: ObservableObject {
         case .connected:
             isConnecting = false
             isConnected = true
+            Task {
+                try? await session.resize(to: terminalSize)
+            }
         case .output(let bytes):
             if let outputSink {
                 outputSink(bytes)

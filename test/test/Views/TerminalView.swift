@@ -19,9 +19,6 @@ struct TerminalView: View {
             toolBar
         }
         .background(Color.black)
-        .task {
-            viewModel.connectIfNeeded()
-        }
         .onDisappear {
             viewModel.disconnect()
         }

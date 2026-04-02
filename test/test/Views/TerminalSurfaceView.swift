@@ -21,6 +21,13 @@ struct TerminalSurfaceView: UIViewRepresentable {
         }
 
         DispatchQueue.main.async {
+            let terminal = terminalView.getTerminal()
+            context.coordinator.pushTerminalSize(
+                from: terminalView,
+                columns: terminal.cols,
+                rows: terminal.rows
+            )
+            viewModel.connectIfNeeded()
             terminalView.becomeFirstResponder()
         }
 
@@ -48,7 +55,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         }
 
         func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-            // We keep the remote PTY at a fixed size for now.
+            pushTerminalSize(from: source, columns: newCols, rows: newRows)
         }
 
         func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {
@@ -71,5 +78,18 @@ struct TerminalSurfaceView: UIViewRepresentable {
         }
 
         func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
+
+        func pushTerminalSize(from source: SwiftTerm.TerminalView, columns: Int, rows: Int) {
+            let scale = source.window?.screen.scale ?? UIScreen.main.scale
+            let pixelWidth = Int(source.bounds.width * scale)
+            let pixelHeight = Int(source.bounds.height * scale)
+
+            viewModel.updateTerminalSize(
+                columns: columns,
+                rows: rows,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight
+            )
+        }
     }
 }

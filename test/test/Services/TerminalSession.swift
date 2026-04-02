@@ -14,13 +14,14 @@ actor TerminalSession {
 
     private let server: ServerConfig
     private var stdinWriter: (@Sendable ([UInt8]) async throws -> Void)?
+    private var resizePTY: (@Sendable (TerminalSize) async throws -> Void)?
     private var closeConnection: (@Sendable () async -> Void)?
 
     init(server: ServerConfig) {
         self.server = server
     }
 
-    func start(onEvent: @escaping @Sendable (Event) async -> Void) async {
+    func start(terminalSize: TerminalSize, onEvent: @escaping @Sendable (Event) async -> Void) async {
         await onEvent(.connecting(server.host))
 
         let algorithms = SSHAlgorithms.all
@@ -49,15 +50,23 @@ actor TerminalSession {
                 SSHChannelRequestEvent.PseudoTerminalRequest(
                     wantReply: true,
                     term: "xterm",
-                    terminalCharacterWidth: 120,
-                    terminalRowHeight: 40,
-                    terminalPixelWidth: 0,
-                    terminalPixelHeight: 0,
+                    terminalCharacterWidth: terminalSize.columns,
+                    terminalRowHeight: terminalSize.rows,
+                    terminalPixelWidth: terminalSize.pixelWidth,
+                    terminalPixelHeight: terminalSize.pixelHeight,
                     terminalModes: .init([.ECHO: 1])
                 )
             ) { ttyOutput, ttyStdinWriter in
                 self.setStdinWriter { input in
                     try await ttyStdinWriter.write(ByteBuffer(bytes: input))
+                }
+                self.setPTYResizer { size in
+                    try await ttyStdinWriter.changeSize(
+                        cols: size.columns,
+                        rows: size.rows,
+                        pixelWidth: size.pixelWidth,
+                        pixelHeight: size.pixelHeight
+                    )
                 }
 
                 await onEvent(.connected)
@@ -89,8 +98,16 @@ actor TerminalSession {
         try await stdinWriter(input)
     }
 
+    func resize(to terminalSize: TerminalSize) async throws {
+        guard let resizePTY else {
+            throw TerminalSessionError.notReady
+        }
+        try await resizePTY(terminalSize)
+    }
+
     func stop() async {
         stdinWriter = nil
+        resizePTY = nil
         if let closeConnection {
             await closeConnection()
         }
@@ -101,8 +118,13 @@ actor TerminalSession {
         stdinWriter = writer
     }
 
+    private func setPTYResizer(_ resizer: @escaping @Sendable (TerminalSize) async throws -> Void) {
+        resizePTY = resizer
+    }
+
     private func clearState() {
         stdinWriter = nil
+        resizePTY = nil
         closeConnection = nil
     }
 
@@ -128,4 +150,20 @@ actor TerminalSession {
 
 enum TerminalSessionError: Error {
     case notReady
+}
+
+struct TerminalSize: Equatable, Sendable {
+    let columns: Int
+    let rows: Int
+    let pixelWidth: Int
+    let pixelHeight: Int
+
+    static let fallback = TerminalSize(columns: 80, rows: 24, pixelWidth: 0, pixelHeight: 0)
+
+    init(columns: Int, rows: Int, pixelWidth: Int = 0, pixelHeight: Int = 0) {
+        self.columns = max(2, columns)
+        self.rows = max(2, rows)
+        self.pixelWidth = max(0, pixelWidth)
+        self.pixelHeight = max(0, pixelHeight)
+    }
 }
