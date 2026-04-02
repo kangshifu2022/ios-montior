@@ -84,10 +84,10 @@ private struct SystemHealthAssessment {
         }
 
         let psi = stats.pressure
-        let cpuPressure = normalizedCPUPressure(from: psi)
-        let memoryPressure = normalizedMemoryPressure(from: psi)
-        let ioPressure = normalizedIOPressure(from: psi)
-        let loadPressure = normalizedLoadPressure(from: stats)
+        let cpuPressure = Self.normalizedCPUPressure(from: psi)
+        let memoryPressure = Self.normalizedMemoryPressure(from: psi)
+        let ioPressure = Self.normalizedIOPressure(from: psi)
+        let loadPressure = Self.normalizedLoadPressure(from: stats)
         let hasPSI = psi.cpuSomeAvg10 != nil ||
             psi.memorySomeAvg10 != nil ||
             psi.memoryFullAvg10 != nil ||
