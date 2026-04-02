@@ -56,7 +56,7 @@ actor TerminalSession {
                     terminalModes: .init([.ECHO: 1])
                 )
             ) { ttyOutput, ttyStdinWriter in
-                await self.setStdinWriter { input in
+                self.setStdinWriter { input in
                     try await ttyStdinWriter.write(ByteBuffer(bytes: input))
                 }
 

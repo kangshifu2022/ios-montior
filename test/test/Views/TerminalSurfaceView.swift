@@ -17,7 +17,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
         viewModel.attachOutputSink { [weak terminalView] bytes in
             guard let terminalView else { return }
-            terminalView.feed(byteArray: bytes)
+            terminalView.feed(byteArray: ArraySlice(bytes))
         }
 
         DispatchQueue.main.async {
@@ -65,5 +65,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
         }
 
         func bell(source: SwiftTerm.TerminalView) {}
+
+        func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {
+            UIPasteboard.general.setData(content, forPasteboardType: "public.utf8-plain-text")
+        }
+
+        func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
     }
 }
