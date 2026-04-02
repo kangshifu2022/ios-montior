@@ -65,6 +65,11 @@ final class ServerStore: ObservableObject {
         saveCachedInfo()
     }
 
+    func move(fromOffsets: IndexSet, toOffset: Int) {
+        servers.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        save()
+    }
+
     func stats(for config: ServerConfig) -> ServerStats? {
         let staticInfo = staticInfoByServerID[config.id]
         let dynamicInfo = dynamicInfoByServerID[config.id]
