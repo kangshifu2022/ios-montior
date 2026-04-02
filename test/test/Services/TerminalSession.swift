@@ -62,8 +62,14 @@ actor TerminalSession {
 
                 await onEvent(.connected)
 
-                for try await buffer in ttyOutput {
-                    let text = TerminalANSI.sanitize(String(buffer: buffer))
+                for try await event in ttyOutput {
+                    let text: String
+
+                    switch event {
+                    case .stdout(let buffer), .stderr(let buffer):
+                        text = TerminalANSI.sanitize(String(buffer: buffer))
+                    }
+
                     guard !text.isEmpty else { continue }
                     await onEvent(.output(text))
                 }
@@ -75,7 +81,7 @@ actor TerminalSession {
             await onEvent(.disconnected)
         }
 
-        await clearState()
+        clearState()
     }
 
     func send(_ input: String) async throws {
