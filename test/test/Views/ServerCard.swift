@@ -9,14 +9,10 @@ struct ServerCard: View {
     @State private var showTerminal = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
+            header
             usageSummary
-                .frame(width: 132, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 10) {
-                header
-                detailSummary
-            }
+            detailSummary
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: openDetail)
@@ -37,55 +33,67 @@ struct ServerCard: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(iconAccentColor.opacity(0.14))
-                    .frame(width: 42, height: 42)
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(iconAccentColor.opacity(0.14))
+                        .frame(width: 42, height: 42)
 
-                Image(systemName: deviceIconName)
-                    .font(.subheadline)
-                    .foregroundColor(iconAccentColor)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(config.name)
+                    Image(systemName: deviceIconName)
                         .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
+                        .foregroundColor(iconAccentColor)
+                }
 
-                    Image(systemName: "chevron.right")
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(config.name)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Text(deviceSubtitle)
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                }
-
-                Text(deviceSubtitle)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                if isRefreshing {
-                    ProgressView()
-                        .scaleEffect(0.75)
-                }
-
-                Circle()
-                    .fill(onlineIndicatorColor)
-                    .frame(width: 9, height: 9)
-
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.caption2)
-                    Text(uptimeText)
-                        .font(.caption2)
                         .lineLimit(1)
                 }
-                .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 8) {
+                    if isRefreshing {
+                        ProgressView()
+                            .scaleEffect(0.75)
+                    }
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text(uptimeText)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.secondary)
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(onlineIndicatorColor)
+                            .frame(width: 9, height: 9)
+
+                        Text(onlineStatusText)
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.secondary)
+                }
 
                 terminalButton
             }
@@ -106,6 +114,7 @@ struct ServerCard: View {
                 color: .green
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -243,6 +252,16 @@ struct ServerCard: View {
             return .gray
         }
         return stats.isOnline ? .green : .red
+    }
+
+    private var onlineStatusText: String {
+        if isRefreshing {
+            return "刷新中"
+        }
+        guard let stats else {
+            return "未知"
+        }
+        return stats.isOnline ? "在线" : "离线"
     }
 
     private var temperatureText: String? {
