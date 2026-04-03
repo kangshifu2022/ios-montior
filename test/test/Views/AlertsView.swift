@@ -3,6 +3,7 @@ import SwiftUI
 struct AlertsView: View {
     @ObservedObject var store: ServerStore
     @Environment(\.openURL) private var openURL
+    @FocusState private var barkURLFieldFocused: Bool
 
     @State private var selectedServerID: UUID?
     @State private var barkURL: String = ""
@@ -15,6 +16,7 @@ struct AlertsView: View {
     @State private var showInstallConfirmation = false
     @State private var showRemoveConfirmation = false
     @State private var showBarkHelp = false
+    @State private var isEditingBarkURL = false
 
     private let barkAppStoreURL = URL(string: "https://apps.apple.com/app/id1403753865")!
 
@@ -49,6 +51,14 @@ struct AlertsView: View {
 
     private var barkURLIsFilled: Bool {
         !barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var savedBarkURL: String {
+        selectedServer?.barkURL.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private var barkURLIsLocked: Bool {
+        !savedBarkURL.isEmpty && !isEditingBarkURL
     }
 
     var body: some View {
@@ -185,13 +195,47 @@ struct AlertsView: View {
                 Text("Bark 测试地址")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                TextField("https://api.day.app/xxxxxx", text: $barkURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
+
+                if barkURLIsLocked {
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(savedBarkURL)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button("编辑地址") {
+                            isEditingBarkURL = true
+                            barkURLFieldFocused = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
                     .padding(12)
                     .background(Color(.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    TextField("https://api.day.app/xxxxxx", text: $barkURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .focused($barkURLFieldFocused)
+                        .padding(12)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    if !savedBarkURL.isEmpty {
+                        HStack {
+                            Spacer()
+                            Button("取消编辑") {
+                                barkURL = savedBarkURL
+                                isEditingBarkURL = false
+                                barkURLFieldFocused = false
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+
                 Text("请先在 iPhone 安装 Bark，打开 Bark 后复制测试地址，再粘贴到这里。支持官方 Bark 和自建 bark-server。")
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -381,10 +425,13 @@ struct AlertsView: View {
         barkTestBodyTemplate = config.barkTestBodyTemplate
         barkAlertTitleTemplate = config.barkAlertTitleTemplate
         barkAlertBodyTemplate = config.barkAlertBodyTemplate
+        isEditingBarkURL = config.barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        barkURLFieldFocused = false
     }
 
     private func saveLocalConfiguration() {
         guard let selectedServer else { return }
+        barkURLFieldFocused = false
         store.updateAlertSettings(
             for: selectedServer.id,
             barkURL: barkURL,

@@ -153,13 +153,9 @@ final class SSHMonitorService {
     }
 
     static func sendTestBarkNotification(config: ServerConfig) async -> Result<String, RemoteAlertOperationError> {
-        guard let barkBaseURL = barkPushBaseURL(from: config.barkURL) else {
-            return .failure(RemoteAlertOperationError(message: "Bark 测试地址无效，请粘贴 Bark App 里的测试地址"))
-        }
-
         switch await execute(
             config: config,
-            script: makeRemoteAlertTestScript(config: config, barkBaseURL: barkBaseURL),
+            script: remoteAlertInstalledTestScript,
             connectionDiagnostics: [
                 "failure stage: connect",
                 "ssh stack: Citadel",
@@ -1297,41 +1293,39 @@ final class SSHMonitorService {
         """
     }
 
-    private static func makeRemoteAlertTestScript(config: ServerConfig, barkBaseURL: String) -> String {
-        let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
-        let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
-        let safeHostValue = normalizedHostValue(from: config)
-        let threshold = max(1, min(config.cpuAlertThreshold, 100))
-        let testTitleTemplate = normalizedTemplate(
-            config.barkTestTitleTemplate,
-            fallback: ServerConfig.defaultBarkTestTitleTemplate
-        )
-        let testBodyTemplate = normalizedTemplate(
-            config.barkTestBodyTemplate,
-            fallback: ServerConfig.defaultBarkTestBodyTemplate
-        )
+    private static let remoteAlertInstalledTestScript = """
+    set -eu
+    ALERT_DIR="$HOME/.ios-monitor"
+    SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+    ENV_PATH="$ALERT_DIR/cpu_alert.env"
 
-        return """
-        set -eu
-        BARK_URL=\(shellQuoted(barkBaseURL))
-        HOST_LABEL=\(shellQuoted(safeHostLabel))
-        HOST_VALUE=\(shellQuoted(safeHostValue))
-        CPU_THRESHOLD='\(threshold)'
-        TEST_TITLE_TEMPLATE=\(shellQuoted(testTitleTemplate))
-        TEST_BODY_TEMPLATE=\(shellQuoted(testBodyTemplate))
+    if [ ! -r "$SCRIPT_PATH" ]; then
+      echo "remote alert script is not installed"
+      exit 1
+    fi
 
-        \(remoteAlertTransportScript)
-        \(remoteAlertCPUReaderScript)
-        \(remoteAlertTemplateRendererScript)
+    if [ ! -r "$ENV_PATH" ]; then
+      echo "remote alert configuration is missing"
+      exit 1
+    fi
 
-        CPU_USAGE=$(fetch_cpu_usage)
-        TITLE=$(render_template "$TEST_TITLE_TEMPLATE")
-        BODY=$(render_template "$TEST_BODY_TEMPLATE")
-        send_bark "$TITLE" "$BODY"
-        echo "=CPU_USAGE="
-        echo "$CPU_USAGE"
-        """
-    }
+    echo "=CPU_USAGE="
+    (top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /id,|idle/) {
+          v = $(i - 1)
+          gsub(/[^0-9.]/, "", v)
+          if (v != "") {
+            printf "%.0f\\n", 100 - v
+            found = 1
+            exit
+          }
+        }
+      }
+    } END { if (!found) print "0" }'
+
+    /bin/sh "$SCRIPT_PATH" --test
+    """
 
     private static var remoteAlertRunnerScript: String {
         """
@@ -1410,18 +1404,32 @@ final class SSHMonitorService {
           title="$1"
           body="$2"
           base="${BARK_URL%/}"
-          url="${base}/$(urlencode "$title")/$(urlencode "$body")?group=ios-monitor&isArchive=1"
+          form_data="title=$(urlencode "$title")&body=$(urlencode "$body")&group=ios-monitor&isArchive=1"
 
           if command -v curl >/dev/null 2>&1; then
-            curl -fsS "$url" >/dev/null 2>&1
+            curl -fsS -X POST "$base" \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "title=$title" \
+              --data-urlencode "body=$body" \
+              --data-urlencode "group=ios-monitor" \
+              --data-urlencode "isArchive=1" >/dev/null 2>&1
             return $?
           fi
           if command -v wget >/dev/null 2>&1; then
-            wget -qO- "$url" >/dev/null 2>&1
+            if wget --help 2>/dev/null | grep -q -- "--post-data"; then
+              wget -qO- --header="Content-Type: application/x-www-form-urlencoded" \
+                --post-data="$form_data" "$base" >/dev/null 2>&1
+            else
+              return 1
+            fi
             return $?
           fi
           if command -v uclient-fetch >/dev/null 2>&1; then
-            uclient-fetch -q "$url" >/dev/null 2>&1
+            if uclient-fetch --help 2>/dev/null | grep -q -- "--post-data"; then
+              uclient-fetch -q -O - --post-data="$form_data" "$base" >/dev/null 2>&1
+            else
+              return 1
+            fi
             return $?
           fi
           return 1
