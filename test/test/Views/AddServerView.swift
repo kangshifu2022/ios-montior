@@ -107,7 +107,11 @@ struct AddServerView: View {
                             barkURL: editingServer?.barkURL ?? "",
                             cpuAlertEnabled: editingServer?.cpuAlertEnabled ?? false,
                             cpuAlertThreshold: editingServer?.cpuAlertThreshold ?? 90,
-                            cpuAlertCooldownMinutes: editingServer?.cpuAlertCooldownMinutes ?? 10
+                            cpuAlertCooldownMinutes: editingServer?.cpuAlertCooldownMinutes ?? 10,
+                            barkTestTitleTemplate: editingServer?.barkTestTitleTemplate ?? ServerConfig.defaultBarkTestTitleTemplate,
+                            barkTestBodyTemplate: editingServer?.barkTestBodyTemplate ?? ServerConfig.defaultBarkTestBodyTemplate,
+                            barkAlertTitleTemplate: editingServer?.barkAlertTitleTemplate ?? ServerConfig.defaultBarkAlertTitleTemplate,
+                            barkAlertBodyTemplate: editingServer?.barkAlertBodyTemplate ?? ServerConfig.defaultBarkAlertBodyTemplate
                         )
                         if isEditing {
                             store.update(config)

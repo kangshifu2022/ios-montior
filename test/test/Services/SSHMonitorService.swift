@@ -1199,6 +1199,23 @@ final class SSHMonitorService {
         let cooldownSeconds = max(1, config.cpuAlertCooldownMinutes) * 60
         let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
+        let safeHostValue = normalizedHostValue(from: config)
+        let testTitleTemplate = normalizedTemplate(
+            config.barkTestTitleTemplate,
+            fallback: ServerConfig.defaultBarkTestTitleTemplate
+        )
+        let testBodyTemplate = normalizedTemplate(
+            config.barkTestBodyTemplate,
+            fallback: ServerConfig.defaultBarkTestBodyTemplate
+        )
+        let alertTitleTemplate = normalizedTemplate(
+            config.barkAlertTitleTemplate,
+            fallback: ServerConfig.defaultBarkAlertTitleTemplate
+        )
+        let alertBodyTemplate = normalizedTemplate(
+            config.barkAlertBodyTemplate,
+            fallback: ServerConfig.defaultBarkAlertBodyTemplate
+        )
         let scriptBody = remoteAlertRunnerScript
 
         return """
@@ -1235,6 +1252,11 @@ final class SSHMonitorService {
         CPU_THRESHOLD='\(threshold)'
         COOLDOWN_SECONDS='\(cooldownSeconds)'
         HOST_LABEL=\(shellQuoted(safeHostLabel))
+        HOST_VALUE=\(shellQuoted(safeHostValue))
+        TEST_TITLE_TEMPLATE=\(shellQuoted(testTitleTemplate))
+        TEST_BODY_TEMPLATE=\(shellQuoted(testBodyTemplate))
+        ALERT_TITLE_TEMPLATE=\(shellQuoted(alertTitleTemplate))
+        ALERT_BODY_TEMPLATE=\(shellQuoted(alertBodyTemplate))
         IOS_MONITOR_REMOTE_ALERT_ENV
         chmod 600 "$ENV_PATH"
 
@@ -1278,17 +1300,34 @@ final class SSHMonitorService {
     private static func makeRemoteAlertTestScript(config: ServerConfig, barkBaseURL: String) -> String {
         let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
+        let safeHostValue = normalizedHostValue(from: config)
+        let threshold = max(1, min(config.cpuAlertThreshold, 100))
+        let testTitleTemplate = normalizedTemplate(
+            config.barkTestTitleTemplate,
+            fallback: ServerConfig.defaultBarkTestTitleTemplate
+        )
+        let testBodyTemplate = normalizedTemplate(
+            config.barkTestBodyTemplate,
+            fallback: ServerConfig.defaultBarkTestBodyTemplate
+        )
 
         return """
         set -eu
         BARK_URL=\(shellQuoted(barkBaseURL))
         HOST_LABEL=\(shellQuoted(safeHostLabel))
+        HOST_VALUE=\(shellQuoted(safeHostValue))
+        CPU_THRESHOLD='\(threshold)'
+        TEST_TITLE_TEMPLATE=\(shellQuoted(testTitleTemplate))
+        TEST_BODY_TEMPLATE=\(shellQuoted(testBodyTemplate))
 
         \(remoteAlertTransportScript)
         \(remoteAlertCPUReaderScript)
+        \(remoteAlertTemplateRendererScript)
 
         CPU_USAGE=$(fetch_cpu_usage)
-        send_bark "CPU Test" "$HOST_LABEL current CPU usage is ${CPU_USAGE}%"
+        TITLE=$(render_template "$TEST_TITLE_TEMPLATE")
+        BODY=$(render_template "$TEST_BODY_TEMPLATE")
+        send_bark "$TITLE" "$BODY"
         echo "=CPU_USAGE="
         echo "$CPU_USAGE"
         """
@@ -1306,12 +1345,22 @@ final class SSHMonitorService {
         [ -r "$ENV_PATH" ] || exit 1
         . "$ENV_PATH"
 
+        [ -n "${HOST_LABEL:-}" ] || HOST_LABEL="${HOST_VALUE:-unknown}"
+        [ -n "${HOST_VALUE:-}" ] || HOST_VALUE="${HOST_LABEL:-unknown}"
+        [ -n "${TEST_TITLE_TEMPLATE:-}" ] || TEST_TITLE_TEMPLATE='{server} 测试通知'
+        [ -n "${TEST_BODY_TEMPLATE:-}" ] || TEST_BODY_TEMPLATE='当前 CPU 占用率 {cpu}%'
+        [ -n "${ALERT_TITLE_TEMPLATE:-}" ] || ALERT_TITLE_TEMPLATE='{server} CPU 告警'
+        [ -n "${ALERT_BODY_TEMPLATE:-}" ] || ALERT_BODY_TEMPLATE='CPU 占用率 {cpu}% ，已超过阈值 {threshold}%'
+
         \(remoteAlertTransportScript)
         \(remoteAlertCPUReaderScript)
+        \(remoteAlertTemplateRendererScript)
 
         if [ "${1:-}" = "--test" ]; then
           CPU_USAGE=$(fetch_cpu_usage)
-          send_bark "CPU Test" "$HOST_LABEL current CPU usage is ${CPU_USAGE}%"
+          TITLE=$(render_template "$TEST_TITLE_TEMPLATE")
+          BODY=$(render_template "$TEST_BODY_TEMPLATE")
+          send_bark "$TITLE" "$BODY"
           exit $?
         fi
 
@@ -1336,7 +1385,9 @@ final class SSHMonitorService {
           fi
 
           if [ "$SHOULD_SEND" -eq 1 ]; then
-            if send_bark "CPU Alert" "$HOST_LABEL CPU usage is ${CPU_USAGE}% (threshold ${CPU_THRESHOLD}%)"; then
+            TITLE=$(render_template "$ALERT_TITLE_TEMPLATE")
+            BODY=$(render_template "$ALERT_BODY_TEMPLATE")
+            if send_bark "$TITLE" "$BODY"; then
               LAST_SENT="$NOW"
             fi
           fi
@@ -1374,6 +1425,29 @@ final class SSHMonitorService {
             return $?
           fi
           return 1
+        }
+        """
+    }
+
+    private static var remoteAlertTemplateRendererScript: String {
+        """
+        render_template() {
+          template="$1"
+          awk -v tpl="$template" \
+              -v server="${HOST_LABEL:-}" \
+              -v name="${HOST_LABEL:-}" \
+              -v host="${HOST_VALUE:-}" \
+              -v cpu="${CPU_USAGE:-}" \
+              -v threshold="${CPU_THRESHOLD:-}" '
+            BEGIN {
+              gsub(/\\{server\\}/, server, tpl)
+              gsub(/\\{name\\}/, name, tpl)
+              gsub(/\\{host\\}/, host, tpl)
+              gsub(/\\{cpu\\}/, cpu, tpl)
+              gsub(/\\{threshold\\}/, threshold, tpl)
+              print tpl
+            }
+          '
         }
         """
     }
@@ -1418,6 +1492,16 @@ final class SSHMonitorService {
         }
         normalized += "/\(key)"
         return normalized
+    }
+
+    private static func normalizedTemplate(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private static func normalizedHostValue(from config: ServerConfig) -> String {
+        let trimmed = config.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? config.name : trimmed
     }
 
     private static func shellQuoted(_ value: String) -> String {

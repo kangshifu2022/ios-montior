@@ -102,7 +102,11 @@ final class ServerStore: ObservableObject {
         for id: UUID,
         barkURL: String,
         cpuAlertThreshold: Int,
-        cpuAlertCooldownMinutes: Int
+        cpuAlertCooldownMinutes: Int,
+        barkTestTitleTemplate: String,
+        barkTestBodyTemplate: String,
+        barkAlertTitleTemplate: String,
+        barkAlertBodyTemplate: String
     ) {
         guard let index = servers.firstIndex(where: { $0.id == id }) else {
             return
@@ -111,6 +115,22 @@ final class ServerStore: ObservableObject {
         servers[index].barkURL = barkURL.trimmingCharacters(in: .whitespacesAndNewlines)
         servers[index].cpuAlertThreshold = max(1, min(cpuAlertThreshold, 100))
         servers[index].cpuAlertCooldownMinutes = max(1, cpuAlertCooldownMinutes)
+        servers[index].barkTestTitleTemplate = normalizedTemplate(
+            barkTestTitleTemplate,
+            fallback: ServerConfig.defaultBarkTestTitleTemplate
+        )
+        servers[index].barkTestBodyTemplate = normalizedTemplate(
+            barkTestBodyTemplate,
+            fallback: ServerConfig.defaultBarkTestBodyTemplate
+        )
+        servers[index].barkAlertTitleTemplate = normalizedTemplate(
+            barkAlertTitleTemplate,
+            fallback: ServerConfig.defaultBarkAlertTitleTemplate
+        )
+        servers[index].barkAlertBodyTemplate = normalizedTemplate(
+            barkAlertBodyTemplate,
+            fallback: ServerConfig.defaultBarkAlertBodyTemplate
+        )
         save()
     }
 
@@ -228,7 +248,13 @@ final class ServerStore: ObservableObject {
         if shouldRefreshDynamic {
             return .dynamic(config)
         }
+
         return nil
+    }
+
+    private func normalizedTemplate(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
     }
 
     private func refresh(_ requests: [RefreshRequest]) async {

@@ -8,6 +8,10 @@ struct AlertsView: View {
     @State private var barkURL: String = ""
     @State private var cpuThreshold: Int = 90
     @State private var cooldownMinutes: Int = 10
+    @State private var barkTestTitleTemplate: String = ServerConfig.defaultBarkTestTitleTemplate
+    @State private var barkTestBodyTemplate: String = ServerConfig.defaultBarkTestBodyTemplate
+    @State private var barkAlertTitleTemplate: String = ServerConfig.defaultBarkAlertTitleTemplate
+    @State private var barkAlertBodyTemplate: String = ServerConfig.defaultBarkAlertBodyTemplate
     @State private var showInstallConfirmation = false
     @State private var showRemoveConfirmation = false
     @State private var showBarkHelp = false
@@ -36,7 +40,11 @@ struct AlertsView: View {
         guard let selectedServer else { return false }
         return barkURL.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkURL ||
             cpuThreshold != selectedServer.cpuAlertThreshold ||
-            cooldownMinutes != selectedServer.cpuAlertCooldownMinutes
+            cooldownMinutes != selectedServer.cpuAlertCooldownMinutes ||
+            barkTestTitleTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkTestTitleTemplate ||
+            barkTestBodyTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkTestBodyTemplate ||
+            barkAlertTitleTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkAlertTitleTemplate ||
+            barkAlertBodyTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkAlertBodyTemplate
     }
 
     private var barkURLIsFilled: Bool {
@@ -217,6 +225,50 @@ struct AlertsView: View {
                 .font(.footnote)
                 .foregroundColor(.secondary)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("测试通知模板")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                TextField("例如：{server} 测试通知", text: $barkTestTitleTemplate)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                TextField("例如：当前 CPU 占用率 {cpu}%", text: $barkTestBodyTemplate)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("告警通知模板")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                TextField("例如：{server} CPU 告警", text: $barkAlertTitleTemplate)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                TextField("例如：CPU 占用率 {cpu}% ，已超过阈值 {threshold}%", text: $barkAlertBodyTemplate)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            Text("支持变量：{server} / {name} 表示服务器名称，{host} 表示主机地址，{cpu} 表示当前 CPU 占用率，{threshold} 表示告警阈值。留空会恢复默认模板。")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+
             if hasUnsavedChanges {
                 Button {
                     Task { await saveConfigurationAndSendPreview() }
@@ -325,6 +377,10 @@ struct AlertsView: View {
         barkURL = config.barkURL
         cpuThreshold = config.cpuAlertThreshold
         cooldownMinutes = config.cpuAlertCooldownMinutes
+        barkTestTitleTemplate = config.barkTestTitleTemplate
+        barkTestBodyTemplate = config.barkTestBodyTemplate
+        barkAlertTitleTemplate = config.barkAlertTitleTemplate
+        barkAlertBodyTemplate = config.barkAlertBodyTemplate
     }
 
     private func saveLocalConfiguration() {
@@ -333,8 +389,15 @@ struct AlertsView: View {
             for: selectedServer.id,
             barkURL: barkURL,
             cpuAlertThreshold: cpuThreshold,
-            cpuAlertCooldownMinutes: cooldownMinutes
+            cpuAlertCooldownMinutes: cooldownMinutes,
+            barkTestTitleTemplate: barkTestTitleTemplate,
+            barkTestBodyTemplate: barkTestBodyTemplate,
+            barkAlertTitleTemplate: barkAlertTitleTemplate,
+            barkAlertBodyTemplate: barkAlertBodyTemplate
         )
+        if let latestServer = store.servers.first(where: { $0.id == selectedServer.id }) {
+            loadForm(from: latestServer)
+        }
     }
 
     private func saveConfigurationAndSendPreview() async {
@@ -444,6 +507,7 @@ private struct BarkHelpView: View {
 
                 Section("说明") {
                     Text("你粘贴的地址会被转换成 Bark 推送地址，并保存到目标服务器上的远端告警配置中。")
+                    Text("支持通知模板变量：{server}、{name}、{host}、{cpu}、{threshold}。")
                     Text("发送测试通知时，请确保目标服务器可以访问外网。")
                 }
             }
