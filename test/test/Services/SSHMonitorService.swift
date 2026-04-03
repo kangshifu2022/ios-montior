@@ -9,6 +9,10 @@ final class SSHMonitorService {
         let rawOutput: String
     }
 
+    struct RemoteAlertOperationError: Error, Sendable {
+        let message: String
+    }
+
     static func fetchStats(config: ServerConfig) async -> ServerStats {
         switch await execute(
             config: config,
@@ -71,7 +75,7 @@ final class SSHMonitorService {
         }
     }
 
-    static func fetchRemoteAlertStatus(config: ServerConfig) async -> Result<RemoteAlertStatus, String> {
+    static func fetchRemoteAlertStatus(config: ServerConfig) async -> Result<RemoteAlertStatus, RemoteAlertOperationError> {
         switch await execute(
             config: config,
             script: remoteAlertStatusScript,
@@ -91,13 +95,13 @@ final class SSHMonitorService {
         case .success(let output):
             return .success(parseRemoteAlertStatus(output: output))
         case .failure(let failure):
-            return .failure(failure.statusMessage)
+            return .failure(RemoteAlertOperationError(message: failure.statusMessage))
         }
     }
 
-    static func deployCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, String> {
+    static func deployCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, RemoteAlertOperationError> {
         guard let barkBaseURL = barkPushBaseURL(from: config.barkURL) else {
-            return .failure("Bark 测试地址无效，请粘贴 Bark App 里的测试地址")
+            return .failure(RemoteAlertOperationError(message: "Bark 测试地址无效，请粘贴 Bark App 里的测试地址"))
         }
 
         let deployScript = makeRemoteAlertDeploymentScript(config: config, barkBaseURL: barkBaseURL)
@@ -120,11 +124,11 @@ final class SSHMonitorService {
         case .success:
             return await fetchRemoteAlertStatus(config: config)
         case .failure(let failure):
-            return .failure(failure.statusMessage)
+            return .failure(RemoteAlertOperationError(message: failure.statusMessage))
         }
     }
 
-    static func removeCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, String> {
+    static func removeCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, RemoteAlertOperationError> {
         switch await execute(
             config: config,
             script: makeRemoteAlertRemovalScript(),
@@ -144,13 +148,13 @@ final class SSHMonitorService {
         case .success:
             return await fetchRemoteAlertStatus(config: config)
         case .failure(let failure):
-            return .failure(failure.statusMessage)
+            return .failure(RemoteAlertOperationError(message: failure.statusMessage))
         }
     }
 
-    static func sendTestBarkNotification(config: ServerConfig) async -> Result<String, String> {
+    static func sendTestBarkNotification(config: ServerConfig) async -> Result<String, RemoteAlertOperationError> {
         guard let barkBaseURL = barkPushBaseURL(from: config.barkURL) else {
-            return .failure("Bark 测试地址无效，请粘贴 Bark App 里的测试地址")
+            return .failure(RemoteAlertOperationError(message: "Bark 测试地址无效，请粘贴 Bark App 里的测试地址"))
         }
 
         switch await execute(
@@ -172,7 +176,7 @@ final class SSHMonitorService {
         case .success:
             return .success("测试通知已从目标服务器发出")
         case .failure(let failure):
-            return .failure(failure.statusMessage)
+            return .failure(RemoteAlertOperationError(message: failure.statusMessage))
         }
     }
 

@@ -39,11 +39,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
         for item in items {
             let button = UIButton(type: .system)
+            var configuration = UIButton.Configuration.plain()
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+            button.configuration = configuration
             button.setTitle(item.title, for: .normal)
             button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
             button.setTitleColor(.label, for: .normal)
             button.backgroundColor = .tertiarySystemFill
-            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
             button.layer.cornerRadius = 12
             button.addAction(UIAction { _ in
                 item.action()

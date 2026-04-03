@@ -76,13 +76,13 @@ struct AlertsView: View {
                     loadForm(from: selectedServer)
                 }
             }
-            .onChange(of: store.servers.map(\.id)) { _ in
+            .onChange(of: store.servers.map(\.id)) { _, _ in
                 syncSelection()
                 if let selectedServer {
                     loadForm(from: selectedServer)
                 }
             }
-            .onChange(of: selectedServerID) { _ in
+            .onChange(of: selectedServerID) { _, _ in
                 if let selectedServer {
                     loadForm(from: selectedServer)
                 }

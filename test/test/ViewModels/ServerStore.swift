@@ -126,8 +126,8 @@ final class ServerStore: ObservableObject {
                 status.lastUpdatedAt = remoteAlertStatusByServerID[latestConfig.id]?.lastUpdatedAt
             }
             remoteAlertStatusByServerID[latestConfig.id] = status
-        case .failure(let message):
-            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        case .failure(let error):
+            mergeRemoteAlertFailure(error.message, for: latestConfig.id)
         }
 
         saveCachedInfo()
@@ -147,8 +147,8 @@ final class ServerStore: ObservableObject {
             status.lastError = nil
             remoteAlertStatusByServerID[latestConfig.id] = status
             setRemoteAlertEnabled(true, for: latestConfig.id)
-        case .failure(let message):
-            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        case .failure(let error):
+            mergeRemoteAlertFailure(error.message, for: latestConfig.id)
         }
 
         save()
@@ -169,8 +169,8 @@ final class ServerStore: ObservableObject {
             status.lastError = nil
             remoteAlertStatusByServerID[latestConfig.id] = status
             setRemoteAlertEnabled(false, for: latestConfig.id)
-        case .failure(let message):
-            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        case .failure(let error):
+            mergeRemoteAlertFailure(error.message, for: latestConfig.id)
         }
 
         save()
@@ -191,8 +191,8 @@ final class ServerStore: ObservableObject {
             status.lastMessage = message
             status.lastError = nil
             remoteAlertStatusByServerID[latestConfig.id] = status
-        case .failure(let message):
-            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        case .failure(let error):
+            mergeRemoteAlertFailure(error.message, for: latestConfig.id)
         }
 
         saveCachedInfo()

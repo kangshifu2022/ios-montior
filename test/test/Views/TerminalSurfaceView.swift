@@ -30,7 +30,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 rows: terminal.rows
             )
             viewModel.connectIfNeeded()
-            terminalView.becomeFirstResponder()
+            _ = terminalView.becomeFirstResponder()
         }
 
         return terminalView
