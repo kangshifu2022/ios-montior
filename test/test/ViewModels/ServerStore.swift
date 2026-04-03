@@ -20,8 +20,10 @@ final class ServerStore: ObservableObject {
     @Published private(set) var refreshingServerIDs: Set<UUID> = []
     @Published private(set) var remoteAlertStatusByServerID: [UUID: RemoteAlertStatus] = [:]
     @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
+    @Published private(set) var alertSettings = AlertSettings()
 
     private let serversKey = "saved_servers"
+    private let alertSettingsKey = "saved_alert_settings"
     private let staticInfoKey = "cached_server_static_info"
     private let dynamicInfoKey = "cached_server_dynamic_info"
     private let remoteAlertStatusKey = "cached_remote_alert_status"
@@ -33,6 +35,7 @@ final class ServerStore: ObservableObject {
 
     init() {
         load()
+        loadAlertSettings()
         loadCachedInfo()
     }
 
@@ -100,42 +103,28 @@ final class ServerStore: ObservableObject {
 
     func updateAlertSettings(
         for id: UUID,
-        barkURL: String,
-        cpuAlertThreshold: Int,
-        cpuAlertCooldownMinutes: Int,
-        barkTestTitleTemplate: String,
-        barkTestBodyTemplate: String,
-        barkAlertTitleTemplate: String,
-        barkAlertBodyTemplate: String
+        alertConfiguration: AlertConfiguration
     ) {
         guard let index = servers.firstIndex(where: { $0.id == id }) else {
             return
         }
 
-        servers[index].barkURL = barkURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        servers[index].cpuAlertThreshold = max(1, min(cpuAlertThreshold, 100))
-        servers[index].cpuAlertCooldownMinutes = max(1, cpuAlertCooldownMinutes)
-        servers[index].barkTestTitleTemplate = normalizedTemplate(
-            barkTestTitleTemplate,
-            fallback: ServerConfig.defaultBarkTestTitleTemplate
-        )
-        servers[index].barkTestBodyTemplate = normalizedTemplate(
-            barkTestBodyTemplate,
-            fallback: ServerConfig.defaultBarkTestBodyTemplate
-        )
-        servers[index].barkAlertTitleTemplate = normalizedTemplate(
-            barkAlertTitleTemplate,
-            fallback: ServerConfig.defaultBarkAlertTitleTemplate
-        )
-        servers[index].barkAlertBodyTemplate = normalizedTemplate(
-            barkAlertBodyTemplate,
-            fallback: ServerConfig.defaultBarkAlertBodyTemplate
-        )
+        servers[index].alertConfiguration = alertConfiguration
         save()
     }
 
+    func updateGlobalAlertSettings(barkURL: String) {
+        let normalizedBarkURL = barkURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard alertSettings.barkURL != normalizedBarkURL else {
+            return
+        }
+
+        alertSettings = AlertSettings(barkURL: normalizedBarkURL)
+        saveAlertSettings()
+    }
+
     func refreshRemoteAlertStatus(for config: ServerConfig) async {
-        guard let latestConfig = latestConfig(for: config.id) else { return }
+        guard let latestConfig = latestAlertConfig(for: config.id) else { return }
         beginRemoteAlertOperation(for: latestConfig.id)
         defer { endRemoteAlertOperation(for: latestConfig.id) }
 
@@ -154,7 +143,7 @@ final class ServerStore: ObservableObject {
     }
 
     func deployRemoteAlert(for config: ServerConfig) async {
-        guard let latestConfig = latestConfig(for: config.id) else { return }
+        guard let latestConfig = latestAlertConfig(for: config.id) else { return }
         beginRemoteAlertOperation(for: latestConfig.id)
         defer { endRemoteAlertOperation(for: latestConfig.id) }
 
@@ -166,7 +155,6 @@ final class ServerStore: ObservableObject {
             status.lastMessage = "已在目标服务器安装并启用远端告警"
             status.lastError = nil
             remoteAlertStatusByServerID[latestConfig.id] = status
-            setRemoteAlertEnabled(true, for: latestConfig.id)
         case .failure(let error):
             mergeRemoteAlertFailure(error.message, for: latestConfig.id)
         }
@@ -176,7 +164,7 @@ final class ServerStore: ObservableObject {
     }
 
     func removeRemoteAlert(for config: ServerConfig) async {
-        guard let latestConfig = latestConfig(for: config.id) else { return }
+        guard let latestConfig = latestAlertConfig(for: config.id) else { return }
         beginRemoteAlertOperation(for: latestConfig.id)
         defer { endRemoteAlertOperation(for: latestConfig.id) }
 
@@ -188,7 +176,6 @@ final class ServerStore: ObservableObject {
             status.lastMessage = "已从目标服务器卸载远端告警"
             status.lastError = nil
             remoteAlertStatusByServerID[latestConfig.id] = status
-            setRemoteAlertEnabled(false, for: latestConfig.id)
         case .failure(let error):
             mergeRemoteAlertFailure(error.message, for: latestConfig.id)
         }
@@ -198,7 +185,7 @@ final class ServerStore: ObservableObject {
     }
 
     func sendRemoteAlertTest(for config: ServerConfig) async {
-        guard let latestConfig = latestConfig(for: config.id) else { return }
+        guard let latestConfig = latestAlertConfig(for: config.id) else { return }
         beginRemoteAlertOperation(for: latestConfig.id)
         defer { endRemoteAlertOperation(for: latestConfig.id) }
 
@@ -250,11 +237,6 @@ final class ServerStore: ObservableObject {
         }
 
         return nil
-    }
-
-    private func normalizedTemplate(_ value: String, fallback: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? fallback : trimmed
     }
 
     private func refresh(_ requests: [RefreshRequest]) async {
@@ -341,6 +323,12 @@ final class ServerStore: ObservableObject {
         }
     }
 
+    private func saveAlertSettings() {
+        if let data = try? JSONEncoder().encode(alertSettings) {
+            UserDefaults.standard.set(data, forKey: alertSettingsKey)
+        }
+    }
+
     private func saveCachedInfo() {
         if let data = try? JSONEncoder().encode(staticInfoByServerID) {
             UserDefaults.standard.set(data, forKey: staticInfoKey)
@@ -358,6 +346,21 @@ final class ServerStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([ServerConfig].self, from: data) {
             servers = decoded
         }
+    }
+
+    private func loadAlertSettings() {
+        if let data = UserDefaults.standard.data(forKey: alertSettingsKey),
+           let decoded = try? JSONDecoder().decode(AlertSettings.self, from: data) {
+            alertSettings = decoded
+            return
+        }
+
+        let migratedBarkURL = servers
+            .lazy
+            .map { $0.barkURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
+        alertSettings = AlertSettings(barkURL: migratedBarkURL)
+        saveAlertSettings()
     }
 
     private func loadCachedInfo() {
@@ -461,19 +464,20 @@ final class ServerStore: ObservableObject {
         servers.first(where: { $0.id == id })
     }
 
+    private func latestAlertConfig(for id: UUID) -> ServerConfig? {
+        guard var config = latestConfig(for: id) else {
+            return nil
+        }
+        config.barkURL = alertSettings.barkURL
+        return config
+    }
+
     private func beginRemoteAlertOperation(for id: UUID) {
         remoteAlertOperationServerIDs.insert(id)
     }
 
     private func endRemoteAlertOperation(for id: UUID) {
         remoteAlertOperationServerIDs.remove(id)
-    }
-
-    private func setRemoteAlertEnabled(_ isEnabled: Bool, for id: UUID) {
-        guard let index = servers.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-        servers[index].cpuAlertEnabled = isEnabled
     }
 
     private func mergeRemoteAlertFailure(_ message: String, for id: UUID) {

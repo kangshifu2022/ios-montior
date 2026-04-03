@@ -100,8 +100,11 @@ final class SSHMonitorService {
     }
 
     static func deployCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, RemoteAlertOperationError> {
-        guard let barkBaseURL = barkPushBaseURL(from: config.barkURL) else {
+        guard let barkBaseURL = BarkService.pushBaseURLString(from: config.barkURL) else {
             return .failure(RemoteAlertOperationError(message: "Bark 测试地址无效，请粘贴 Bark App 里的测试地址"))
+        }
+        guard config.alertConfiguration.hasEnabledRules else {
+            return .failure(RemoteAlertOperationError(message: "请至少启用一项告警规则"))
         }
 
         let deployScript = makeRemoteAlertDeploymentScript(config: config, barkBaseURL: barkBaseURL)
@@ -169,12 +172,8 @@ final class SSHMonitorService {
                 "algorithms: SSHAlgorithms.all"
             ]
         ) {
-        case .success(let output):
-            let fields = parseMarkerOutput(output)
-            if let cpuUsage = fields["CPU_USAGE"], !cpuUsage.isEmpty {
-                return .success("当前 CPU \(cpuUsage)% 的测试通知已从目标服务器发出")
-            }
-            return .success("当前 CPU 占用率测试通知已从目标服务器发出")
+        case .success:
+            return .success("远端告警测试通知已从目标服务器发出")
         case .failure(let failure):
             return .failure(RemoteAlertOperationError(message: failure.statusMessage))
         }
@@ -244,10 +243,33 @@ final class SSHMonitorService {
     SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
     ENV_PATH="$ALERT_DIR/cpu_alert.env"
     INSTALLED="no"
-    MESSAGE="Remote alert is not installed"
+    MESSAGE="未在服务器上安装远端告警"
+
+    append_rule() {
+      if [ -z "$RULES" ]; then
+        RULES="$1"
+      else
+        RULES="$RULES, $1"
+      fi
+    }
+
     if [ -f "$SCRIPT_PATH" ] && (crontab -l 2>/dev/null || true) | grep -F "$SCRIPT_PATH" >/dev/null 2>&1; then
       INSTALLED="yes"
-      MESSAGE="Remote alert is installed"
+      RULES=""
+      if [ -r "$ENV_PATH" ]; then
+        . "$ENV_PATH"
+        [ "${CPU_USAGE_ENABLED:-0}" = "1" ] && append_rule "CPU"
+        [ "${MEMORY_USAGE_ENABLED:-0}" = "1" ] && append_rule "内存"
+        [ "${PSI_CPU_ENABLED:-0}" = "1" ] && append_rule "CPU PSI"
+        [ "${PSI_MEMORY_ENABLED:-0}" = "1" ] && append_rule "内存 PSI"
+        [ "${PSI_IO_ENABLED:-0}" = "1" ] && append_rule "IO PSI"
+        [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ] && append_rule "网站连通性"
+      fi
+      if [ -n "${RULES:-}" ]; then
+        MESSAGE="已启用规则: $RULES"
+      else
+        MESSAGE="已启用远端告警"
+      fi
     fi
     echo "=ALERT_INSTALLED="
     echo "$INSTALLED"
@@ -1191,27 +1213,11 @@ final class SSHMonitorService {
     }
 
     private static func makeRemoteAlertDeploymentScript(config: ServerConfig, barkBaseURL: String) -> String {
-        let threshold = max(1, min(config.cpuAlertThreshold, 100))
-        let cooldownSeconds = max(1, config.cpuAlertCooldownMinutes) * 60
+        let alertConfiguration = config.alertConfiguration
+        let cooldownSeconds = max(1, alertConfiguration.cooldownMinutes) * 60
         let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
         let safeHostValue = normalizedHostValue(from: config)
-        let testTitleTemplate = normalizedTemplate(
-            config.barkTestTitleTemplate,
-            fallback: ServerConfig.defaultBarkTestTitleTemplate
-        )
-        let testBodyTemplate = normalizedTemplate(
-            config.barkTestBodyTemplate,
-            fallback: ServerConfig.defaultBarkTestBodyTemplate
-        )
-        let alertTitleTemplate = normalizedTemplate(
-            config.barkAlertTitleTemplate,
-            fallback: ServerConfig.defaultBarkAlertTitleTemplate
-        )
-        let alertBodyTemplate = normalizedTemplate(
-            config.barkAlertBodyTemplate,
-            fallback: ServerConfig.defaultBarkAlertBodyTemplate
-        )
         let scriptBody = remoteAlertRunnerScript
 
         return """
@@ -1245,14 +1251,21 @@ final class SSHMonitorService {
 
         cat > "$ENV_PATH" <<'IOS_MONITOR_REMOTE_ALERT_ENV'
         BARK_URL=\(shellQuoted(barkBaseURL))
-        CPU_THRESHOLD='\(threshold)'
         COOLDOWN_SECONDS='\(cooldownSeconds)'
         HOST_LABEL=\(shellQuoted(safeHostLabel))
         HOST_VALUE=\(shellQuoted(safeHostValue))
-        TEST_TITLE_TEMPLATE=\(shellQuoted(testTitleTemplate))
-        TEST_BODY_TEMPLATE=\(shellQuoted(testBodyTemplate))
-        ALERT_TITLE_TEMPLATE=\(shellQuoted(alertTitleTemplate))
-        ALERT_BODY_TEMPLATE=\(shellQuoted(alertBodyTemplate))
+        CPU_USAGE_ENABLED='\(shellBool(alertConfiguration.cpuUsageEnabled))'
+        CPU_USAGE_THRESHOLD='\(alertConfiguration.cpuUsageThreshold)'
+        MEMORY_USAGE_ENABLED='\(shellBool(alertConfiguration.memoryUsageEnabled))'
+        MEMORY_USAGE_THRESHOLD='\(alertConfiguration.memoryUsageThreshold)'
+        PSI_CPU_ENABLED='\(shellBool(alertConfiguration.psiCPUEnabled))'
+        PSI_CPU_THRESHOLD='\(alertConfiguration.psiCPUThreshold)'
+        PSI_MEMORY_ENABLED='\(shellBool(alertConfiguration.psiMemoryEnabled))'
+        PSI_MEMORY_THRESHOLD='\(alertConfiguration.psiMemoryThreshold)'
+        PSI_IO_ENABLED='\(shellBool(alertConfiguration.psiIOEnabled))'
+        PSI_IO_THRESHOLD='\(alertConfiguration.psiIOThreshold)'
+        WEBSITE_ENABLED='\(shellBool(alertConfiguration.websiteEnabled))'
+        WEBSITE_URL=\(shellQuoted(alertConfiguration.websiteURL))
         IOS_MONITOR_REMOTE_ALERT_ENV
         chmod 600 "$ENV_PATH"
 
@@ -1309,21 +1322,6 @@ final class SSHMonitorService {
       exit 1
     fi
 
-    echo "=CPU_USAGE="
-    (top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {
-      for (i = 1; i <= NF; i++) {
-        if ($i ~ /id,|idle/) {
-          v = $(i - 1)
-          gsub(/[^0-9.]/, "", v)
-          if (v != "") {
-            printf "%.0f\\n", 100 - v
-            found = 1
-            exit
-          }
-        }
-      }
-    } END { if (!found) print "0" }'
-
     /bin/sh "$SCRIPT_PATH" --test
     """
 
@@ -1341,56 +1339,172 @@ final class SSHMonitorService {
 
         [ -n "${HOST_LABEL:-}" ] || HOST_LABEL="${HOST_VALUE:-unknown}"
         [ -n "${HOST_VALUE:-}" ] || HOST_VALUE="${HOST_LABEL:-unknown}"
-        [ -n "${TEST_TITLE_TEMPLATE:-}" ] || TEST_TITLE_TEMPLATE='{server} 测试通知'
-        [ -n "${TEST_BODY_TEMPLATE:-}" ] || TEST_BODY_TEMPLATE='当前 CPU 占用率 {cpu}%'
-        [ -n "${ALERT_TITLE_TEMPLATE:-}" ] || ALERT_TITLE_TEMPLATE='{server} CPU 告警'
-        [ -n "${ALERT_BODY_TEMPLATE:-}" ] || ALERT_BODY_TEMPLATE='CPU 占用率 {cpu}% ，已超过阈值 {threshold}%'
 
         \(remoteAlertTransportScript)
         \(remoteAlertCPUReaderScript)
-        \(remoteAlertTemplateRendererScript)
+        \(remoteAlertMemoryReaderScript)
+        \(remoteAlertPSIReaderScript)
+        \(remoteAlertWebsiteCheckerScript)
+
+        title_for_alert() {
+          printf '%s 告警' "$HOST_LABEL"
+        }
+
+        should_send_again() {
+          previous_state="$1"
+          previous_sent="$2"
+          if [ "$previous_state" != "alert" ]; then
+            return 0
+          fi
+          [ $((NOW - previous_sent)) -ge "${COOLDOWN_SECONDS:-600}" ]
+        }
 
         if [ "${1:-}" = "--test" ]; then
-          CPU_USAGE=$(fetch_cpu_usage)
-          TITLE=$(render_template "$TEST_TITLE_TEMPLATE")
-          BODY=$(render_template "$TEST_BODY_TEMPLATE")
+          SUMMARY="远端告警脚本可用"
+          DETAILS=""
+          if [ "${CPU_USAGE_ENABLED:-0}" = "1" ]; then
+            CPU_USAGE=$(fetch_cpu_usage)
+            DETAILS="$DETAILS CPU=${CPU_USAGE}%"
+          fi
+          if [ "${MEMORY_USAGE_ENABLED:-0}" = "1" ]; then
+            MEMORY_USAGE=$(fetch_memory_usage)
+            DETAILS="$DETAILS MEM=${MEMORY_USAGE}%"
+          fi
+          if [ "${PSI_CPU_ENABLED:-0}" = "1" ]; then
+            PSI_CPU=$(fetch_psi_avg10 cpu)
+            DETAILS="$DETAILS CPU_PSI=${PSI_CPU}%"
+          fi
+          if [ "${PSI_MEMORY_ENABLED:-0}" = "1" ]; then
+            PSI_MEMORY=$(fetch_psi_avg10 memory)
+            DETAILS="$DETAILS MEM_PSI=${PSI_MEMORY}%"
+          fi
+          if [ "${PSI_IO_ENABLED:-0}" = "1" ]; then
+            PSI_IO=$(fetch_psi_avg10 io)
+            DETAILS="$DETAILS IO_PSI=${PSI_IO}%"
+          fi
+          if [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ]; then
+            if check_website "$WEBSITE_URL"; then
+              DETAILS="$DETAILS WEBSITE=ok"
+            else
+              DETAILS="$DETAILS WEBSITE=down"
+            fi
+          fi
+          TITLE="$(title_for_alert)"
+          BODY="$SUMMARY$DETAILS"
           send_bark "$TITLE" "$BODY"
           exit $?
         fi
 
-        CPU_USAGE=$(fetch_cpu_usage)
-        LAST_STATE="normal"
-        LAST_SENT=0
+        CPU_STATE="normal"
+        CPU_LAST_SENT=0
+        MEMORY_STATE="normal"
+        MEMORY_LAST_SENT=0
+        PSI_CPU_STATE="normal"
+        PSI_CPU_LAST_SENT=0
+        PSI_MEMORY_STATE="normal"
+        PSI_MEMORY_LAST_SENT=0
+        PSI_IO_STATE="normal"
+        PSI_IO_LAST_SENT=0
+        WEBSITE_STATE="normal"
+        WEBSITE_LAST_SENT=0
 
         if [ -r "$STATE_PATH" ]; then
           . "$STATE_PATH"
         fi
 
-        [ -n "${CPU_THRESHOLD:-}" ] || CPU_THRESHOLD=90
         [ -n "${COOLDOWN_SECONDS:-}" ] || COOLDOWN_SECONDS=600
         NOW=$(date +%s 2>/dev/null || busybox date +%s 2>/dev/null || echo 0)
 
-        if [ "$CPU_USAGE" -ge "$CPU_THRESHOLD" ]; then
-          SHOULD_SEND=0
-          if [ "${LAST_STATE:-normal}" != "high" ]; then
-            SHOULD_SEND=1
-          elif [ $((NOW - ${LAST_SENT:-0})) -ge "$COOLDOWN_SECONDS" ]; then
-            SHOULD_SEND=1
-          fi
-
-          if [ "$SHOULD_SEND" -eq 1 ]; then
-            TITLE=$(render_template "$ALERT_TITLE_TEMPLATE")
-            BODY=$(render_template "$ALERT_BODY_TEMPLATE")
-            if send_bark "$TITLE" "$BODY"; then
-              LAST_SENT="$NOW"
+        if [ "${CPU_USAGE_ENABLED:-0}" = "1" ]; then
+          CPU_USAGE=$(fetch_cpu_usage)
+          if [ "$CPU_USAGE" -ge "${CPU_USAGE_THRESHOLD:-90}" ]; then
+            if should_send_again "${CPU_STATE:-normal}" "${CPU_LAST_SENT:-0}"; then
+              if send_bark "$(title_for_alert)" "CPU 占用率 ${CPU_USAGE}% ，已超过阈值 ${CPU_USAGE_THRESHOLD}%"; then
+                CPU_LAST_SENT="$NOW"
+              fi
             fi
+            CPU_STATE="alert"
+          else
+            CPU_STATE="normal"
           fi
-          LAST_STATE="high"
-        else
-          LAST_STATE="normal"
         fi
 
-        printf 'LAST_STATE=%s\\nLAST_SENT=%s\\n' "$LAST_STATE" "${LAST_SENT:-0}" > "$STATE_PATH"
+        if [ "${MEMORY_USAGE_ENABLED:-0}" = "1" ]; then
+          MEMORY_USAGE=$(fetch_memory_usage)
+          if [ "$MEMORY_USAGE" -ge "${MEMORY_USAGE_THRESHOLD:-90}" ]; then
+            if should_send_again "${MEMORY_STATE:-normal}" "${MEMORY_LAST_SENT:-0}"; then
+              if send_bark "$(title_for_alert)" "内存占用率 ${MEMORY_USAGE}% ，已超过阈值 ${MEMORY_USAGE_THRESHOLD}%"; then
+                MEMORY_LAST_SENT="$NOW"
+              fi
+            fi
+            MEMORY_STATE="alert"
+          else
+            MEMORY_STATE="normal"
+          fi
+        fi
+
+        if [ "${PSI_CPU_ENABLED:-0}" = "1" ]; then
+          PSI_CPU=$(fetch_psi_avg10 cpu)
+          if [ "$PSI_CPU" -ge "${PSI_CPU_THRESHOLD:-5}" ]; then
+            if should_send_again "${PSI_CPU_STATE:-normal}" "${PSI_CPU_LAST_SENT:-0}"; then
+              if send_bark "$(title_for_alert)" "CPU PSI(avg10) ${PSI_CPU}% ，已超过阈值 ${PSI_CPU_THRESHOLD}%"; then
+                PSI_CPU_LAST_SENT="$NOW"
+              fi
+            fi
+            PSI_CPU_STATE="alert"
+          else
+            PSI_CPU_STATE="normal"
+          fi
+        fi
+
+        if [ "${PSI_MEMORY_ENABLED:-0}" = "1" ]; then
+          PSI_MEMORY=$(fetch_psi_avg10 memory)
+          if [ "$PSI_MEMORY" -ge "${PSI_MEMORY_THRESHOLD:-5}" ]; then
+            if should_send_again "${PSI_MEMORY_STATE:-normal}" "${PSI_MEMORY_LAST_SENT:-0}"; then
+              if send_bark "$(title_for_alert)" "内存 PSI(avg10) ${PSI_MEMORY}% ，已超过阈值 ${PSI_MEMORY_THRESHOLD}%"; then
+                PSI_MEMORY_LAST_SENT="$NOW"
+              fi
+            fi
+            PSI_MEMORY_STATE="alert"
+          else
+            PSI_MEMORY_STATE="normal"
+          fi
+        fi
+
+        if [ "${PSI_IO_ENABLED:-0}" = "1" ]; then
+          PSI_IO=$(fetch_psi_avg10 io)
+          if [ "$PSI_IO" -ge "${PSI_IO_THRESHOLD:-5}" ]; then
+            if should_send_again "${PSI_IO_STATE:-normal}" "${PSI_IO_LAST_SENT:-0}"; then
+              if send_bark "$(title_for_alert)" "IO PSI(avg10) ${PSI_IO}% ，已超过阈值 ${PSI_IO_THRESHOLD}%"; then
+                PSI_IO_LAST_SENT="$NOW"
+              fi
+            fi
+            PSI_IO_STATE="alert"
+          else
+            PSI_IO_STATE="normal"
+          fi
+        fi
+
+        if [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ]; then
+          if check_website "$WEBSITE_URL"; then
+            WEBSITE_STATE="normal"
+          else
+            if should_send_again "${WEBSITE_STATE:-normal}" "${WEBSITE_LAST_SENT:-0}"; then
+              if send_bark "$(title_for_alert)" "网站连通性异常，${WEBSITE_URL} 无法访问"; then
+                WEBSITE_LAST_SENT="$NOW"
+              fi
+            fi
+            WEBSITE_STATE="alert"
+          fi
+        fi
+
+        printf 'CPU_STATE=%s\\nCPU_LAST_SENT=%s\\nMEMORY_STATE=%s\\nMEMORY_LAST_SENT=%s\\nPSI_CPU_STATE=%s\\nPSI_CPU_LAST_SENT=%s\\nPSI_MEMORY_STATE=%s\\nPSI_MEMORY_LAST_SENT=%s\\nPSI_IO_STATE=%s\\nPSI_IO_LAST_SENT=%s\\nWEBSITE_STATE=%s\\nWEBSITE_LAST_SENT=%s\\n' \
+          "${CPU_STATE:-normal}" "${CPU_LAST_SENT:-0}" \
+          "${MEMORY_STATE:-normal}" "${MEMORY_LAST_SENT:-0}" \
+          "${PSI_CPU_STATE:-normal}" "${PSI_CPU_LAST_SENT:-0}" \
+          "${PSI_MEMORY_STATE:-normal}" "${PSI_MEMORY_LAST_SENT:-0}" \
+          "${PSI_IO_STATE:-normal}" "${PSI_IO_LAST_SENT:-0}" \
+          "${WEBSITE_STATE:-normal}" "${WEBSITE_LAST_SENT:-0}" > "$STATE_PATH"
         """
     }
 
@@ -1437,25 +1551,81 @@ final class SSHMonitorService {
         """
     }
 
-    private static var remoteAlertTemplateRendererScript: String {
+    private static var remoteAlertMemoryReaderScript: String {
         """
-        render_template() {
-          template="$1"
-          awk -v tpl="$template" \
-              -v server="${HOST_LABEL:-}" \
-              -v name="${HOST_LABEL:-}" \
-              -v host="${HOST_VALUE:-}" \
-              -v cpu="${CPU_USAGE:-}" \
-              -v threshold="${CPU_THRESHOLD:-}" '
-            BEGIN {
-              gsub(/\\{server\\}/, server, tpl)
-              gsub(/\\{name\\}/, name, tpl)
-              gsub(/\\{host\\}/, host, tpl)
-              gsub(/\\{cpu\\}/, cpu, tpl)
-              gsub(/\\{threshold\\}/, threshold, tpl)
-              print tpl
+        fetch_memory_usage() {
+          awk '
+            /MemTotal:/ { total=$2 }
+            /MemAvailable:/ { available=$2 }
+            /MemFree:/ && available == 0 { available=$2 }
+            END {
+              if (total <= 0) {
+                print 0
+              } else {
+                used = total - available
+                if (used < 0) used = 0
+                printf "%.0f\\n", (used * 100) / total
+              }
             }
-          '
+          ' /proc/meminfo 2>/dev/null || echo 0
+        }
+        """
+    }
+
+    private static var remoteAlertPSIReaderScript: String {
+        """
+        fetch_psi_avg10() {
+          resource="$1"
+          file="/proc/pressure/$resource"
+          if [ ! -r "$file" ]; then
+            echo 0
+            return 0
+          fi
+
+          awk '
+            /^full / {
+              if (match($0, /avg10=([0-9.]+)/, m)) {
+                printf "%.0f\\n", m[1]
+                found = 1
+                exit
+              }
+            }
+            /^some / { some = $0 }
+            END {
+              if (!found && some != "") {
+                if (match(some, /avg10=([0-9.]+)/, m)) {
+                  printf "%.0f\\n", m[1]
+                } else {
+                  print 0
+                }
+              } else if (!found) {
+                print 0
+              }
+            }
+          ' "$file" 2>/dev/null || echo 0
+        }
+        """
+    }
+
+    private static var remoteAlertWebsiteCheckerScript: String {
+        """
+        check_website() {
+          target="$1"
+          [ -n "$target" ] || return 1
+
+          if command -v curl >/dev/null 2>&1; then
+            curl -fsS -L --max-time 15 -o /dev/null "$target" >/dev/null 2>&1
+            return $?
+          fi
+          if command -v wget >/dev/null 2>&1; then
+            wget -q --spider --timeout=15 "$target" >/dev/null 2>&1
+            return $?
+          fi
+          if command -v uclient-fetch >/dev/null 2>&1; then
+            uclient-fetch -q -T 15 -O /dev/null "$target" >/dev/null 2>&1
+            return $?
+          fi
+          return 1
         }
         """
     }
@@ -1480,36 +1650,13 @@ final class SSHMonitorService {
         """
     }
 
-    private static func barkPushBaseURL(from raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let components = URLComponents(string: trimmed),
-              let scheme = components.scheme,
-              let host = components.host else {
-            return nil
-        }
-
-        let segments = components.path.split(separator: "/").map(String.init)
-        guard let key = segments.first, !key.isEmpty else {
-            return nil
-        }
-
-        var normalized = "\(scheme)://\(host)"
-        if let port = components.port {
-            normalized += ":\(port)"
-        }
-        normalized += "/\(key)"
-        return normalized
-    }
-
-    private static func normalizedTemplate(_ value: String, fallback: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? fallback : trimmed
-    }
-
     private static func normalizedHostValue(from config: ServerConfig) -> String {
         let trimmed = config.host.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? config.name : trimmed
+    }
+
+    private static func shellBool(_ value: Bool) -> String {
+        value ? "1" : "0"
     }
 
     private static func shellQuoted(_ value: String) -> String {

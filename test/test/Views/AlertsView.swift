@@ -2,23 +2,14 @@ import SwiftUI
 
 struct AlertsView: View {
     @ObservedObject var store: ServerStore
-    @Environment(\.openURL) private var openURL
-    @FocusState private var barkURLFieldFocused: Bool
 
     @State private var selectedServerID: UUID?
-    @State private var barkURL: String = ""
-    @State private var cpuThreshold: Int = 90
-    @State private var cooldownMinutes: Int = 10
-    @State private var barkTestTitleTemplate: String = ServerConfig.defaultBarkTestTitleTemplate
-    @State private var barkTestBodyTemplate: String = ServerConfig.defaultBarkTestBodyTemplate
-    @State private var barkAlertTitleTemplate: String = ServerConfig.defaultBarkAlertTitleTemplate
-    @State private var barkAlertBodyTemplate: String = ServerConfig.defaultBarkAlertBodyTemplate
+    @State private var alertConfiguration = AlertConfiguration()
     @State private var showInstallConfirmation = false
     @State private var showRemoveConfirmation = false
-    @State private var showBarkHelp = false
-    @State private var isEditingBarkURL = false
-
-    private let barkAppStoreURL = URL(string: "https://apps.apple.com/app/id1403753865")!
+    @State private var showBarkConfigurationSheet = false
+    @State private var barkResultMessage = ""
+    @State private var showBarkResultAlert = false
 
     private var selectedServer: ServerConfig? {
         if let selectedServerID,
@@ -38,27 +29,22 @@ struct AlertsView: View {
         return store.isPerformingRemoteAlertAction(selectedServer.id)
     }
 
+    private var barkConfigured: Bool {
+        !store.alertSettings.barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var hasUnsavedChanges: Bool {
         guard let selectedServer else { return false }
-        return barkURL.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkURL ||
-            cpuThreshold != selectedServer.cpuAlertThreshold ||
-            cooldownMinutes != selectedServer.cpuAlertCooldownMinutes ||
-            barkTestTitleTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkTestTitleTemplate ||
-            barkTestBodyTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkTestBodyTemplate ||
-            barkAlertTitleTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkAlertTitleTemplate ||
-            barkAlertBodyTemplate.trimmingCharacters(in: .whitespacesAndNewlines) != selectedServer.barkAlertBodyTemplate
+        return normalizedConfiguration(from: alertConfiguration) != selectedServer.alertConfiguration
     }
 
-    private var barkURLIsFilled: Bool {
-        !barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var canApplyAlert: Bool {
+        barkConfigured && normalizedConfiguration(from: alertConfiguration).hasEnabledRules
     }
 
-    private var savedBarkURL: String {
-        selectedServer?.barkURL.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
-    private var barkURLIsLocked: Bool {
-        !savedBarkURL.isEmpty && !isEditingBarkURL
+    private var websiteRuleNeedsURL: Bool {
+        alertConfiguration.websiteEnabled &&
+        AlertConfiguration.normalizedWebsiteURL(alertConfiguration.websiteURL).isEmpty
     }
 
     var body: some View {
@@ -69,10 +55,8 @@ struct AlertsView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
-                            serverPickerCard
-                            warningCard
-                            barkSetupCard
-                            configurationCard
+                            currentServerCard
+                            ruleConfigurationCard
                             statusCard
                             actionsCard
                         }
@@ -82,6 +66,16 @@ struct AlertsView: View {
                 }
             }
             .navigationTitle("告警")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showBarkConfigurationSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("配置 Bark")
+                }
+            }
             .task(id: selectedServer?.id) {
                 syncSelection()
                 guard let selectedServer else { return }
@@ -105,24 +99,31 @@ struct AlertsView: View {
                     loadForm(from: selectedServer)
                 }
             }
-            .alert("安装并启用远端告警", isPresented: $showInstallConfirmation) {
+            .alert("保存并启用告警", isPresented: $showInstallConfirmation) {
                 Button("取消", role: .cancel) {}
-                Button("安装并启用") {
-                    Task { await installRemoteAlert() }
+                Button("保存并启用") {
+                    Task { await saveAndDeployAlert() }
                 }
             } message: {
-                Text("将向目标服务器写入常驻脚本和 cron 定时任务，以实现 7x24 小时 CPU 告警。Bark 推送地址会保存到目标服务器，请仅在你信任的服务器上启用。")
+                Text("会把当前规则写入选中的服务器，并创建或更新服务器上的告警脚本与 cron 定时任务。")
             }
-            .alert("卸载远端告警", isPresented: $showRemoveConfirmation) {
+            .alert("取消告警", isPresented: $showRemoveConfirmation) {
                 Button("取消", role: .cancel) {}
-                Button("卸载", role: .destructive) {
+                Button("取消告警", role: .destructive) {
                     Task { await removeRemoteAlert() }
                 }
             } message: {
-                Text("将尝试删除目标服务器上的告警脚本、配置文件和 cron 任务。若远端环境被手工修改，可能仍需你自行检查残留。")
+                Text("会删除选中服务器上的告警脚本、配置文件和定时任务。")
             }
-            .sheet(isPresented: $showBarkHelp) {
-                BarkHelpView()
+            .alert("Bark 测试结果", isPresented: $showBarkResultAlert) {
+                Button("知道了", role: .cancel) {}
+            } message: {
+                Text(barkResultMessage)
+            }
+            .sheet(isPresented: $showBarkConfigurationSheet) {
+                BarkConfigurationSheet(initialBarkURL: store.alertSettings.barkURL) { barkURL in
+                    await saveAndTestBark(url: barkURL)
+                }
             }
         }
     }
@@ -134,7 +135,7 @@ struct AlertsView: View {
                 .foregroundColor(.secondary)
             Text("还没有可配置的服务器")
                 .font(.headline)
-            Text("请先前往设置页面添加服务器，再为它配置 Bark 远端告警。")
+            Text("请先前往设置页面添加服务器。配置 Bark 的入口在告警页右上角的 +。")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -144,8 +145,8 @@ struct AlertsView: View {
         .background(Color(.systemGroupedBackground))
     }
 
-    private var serverPickerCard: some View {
-        AlertSectionCard(title: "目标服务器", icon: "server.rack") {
+    private var currentServerCard: some View {
+        AlertSectionCard(title: "当前服务器", icon: "server.rack") {
             Picker("目标服务器", selection: Binding(
                 get: { selectedServerID ?? store.servers.first?.id ?? UUID() },
                 set: { selectedServerID = $0 }
@@ -157,170 +158,152 @@ struct AlertsView: View {
             .pickerStyle(.menu)
 
             if let selectedServer {
-                Text("\(selectedServer.username)@\(selectedServer.host):\(selectedServer.port)")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-
-    private var warningCard: some View {
-        AlertSectionCard(
-            title: "启用说明",
-            icon: "exclamationmark.triangle.fill",
-            tint: .orange
-        ) {
-            AlertBullet(text: "启用后会向目标服务器写入脚本、配置文件和 cron 定时任务。")
-            AlertBullet(text: "该任务会在服务器上常驻运行，用于 7x24 小时检测 CPU 使用率。")
-            AlertBullet(text: "目标服务器需要能访问外网，否则无法通过 Bark 发出通知。")
-            AlertBullet(text: "Bark 推送地址会保存在目标服务器，请仅在你信任的服务器上启用。")
-        }
-    }
-
-    private var barkSetupCard: some View {
-        AlertSectionCard(title: "Bark 配置", icon: "iphone.gen3.radiowaves.left.and.right") {
-            HStack(spacing: 12) {
-                Button("下载 Bark") {
-                    openURL(barkAppStoreURL)
-                }
-                .buttonStyle(.bordered)
-
-                Button("获取说明") {
-                    showBarkHelp = true
-                }
-                .buttonStyle(.bordered)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Bark 测试地址")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                if barkURLIsLocked {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 12) {
-                        Text(savedBarkURL)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Button("编辑地址") {
-                            isEditingBarkURL = true
-                            barkURLFieldFocused = true
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("当前正在为这台服务器配置告警")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(selectedServer.name)
+                                .font(.title3)
+                                .fontWeight(.bold)
+                            Text("\(selectedServer.username)@\(selectedServer.host):\(selectedServer.port)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
                         }
-                        .buttonStyle(.bordered)
+
+                        Spacer()
+
+                        StatusPill(
+                            title: barkConfigured ? "Bark 已配置" : "Bark 未配置",
+                            tint: barkConfigured ? .green : .orange
+                        )
                     }
-                    .padding(12)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else {
-                    TextField("https://api.day.app/xxxxxx", text: $barkURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .focused($barkURLFieldFocused)
-                        .padding(12)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    if !savedBarkURL.isEmpty {
-                        HStack {
-                            Spacer()
-                            Button("取消编辑") {
-                                barkURL = savedBarkURL
-                                isEditingBarkURL = false
-                                barkURLFieldFocused = false
-                            }
-                            .buttonStyle(.bordered)
-                        }
+                    Text("当前页面里勾选和保存的规则，只会作用于这台服务器。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    if !barkConfigured {
+                        Text("请先点右上角 + 配置 Bark 地址，然后再保存服务器告警。")
+                            .font(.footnote)
+                            .foregroundColor(.orange)
                     }
                 }
-
-                Text("请先在 iPhone 安装 Bark，打开 Bark 后复制测试地址，再粘贴到这里。支持官方 Bark 和自建 bark-server。")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.14), Color.cyan.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
     }
 
-    private var configurationCard: some View {
-        AlertSectionCard(title: "CPU 告警配置", icon: "cpu.fill") {
+    private var ruleConfigurationCard: some View {
+        AlertSectionCard(title: "告警规则", icon: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("告警阈值")
+                    Text("重复告警间隔")
                     Spacer()
-                    Text("\(cpuThreshold)%")
+                    Text("\(alertConfiguration.cooldownMinutes) 分钟")
                         .foregroundColor(.secondary)
                 }
-                Stepper("CPU 使用率超过 \(cpuThreshold)% 时告警", value: $cpuThreshold, in: 1...100)
+
+                Stepper(
+                    "持续异常时，至少间隔 \(alertConfiguration.cooldownMinutes) 分钟再次通知",
+                    value: $alertConfiguration.cooldownMinutes,
+                    in: 1...120
+                )
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("冷却时间")
-                    Spacer()
-                    Text("\(cooldownMinutes) 分钟")
-                        .foregroundColor(.secondary)
-                }
-                Stepper("重复告警至少间隔 \(cooldownMinutes) 分钟", value: $cooldownMinutes, in: 1...120)
+            AlertRuleCard(
+                title: "CPU 占用率",
+                subtitle: "当 CPU 使用率持续高于阈值时通知",
+                isEnabled: $alertConfiguration.cpuUsageEnabled
+            ) {
+                ThresholdEditor(
+                    label: "CPU 阈值",
+                    value: $alertConfiguration.cpuUsageThreshold
+                )
             }
 
-            Text("检查频率固定为每分钟一次。首次越过阈值时会发送 Bark，持续高负载期间会遵循冷却时间避免刷屏。")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("测试通知模板")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                TextField("例如：{server} 测试通知", text: $barkTestTitleTemplate)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                TextField("例如：当前 CPU 占用率 {cpu}%", text: $barkTestBodyTemplate)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            AlertRuleCard(
+                title: "内存占用率",
+                subtitle: "当内存占用率高于阈值时通知",
+                isEnabled: $alertConfiguration.memoryUsageEnabled
+            ) {
+                ThresholdEditor(
+                    label: "内存阈值",
+                    value: $alertConfiguration.memoryUsageThreshold
+                )
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("告警通知模板")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                TextField("例如：{server} CPU 告警", text: $barkAlertTitleTemplate)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                TextField("例如：CPU 占用率 {cpu}% ，已超过阈值 {threshold}%", text: $barkAlertBodyTemplate)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            AlertRuleCard(
+                title: "CPU PSI(avg10)",
+                subtitle: "使用 Linux PSI 的 avg10 指标监控 CPU 压力",
+                isEnabled: $alertConfiguration.psiCPUEnabled
+            ) {
+                ThresholdEditor(
+                    label: "CPU PSI 阈值",
+                    value: $alertConfiguration.psiCPUThreshold
+                )
             }
 
-            Text("支持变量：{server} / {name} 表示服务器名称，{host} 表示主机地址，{cpu} 表示当前 CPU 占用率，{threshold} 表示告警阈值。留空会恢复默认模板。")
-                .font(.footnote)
-                .foregroundColor(.secondary)
+            AlertRuleCard(
+                title: "内存 PSI(avg10)",
+                subtitle: "使用 Linux PSI 的 avg10 指标监控内存压力",
+                isEnabled: $alertConfiguration.psiMemoryEnabled
+            ) {
+                ThresholdEditor(
+                    label: "内存 PSI 阈值",
+                    value: $alertConfiguration.psiMemoryThreshold
+                )
+            }
 
-            if hasUnsavedChanges {
-                Button {
-                    Task { await saveConfigurationAndSendPreview() }
-                } label: {
-                    actionLabel("保存并发送当前 CPU 通知", systemImage: "tray.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-                .disabled(isBusy || !barkURLIsFilled)
+            AlertRuleCard(
+                title: "IO PSI(avg10)",
+                subtitle: "使用 Linux PSI 的 avg10 指标监控 IO 压力",
+                isEnabled: $alertConfiguration.psiIOEnabled
+            ) {
+                ThresholdEditor(
+                    label: "IO PSI 阈值",
+                    value: $alertConfiguration.psiIOThreshold
+                )
+            }
+
+            AlertRuleCard(
+                title: "网站连通性",
+                subtitle: "例如监控 https://www.youtube.com 是否可以访问",
+                isEnabled: $alertConfiguration.websiteEnabled
+            ) {
+                TextField("https://www.youtube.com", text: $alertConfiguration.websiteURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .padding(12)
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Text("可以直接填完整 URL，也可以只填域名，例如 `www.youtube.com`。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            if websiteRuleNeedsURL {
+                Text("已开启网站连通性监控，但还没有填写网址。")
+                    .font(.footnote)
+                    .foregroundColor(.red)
+            }
+
+            if !normalizedConfiguration(from: alertConfiguration).hasEnabledRules {
+                Text("至少选择一项告警规则，才能保存到服务器。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
         }
     }
@@ -337,6 +320,24 @@ struct AlertsView: View {
 
             if let lastUpdatedAt = selectedStatus?.lastUpdatedAt {
                 statusRow(label: "最近操作", value: format(date: lastUpdatedAt))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("当前将保存的规则")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                if normalizedConfiguration(from: alertConfiguration).enabledRuleDescriptions.isEmpty {
+                    Text("还没有启用任何规则")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(normalizedConfiguration(from: alertConfiguration).enabledRuleDescriptions, id: \.self) { item in
+                        Text(item)
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
 
             Text(selectedStatus?.summaryText ?? "尚未检查远端告警状态")
@@ -357,28 +358,33 @@ struct AlertsView: View {
             .disabled(isBusy)
 
             Button {
-                Task { await sendTestNotification() }
-            } label: {
-                actionLabel("发送测试通知", systemImage: "paperplane")
-            }
-            .buttonStyle(.bordered)
-            .disabled(isBusy || !barkURLIsFilled)
-
-            Button {
                 showInstallConfirmation = true
             } label: {
-                actionLabel(
-                    selectedStatus?.isInstalled == true ? "更新远端告警" : "安装并启用远端告警",
-                    systemImage: "bell.badge"
-                )
+                actionLabel("保存并启用告警", systemImage: "bell.badge")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isBusy || !barkURLIsFilled)
+            .disabled(isBusy || !canApplyAlert)
+
+            if hasUnsavedChanges {
+                Text("当前规则有未保存修改，点击“保存并启用告警”后会同步到服务器。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            if !barkConfigured {
+                Text("未配置 Bark，无法启用远端告警。请点右上角 + 完成 Bark 连通性测试。")
+                    .font(.footnote)
+                    .foregroundColor(.orange)
+            } else if !normalizedConfiguration(from: alertConfiguration).hasEnabledRules {
+                Text("至少选择一项告警规则后，才能保存并启用。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
 
             Button(role: .destructive) {
                 showRemoveConfirmation = true
             } label: {
-                actionLabel("卸载远端告警", systemImage: "trash")
+                actionLabel("取消告警", systemImage: "trash")
             }
             .buttonStyle(.bordered)
             .disabled(isBusy || selectedStatus?.isInstalled != true)
@@ -418,40 +424,17 @@ struct AlertsView: View {
     }
 
     private func loadForm(from config: ServerConfig) {
-        barkURL = config.barkURL
-        cpuThreshold = config.cpuAlertThreshold
-        cooldownMinutes = config.cpuAlertCooldownMinutes
-        barkTestTitleTemplate = config.barkTestTitleTemplate
-        barkTestBodyTemplate = config.barkTestBodyTemplate
-        barkAlertTitleTemplate = config.barkAlertTitleTemplate
-        barkAlertBodyTemplate = config.barkAlertBodyTemplate
-        isEditingBarkURL = config.barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        barkURLFieldFocused = false
+        alertConfiguration = config.alertConfiguration
     }
 
     private func saveLocalConfiguration() {
         guard let selectedServer else { return }
-        barkURLFieldFocused = false
+        let normalized = normalizedConfiguration(from: alertConfiguration)
+        alertConfiguration = normalized
         store.updateAlertSettings(
             for: selectedServer.id,
-            barkURL: barkURL,
-            cpuAlertThreshold: cpuThreshold,
-            cpuAlertCooldownMinutes: cooldownMinutes,
-            barkTestTitleTemplate: barkTestTitleTemplate,
-            barkTestBodyTemplate: barkTestBodyTemplate,
-            barkAlertTitleTemplate: barkAlertTitleTemplate,
-            barkAlertBodyTemplate: barkAlertBodyTemplate
+            alertConfiguration: normalized
         )
-        if let latestServer = store.servers.first(where: { $0.id == selectedServer.id }) {
-            loadForm(from: latestServer)
-        }
-    }
-
-    private func saveConfigurationAndSendPreview() async {
-        guard let selectedServer else { return }
-        saveLocalConfiguration()
-        guard let latestServer = store.servers.first(where: { $0.id == selectedServer.id }) else { return }
-        await store.sendRemoteAlertTest(for: latestServer)
     }
 
     private func refreshRemoteStatus() async {
@@ -461,14 +444,7 @@ struct AlertsView: View {
         await store.refreshRemoteAlertStatus(for: latestServer)
     }
 
-    private func sendTestNotification() async {
-        guard let selectedServer else { return }
-        saveLocalConfiguration()
-        guard let latestServer = store.servers.first(where: { $0.id == selectedServer.id }) else { return }
-        await store.sendRemoteAlertTest(for: latestServer)
-    }
-
-    private func installRemoteAlert() async {
+    private func saveAndDeployAlert() async {
         guard let selectedServer else { return }
         saveLocalConfiguration()
         guard let latestServer = store.servers.first(where: { $0.id == selectedServer.id }) else { return }
@@ -478,6 +454,42 @@ struct AlertsView: View {
     private func removeRemoteAlert() async {
         guard let selectedServer else { return }
         await store.removeRemoteAlert(for: selectedServer)
+    }
+
+    private func saveAndTestBark(url: String) async -> Result<Void, String> {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure("请输入 Bark 测试地址")
+        }
+
+        store.updateGlobalAlertSettings(barkURL: trimmed)
+
+        switch await BarkService.sendConfigurationTest(rawURL: trimmed) {
+        case .success(let message):
+            barkResultMessage = message
+            showBarkResultAlert = true
+            return .success(())
+        case .failure(let message):
+            return .failure(message)
+        }
+    }
+
+    private func normalizedConfiguration(from configuration: AlertConfiguration) -> AlertConfiguration {
+        AlertConfiguration(
+            cooldownMinutes: configuration.cooldownMinutes,
+            cpuUsageEnabled: configuration.cpuUsageEnabled,
+            cpuUsageThreshold: configuration.cpuUsageThreshold,
+            memoryUsageEnabled: configuration.memoryUsageEnabled,
+            memoryUsageThreshold: configuration.memoryUsageThreshold,
+            psiCPUEnabled: configuration.psiCPUEnabled,
+            psiCPUThreshold: configuration.psiCPUThreshold,
+            psiMemoryEnabled: configuration.psiMemoryEnabled,
+            psiMemoryThreshold: configuration.psiMemoryThreshold,
+            psiIOEnabled: configuration.psiIOEnabled,
+            psiIOThreshold: configuration.psiIOThreshold,
+            websiteEnabled: configuration.websiteEnabled,
+            websiteURL: configuration.websiteURL
+        )
     }
 
     private func format(date: Date) -> String {
@@ -524,49 +536,164 @@ private struct AlertSectionCard<Content: View>: View {
     }
 }
 
-private struct AlertBullet: View {
-    let text: String
+private struct StatusPill: View {
+    let title: String
+    let tint: Color
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(Color.orange)
-                .frame(width: 6, height: 6)
-                .padding(.top, 6)
-            Text(text)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
+private struct ThresholdEditor: View {
+    let label: String
+    @Binding var value: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text("\(value)%")
+                    .foregroundColor(.secondary)
+            }
+
+            Stepper("\(label)达到 \(value)% 时告警", value: $value, in: 1...100)
         }
     }
 }
 
-private struct BarkHelpView: View {
+private struct AlertRuleCard<Content: View>: View {
+    let title: String
+    let subtitle: String
+    @Binding var isEnabled: Bool
+    let content: Content
+
+    init(
+        title: String,
+        subtitle: String,
+        isEnabled: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self._isEnabled = isEnabled
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $isEnabled) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if isEnabled {
+                content
+            }
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct BarkConfigurationSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @FocusState private var barkURLFocused: Bool
+
+    @State private var barkURL: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private let barkAppStoreURL = URL(string: "https://apps.apple.com/app/id1403753865")!
+    let onSaveAndTest: (String) async -> Result<Void, String>
+
+    init(
+        initialBarkURL: String,
+        onSaveAndTest: @escaping (String) async -> Result<Void, String>
+    ) {
+        self._barkURL = State(initialValue: initialBarkURL)
+        self.onSaveAndTest = onSaveAndTest
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("获取 Bark 测试地址") {
-                    Text("1. 在 iPhone 上安装并打开 Bark。")
-                    Text("2. 在 Bark 首页复制测试地址。")
-                    Text("3. 返回本 App，把测试地址粘贴到“Bark 测试地址”输入框。")
+            Form {
+                Section("Bark 地址") {
+                    TextField("https://api.day.app/xxxxxx", text: $barkURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .focused($barkURLFocused)
+
+                    Text("保存时会立刻从 App 端测试 Bark 连通性，发送内容固定为“bark通知成功配置”。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                 }
 
-                Section("说明") {
-                    Text("你粘贴的地址会被转换成 Bark 推送地址，并保存到目标服务器上的远端告警配置中。")
-                    Text("支持通知模板变量：{server}、{name}、{host}、{cpu}、{threshold}。")
-                    Text("发送测试通知时，请确保目标服务器可以访问外网。")
+                Section("获取方式") {
+                    Button("下载 Bark") {
+                        openURL(barkAppStoreURL)
+                    }
+
+                    Text("1. 在 iPhone 上安装并打开 Bark。")
+                    Text("2. 在 Bark 首页复制测试地址。")
+                    Text("3. 回到这里粘贴并保存。")
                 }
-            }
-            .navigationTitle("Bark 帮助")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") {
-                        dismiss()
+
+                if let errorMessage, !errorMessage.isEmpty {
+                    Section("测试结果") {
+                        Text(errorMessage)
+                            .foregroundColor(.red)
                     }
                 }
             }
+            .navigationTitle("配置 Bark")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") {
+                        dismiss()
+                    }
+                    .disabled(isSaving)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(isSaving ? "测试中..." : "保存并测试") {
+                        Task { await save() }
+                    }
+                    .disabled(isSaving)
+                }
+            }
+            .onAppear {
+                barkURLFocused = barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        switch await onSaveAndTest(barkURL) {
+        case .success:
+            dismiss()
+        case .failure(let message):
+            errorMessage = message
         }
     }
 }
