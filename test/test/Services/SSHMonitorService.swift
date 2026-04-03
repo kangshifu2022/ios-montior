@@ -1243,7 +1243,6 @@ final class SSHMonitorService {
         let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
         let safeHostValue = normalizedHostValue(from: config)
-        let scriptBody = remoteAlertRunnerScript
         let envBody = """
         BARK_URL=\(shellQuoted(barkBaseURL))
         COOLDOWN_SECONDS='\(cooldownSeconds)'
@@ -1262,6 +1261,14 @@ final class SSHMonitorService {
         WEBSITE_ENABLED='\(shellBool(alertConfiguration.websiteEnabled))'
         WEBSITE_URL=\(shellQuoted(alertConfiguration.websiteURL))
         """
+        let scriptFiles: [(name: String, body: String)] = [
+            ("alert_transport.sh", remoteAlertTransportScript),
+            ("alert_cpu.sh", remoteAlertCPUReaderScript),
+            ("alert_memory.sh", remoteAlertMemoryReaderScript),
+            ("alert_psi.sh", remoteAlertPSIReaderScript),
+            ("alert_website.sh", remoteAlertWebsiteCheckerScript),
+            ("cpu_alert.sh", remoteAlertRunnerScript)
+        ]
 
         var commands: [String] = [
             """
@@ -1288,28 +1295,20 @@ final class SSHMonitorService {
             """
         ]
 
-        for (index, chunk) in shellChunked(scriptBody, size: 1200).enumerated() {
+        for (index, file) in scriptFiles.enumerated() {
             let delimiter = "IOS_MONITOR_REMOTE_ALERT_\(index)"
             commands.append(
                 """
                 set -eu
                 ALERT_DIR="$HOME/.ios-monitor"
-                SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
-                cat >> "$SCRIPT_PATH" <<'\(delimiter)'
-                \(chunk)
+                FILE_PATH="$ALERT_DIR/\(file.name)"
+                cat > "$FILE_PATH" <<'\(delimiter)'
+                \(file.body)
                 \(delimiter)
+                chmod 700 "$FILE_PATH"
                 """
             )
         }
-
-        commands.append(
-            """
-            set -eu
-            ALERT_DIR="$HOME/.ios-monitor"
-            SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
-            chmod 700 "$SCRIPT_PATH"
-            """
-        )
 
         commands.append(
             """
@@ -1347,6 +1346,11 @@ final class SSHMonitorService {
         set -eu
         ALERT_DIR="$HOME/.ios-monitor"
         SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+        TRANSPORT_PATH="$ALERT_DIR/alert_transport.sh"
+        CPU_PATH="$ALERT_DIR/alert_cpu.sh"
+        MEMORY_PATH="$ALERT_DIR/alert_memory.sh"
+        PSI_PATH="$ALERT_DIR/alert_psi.sh"
+        WEBSITE_PATH="$ALERT_DIR/alert_website.sh"
         ENV_PATH="$ALERT_DIR/cpu_alert.env"
         STATE_PATH="$ALERT_DIR/cpu_alert.state"
 
@@ -1360,7 +1364,7 @@ final class SSHMonitorService {
           fi
         fi
 
-        rm -f "$SCRIPT_PATH" "$ENV_PATH" "$STATE_PATH"
+        rm -f "$SCRIPT_PATH" "$TRANSPORT_PATH" "$CPU_PATH" "$MEMORY_PATH" "$PSI_PATH" "$WEBSITE_PATH" "$ENV_PATH" "$STATE_PATH"
         rmdir "$ALERT_DIR" 2>/dev/null || true
         exit 0
         """
@@ -1370,6 +1374,11 @@ final class SSHMonitorService {
     set -eu
     ALERT_DIR="$HOME/.ios-monitor"
     SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+    TRANSPORT_PATH="$ALERT_DIR/alert_transport.sh"
+    CPU_PATH="$ALERT_DIR/alert_cpu.sh"
+    MEMORY_PATH="$ALERT_DIR/alert_memory.sh"
+    PSI_PATH="$ALERT_DIR/alert_psi.sh"
+    WEBSITE_PATH="$ALERT_DIR/alert_website.sh"
     ENV_PATH="$ALERT_DIR/cpu_alert.env"
 
     if [ ! -r "$SCRIPT_PATH" ]; then
@@ -1382,6 +1391,13 @@ final class SSHMonitorService {
       exit 1
     fi
 
+    for helper in "$TRANSPORT_PATH" "$CPU_PATH" "$MEMORY_PATH" "$PSI_PATH" "$WEBSITE_PATH"; do
+      if [ ! -r "$helper" ]; then
+        echo "remote helper script is missing: $helper"
+        exit 1
+      fi
+    done
+
     /bin/sh "$SCRIPT_PATH" --test
     """
 
@@ -1391,6 +1407,11 @@ final class SSHMonitorService {
         set -eu
 
         ALERT_DIR="${HOME}/.ios-monitor"
+        TRANSPORT_PATH="$ALERT_DIR/alert_transport.sh"
+        CPU_PATH="$ALERT_DIR/alert_cpu.sh"
+        MEMORY_PATH="$ALERT_DIR/alert_memory.sh"
+        PSI_PATH="$ALERT_DIR/alert_psi.sh"
+        WEBSITE_PATH="$ALERT_DIR/alert_website.sh"
         ENV_PATH="$ALERT_DIR/cpu_alert.env"
         STATE_PATH="$ALERT_DIR/cpu_alert.state"
 
@@ -1400,11 +1421,13 @@ final class SSHMonitorService {
         [ -n "${HOST_LABEL:-}" ] || HOST_LABEL="${HOST_VALUE:-unknown}"
         [ -n "${HOST_VALUE:-}" ] || HOST_VALUE="${HOST_LABEL:-unknown}"
 
-        \(remoteAlertTransportScript)
-        \(remoteAlertCPUReaderScript)
-        \(remoteAlertMemoryReaderScript)
-        \(remoteAlertPSIReaderScript)
-        \(remoteAlertWebsiteCheckerScript)
+        for helper in "$TRANSPORT_PATH" "$CPU_PATH" "$MEMORY_PATH" "$PSI_PATH" "$WEBSITE_PATH"; do
+          if [ ! -r "$helper" ]; then
+            echo "missing helper script: $helper" >&2
+            exit 1
+          fi
+          . "$helper"
+        done
 
         title_for_alert() {
           printf '%s 告警' "$HOST_LABEL"
@@ -1643,21 +1666,25 @@ final class SSHMonitorService {
           fi
 
           awk '
-            /^full / {
-              if (match($0, /avg10=([0-9.]+)/, m)) {
-                printf "%.0f\\n", m[1]
-                found = 1
-                exit
+            function print_avg10(line, value) {
+              value = line
+              sub(/^.*avg10=/, "", value)
+              sub(/ .*/, "", value)
+              if (value == "") {
+                print 0
+              } else {
+                printf "%.0f\\n", value + 0
               }
+            }
+            /^full / {
+              print_avg10($0)
+              found = 1
+              exit
             }
             /^some / { some = $0 }
             END {
               if (!found && some != "") {
-                if (match(some, /avg10=([0-9.]+)/, m)) {
-                  printf "%.0f\\n", m[1]
-                } else {
-                  print 0
-                }
+                print_avg10(some)
               } else if (!found) {
                 print 0
               }
@@ -1717,23 +1744,6 @@ final class SSHMonitorService {
 
     private static func shellBool(_ value: Bool) -> String {
         value ? "1" : "0"
-    }
-
-    private static func shellChunked(_ value: String, size: Int) -> [String] {
-        guard size > 0 else {
-            return [value]
-        }
-
-        var chunks: [String] = []
-        var startIndex = value.startIndex
-
-        while startIndex < value.endIndex {
-            let endIndex = value.index(startIndex, offsetBy: size, limitedBy: value.endIndex) ?? value.endIndex
-            chunks.append(String(value[startIndex..<endIndex]))
-            startIndex = endIndex
-        }
-
-        return chunks
     }
 
     private static func shellQuoted(_ value: String) -> String {
