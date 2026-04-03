@@ -173,8 +173,12 @@ final class SSHMonitorService {
                 "algorithms: SSHAlgorithms.all"
             ]
         ) {
-        case .success:
-            return .success("测试通知已从目标服务器发出")
+        case .success(let output):
+            let fields = parseMarkerOutput(output)
+            if let cpuUsage = fields["CPU_USAGE"], !cpuUsage.isEmpty {
+                return .success("当前 CPU \(cpuUsage)% 的测试通知已从目标服务器发出")
+            }
+            return .success("当前 CPU 占用率测试通知已从目标服务器发出")
         case .failure(let failure):
             return .failure(RemoteAlertOperationError(message: failure.statusMessage))
         }
@@ -1281,8 +1285,12 @@ final class SSHMonitorService {
         HOST_LABEL=\(shellQuoted(safeHostLabel))
 
         \(remoteAlertTransportScript)
+        \(remoteAlertCPUReaderScript)
 
-        send_bark "Test Alert" "$HOST_LABEL remote alert test from iOS Monitor"
+        CPU_USAGE=$(fetch_cpu_usage)
+        send_bark "CPU Test" "$HOST_LABEL current CPU usage is ${CPU_USAGE}%"
+        echo "=CPU_USAGE="
+        echo "$CPU_USAGE"
         """
     }
 
@@ -1299,25 +1307,11 @@ final class SSHMonitorService {
         . "$ENV_PATH"
 
         \(remoteAlertTransportScript)
-
-        fetch_cpu_usage() {
-          (top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {
-            for (i = 1; i <= NF; i++) {
-              if ($i ~ /id,|idle/) {
-                v = $(i - 1)
-                gsub(/[^0-9.]/, "", v)
-                if (v != "") {
-                  printf "%.0f\\n", 100 - v
-                  found = 1
-                  exit
-                }
-              }
-            }
-          } END { if (!found) print "0" }'
-        }
+        \(remoteAlertCPUReaderScript)
 
         if [ "${1:-}" = "--test" ]; then
-          send_bark "Test Alert" "$HOST_LABEL remote alert test from iOS Monitor"
+          CPU_USAGE=$(fetch_cpu_usage)
+          send_bark "CPU Test" "$HOST_LABEL current CPU usage is ${CPU_USAGE}%"
           exit $?
         fi
 
@@ -1380,6 +1374,26 @@ final class SSHMonitorService {
             return $?
           fi
           return 1
+        }
+        """
+    }
+
+    private static var remoteAlertCPUReaderScript: String {
+        """
+        fetch_cpu_usage() {
+          (top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {
+            for (i = 1; i <= NF; i++) {
+              if ($i ~ /id,|idle/) {
+                v = $(i - 1)
+                gsub(/[^0-9.]/, "", v)
+                if (v != "") {
+                  printf "%.0f\\n", 100 - v
+                  found = 1
+                  exit
+                }
+              }
+            }
+          } END { if (!found) print "0" }'
         }
         """
     }
