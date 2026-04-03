@@ -1768,7 +1768,7 @@ final class SSHMonitorService {
           target="$1"
           case "$target" in
             *://*) return 1 ;;
-            \[*\]:[0-9]* ) return 0 ;;
+            \\[*\\]:[0-9]* ) return 0 ;;
             *:*)
               port="${target##*:}"
               host="${target%:*}"
@@ -1787,9 +1787,9 @@ final class SSHMonitorService {
         tcp_target_host() {
           target="$1"
           case "$target" in
-            \[*\]:* )
+            \\[*\\]:* )
               value="${target%%]:*}"
-              printf '%s' "${value#\[}"
+              printf '%s' "${value#\\[}"
               ;;
             *:* )
               printf '%s' "${target%:*}"
@@ -1803,7 +1803,7 @@ final class SSHMonitorService {
         tcp_target_port() {
           target="$1"
           case "$target" in
-            \[*\]:* )
+            \\[*\\]:* )
               printf '%s' "${target##*:}"
               ;;
             *:* )
