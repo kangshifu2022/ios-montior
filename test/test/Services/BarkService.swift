@@ -1,6 +1,14 @@
 import Foundation
 
 enum BarkService {
+    struct BarkError: LocalizedError, Sendable {
+        let message: String
+
+        var errorDescription: String? {
+            message
+        }
+    }
+
     static func pushBaseURLString(from raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -23,10 +31,10 @@ enum BarkService {
         return normalized
     }
 
-    static func sendConfigurationTest(rawURL: String) async -> Result<String, String> {
+    static func sendConfigurationTest(rawURL: String) async throws -> String {
         guard let pushURLString = pushBaseURLString(from: rawURL),
               let pushURL = URL(string: pushURLString) else {
-            return .failure("Bark 地址无效，请粘贴 Bark App 里的测试地址")
+            throw BarkError(message: "Bark 地址无效，请粘贴 Bark App 里的测试地址")
         }
 
         var request = URLRequest(url: pushURL)
@@ -50,11 +58,14 @@ enum BarkService {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode) else {
-                return .failure("Bark 连通性测试失败，请检查地址或 bark-server 是否可访问")
+                throw BarkError(message: "Bark 连通性测试失败，请检查地址或 bark-server 是否可访问")
             }
-            return .success("Bark 连通性测试成功，已发送“bark通知成功配置”")
+            return "Bark 连通性测试成功，已发送“bark通知成功配置”"
         } catch {
-            return .failure("Bark 连通性测试失败：\(error.localizedDescription)")
+            if let barkError = error as? BarkError {
+                throw barkError
+            }
+            throw BarkError(message: "Bark 连通性测试失败：\(error.localizedDescription)")
         }
     }
 }

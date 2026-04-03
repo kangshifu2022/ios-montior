@@ -456,22 +456,16 @@ struct AlertsView: View {
         await store.removeRemoteAlert(for: selectedServer)
     }
 
-    private func saveAndTestBark(url: String) async -> Result<Void, String> {
+    private func saveAndTestBark(url: String) async throws {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return .failure("请输入 Bark 测试地址")
+            throw BarkService.BarkError(message: "请输入 Bark 测试地址")
         }
 
         store.updateGlobalAlertSettings(barkURL: trimmed)
-
-        switch await BarkService.sendConfigurationTest(rawURL: trimmed) {
-        case .success(let message):
-            barkResultMessage = message
-            showBarkResultAlert = true
-            return .success(())
-        case .failure(let message):
-            return .failure(message)
-        }
+        let message = try await BarkService.sendConfigurationTest(rawURL: trimmed)
+        barkResultMessage = message
+        showBarkResultAlert = true
     }
 
     private func normalizedConfiguration(from configuration: AlertConfiguration) -> AlertConfiguration {
@@ -621,11 +615,11 @@ private struct BarkConfigurationSheet: View {
     @State private var errorMessage: String?
 
     private let barkAppStoreURL = URL(string: "https://apps.apple.com/app/id1403753865")!
-    let onSaveAndTest: (String) async -> Result<Void, String>
+    let onSaveAndTest: (String) async throws -> Void
 
     init(
         initialBarkURL: String,
-        onSaveAndTest: @escaping (String) async -> Result<Void, String>
+        onSaveAndTest: @escaping (String) async throws -> Void
     ) {
         self._barkURL = State(initialValue: initialBarkURL)
         self.onSaveAndTest = onSaveAndTest
@@ -689,11 +683,11 @@ private struct BarkConfigurationSheet: View {
         isSaving = true
         defer { isSaving = false }
 
-        switch await onSaveAndTest(barkURL) {
-        case .success:
+        do {
+            try await onSaveAndTest(barkURL)
             dismiss()
-        case .failure(let message):
-            errorMessage = message
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
