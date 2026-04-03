@@ -107,28 +107,33 @@ final class SSHMonitorService {
             return .failure(RemoteAlertOperationError(message: "请至少启用一项告警规则"))
         }
 
-        let deployScript = makeRemoteAlertDeploymentScript(config: config, barkBaseURL: barkBaseURL)
-        switch await execute(
-            config: config,
-            script: deployScript,
-            connectionDiagnostics: [
-                "failure stage: connect",
-                "ssh stack: Citadel",
-                "request kind: remote-alert-deploy",
-                "algorithms: SSHAlgorithms.all"
-            ],
-            executeDiagnostics: [
-                "failure stage: execute",
-                "ssh stack: Citadel",
-                "request kind: remote-alert-deploy",
-                "algorithms: SSHAlgorithms.all"
-            ]
-        ) {
-        case .success:
-            return await fetchRemoteAlertStatus(config: config)
-        case .failure(let failure):
-            return .failure(RemoteAlertOperationError(message: failure.statusMessage))
+        let deployCommands = makeRemoteAlertDeploymentCommands(config: config, barkBaseURL: barkBaseURL)
+        for (index, command) in deployCommands.enumerated() {
+            let requestKind = "remote-alert-deploy-step-\(index + 1)"
+            switch await execute(
+                config: config,
+                script: command,
+                connectionDiagnostics: [
+                    "failure stage: connect",
+                    "ssh stack: Citadel",
+                    "request kind: \(requestKind)",
+                    "algorithms: SSHAlgorithms.all"
+                ],
+                executeDiagnostics: [
+                    "failure stage: execute",
+                    "ssh stack: Citadel",
+                    "request kind: \(requestKind)",
+                    "algorithms: SSHAlgorithms.all"
+                ]
+            ) {
+            case .success:
+                continue
+            case .failure(let failure):
+                return .failure(RemoteAlertOperationError(message: failure.statusMessage))
+            }
         }
+
+        return await fetchRemoteAlertStatus(config: config)
     }
 
     static func removeCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, RemoteAlertOperationError> {
@@ -244,6 +249,7 @@ final class SSHMonitorService {
     ENV_PATH="$ALERT_DIR/cpu_alert.env"
     INSTALLED="no"
     MESSAGE="未在服务器上安装远端告警"
+    RULES=""
 
     append_rule() {
       if [ -z "$RULES" ]; then
@@ -255,15 +261,18 @@ final class SSHMonitorService {
 
     if [ -f "$SCRIPT_PATH" ] && (crontab -l 2>/dev/null || true) | grep -F "$SCRIPT_PATH" >/dev/null 2>&1; then
       INSTALLED="yes"
-      RULES=""
       if [ -r "$ENV_PATH" ]; then
         . "$ENV_PATH"
-        [ "${CPU_USAGE_ENABLED:-0}" = "1" ] && append_rule "CPU"
-        [ "${MEMORY_USAGE_ENABLED:-0}" = "1" ] && append_rule "内存"
-        [ "${PSI_CPU_ENABLED:-0}" = "1" ] && append_rule "CPU PSI"
-        [ "${PSI_MEMORY_ENABLED:-0}" = "1" ] && append_rule "内存 PSI"
-        [ "${PSI_IO_ENABLED:-0}" = "1" ] && append_rule "IO PSI"
-        [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ] && append_rule "网站连通性"
+        if [ "${CPU_USAGE_ENABLED:-0}" = "1" ]; then
+          append_rule "CPU >= ${CPU_USAGE_THRESHOLD:-90}%"
+        elif [ -n "${CPU_THRESHOLD:-}" ]; then
+          append_rule "CPU >= ${CPU_THRESHOLD}%"
+        fi
+        [ "${MEMORY_USAGE_ENABLED:-0}" = "1" ] && append_rule "内存 >= ${MEMORY_USAGE_THRESHOLD:-90}%"
+        [ "${PSI_CPU_ENABLED:-0}" = "1" ] && append_rule "CPU PSI(avg10) >= ${PSI_CPU_THRESHOLD:-5}%"
+        [ "${PSI_MEMORY_ENABLED:-0}" = "1" ] && append_rule "内存 PSI(avg10) >= ${PSI_MEMORY_THRESHOLD:-5}%"
+        [ "${PSI_IO_ENABLED:-0}" = "1" ] && append_rule "IO PSI(avg10) >= ${PSI_IO_THRESHOLD:-5}%"
+        [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ] && append_rule "网站不可达: ${WEBSITE_URL}"
       fi
       if [ -n "${RULES:-}" ]; then
         MESSAGE="已启用规则: $RULES"
@@ -279,6 +288,8 @@ final class SSHMonitorService {
     if [ "$INSTALLED" = "yes" ]; then echo "cron every minute"; else echo "not installed"; fi
     echo "=MESSAGE="
     echo "$MESSAGE"
+    echo "=REMOTE_RULES="
+    echo "$RULES"
     echo "=HAS_CONFIG="
     if [ -f "$ENV_PATH" ]; then echo "yes"; else echo "no"; fi
     exit 0
@@ -1179,15 +1190,29 @@ final class SSHMonitorService {
     private static func parseRemoteAlertStatus(output: String) -> RemoteAlertStatus {
         let fields = parseMarkerOutput(output)
         let installed = fields["ALERT_INSTALLED"] == "yes"
+        let remoteRuleDescriptions = parseRemoteRuleDescriptions(from: fields["REMOTE_RULES"])
         return RemoteAlertStatus(
             isInstalled: installed,
             scriptPath: fields["SCRIPT_PATH"] ?? "~/.ios-monitor/cpu_alert.sh",
             scheduleDescription: fields["SCHEDULE"] ?? (installed ? "cron every minute" : "not installed"),
+            remoteRuleDescriptions: remoteRuleDescriptions,
             lastCheckedAt: Date(),
             lastUpdatedAt: nil,
             lastMessage: fields["MESSAGE"] ?? (installed ? "已启用远端告警" : "未在服务器上安装远端告警"),
             lastError: nil
         )
+    }
+
+    private static func parseRemoteRuleDescriptions(from raw: String?) -> [String] {
+        let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return []
+        }
+
+        return trimmed
+            .components(separatedBy: ", ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private static func parseMarkerOutput(_ output: String) -> [String: String] {
@@ -1212,44 +1237,14 @@ final class SSHMonitorService {
         return values
     }
 
-    private static func makeRemoteAlertDeploymentScript(config: ServerConfig, barkBaseURL: String) -> String {
+    private static func makeRemoteAlertDeploymentCommands(config: ServerConfig, barkBaseURL: String) -> [String] {
         let alertConfiguration = config.alertConfiguration
         let cooldownSeconds = max(1, alertConfiguration.cooldownMinutes) * 60
         let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
         let safeHostValue = normalizedHostValue(from: config)
         let scriptBody = remoteAlertRunnerScript
-
-        return """
-        set -eu
-        ALERT_DIR="$HOME/.ios-monitor"
-        SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
-        ENV_PATH="$ALERT_DIR/cpu_alert.env"
-
-        mkdir -p "$ALERT_DIR"
-
-        if ! command -v crontab >/dev/null 2>&1; then
-          echo "crontab command is unavailable"
-          exit 1
-        fi
-
-        if command -v curl >/dev/null 2>&1; then
-          :
-        elif command -v wget >/dev/null 2>&1; then
-          :
-        elif command -v uclient-fetch >/dev/null 2>&1; then
-          :
-        else
-          echo "curl, wget, or uclient-fetch is required for Bark notifications"
-          exit 1
-        fi
-
-        cat > "$SCRIPT_PATH" <<'IOS_MONITOR_REMOTE_ALERT'
-        \(scriptBody)
-        IOS_MONITOR_REMOTE_ALERT
-        chmod 700 "$SCRIPT_PATH"
-
-        cat > "$ENV_PATH" <<'IOS_MONITOR_REMOTE_ALERT_ENV'
+        let envBody = """
         BARK_URL=\(shellQuoted(barkBaseURL))
         COOLDOWN_SECONDS='\(cooldownSeconds)'
         HOST_LABEL=\(shellQuoted(safeHostLabel))
@@ -1266,20 +1261,85 @@ final class SSHMonitorService {
         PSI_IO_THRESHOLD='\(alertConfiguration.psiIOThreshold)'
         WEBSITE_ENABLED='\(shellBool(alertConfiguration.websiteEnabled))'
         WEBSITE_URL=\(shellQuoted(alertConfiguration.websiteURL))
-        IOS_MONITOR_REMOTE_ALERT_ENV
-        chmod 600 "$ENV_PATH"
-
-        CURRENT_CRON=$(crontab -l 2>/dev/null || true)
-        FILTERED_CRON=$(printf '%s\\n' "$CURRENT_CRON" | grep -Fv "$SCRIPT_PATH" || true)
-        NEW_ENTRY="* * * * * /bin/sh \\"$SCRIPT_PATH\\" >/dev/null 2>&1"
-        if [ -n "$FILTERED_CRON" ]; then
-          printf '%s\\n%s\\n' "$FILTERED_CRON" "$NEW_ENTRY" | crontab -
-        else
-          printf '%s\\n' "$NEW_ENTRY" | crontab -
-        fi
-
-        exit 0
         """
+
+        var commands: [String] = [
+            """
+            set -eu
+            ALERT_DIR="$HOME/.ios-monitor"
+            SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+            ENV_PATH="$ALERT_DIR/cpu_alert.env"
+            mkdir -p "$ALERT_DIR"
+            if ! command -v crontab >/dev/null 2>&1; then
+              echo "crontab command is unavailable"
+              exit 1
+            fi
+            if command -v curl >/dev/null 2>&1; then
+              :
+            elif command -v wget >/dev/null 2>&1; then
+              :
+            elif command -v uclient-fetch >/dev/null 2>&1; then
+              :
+            else
+              echo "curl, wget, or uclient-fetch is required for Bark notifications"
+              exit 1
+            fi
+            : > "$SCRIPT_PATH"
+            """
+        ]
+
+        for (index, chunk) in shellChunked(scriptBody, size: 1200).enumerated() {
+            let delimiter = "IOS_MONITOR_REMOTE_ALERT_\(index)"
+            commands.append(
+                """
+                set -eu
+                ALERT_DIR="$HOME/.ios-monitor"
+                SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+                cat >> "$SCRIPT_PATH" <<'\(delimiter)'
+                \(chunk)
+                \(delimiter)
+                """
+            )
+        }
+
+        commands.append(
+            """
+            set -eu
+            ALERT_DIR="$HOME/.ios-monitor"
+            SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+            chmod 700 "$SCRIPT_PATH"
+            """
+        )
+
+        commands.append(
+            """
+            set -eu
+            ALERT_DIR="$HOME/.ios-monitor"
+            ENV_PATH="$ALERT_DIR/cpu_alert.env"
+            cat > "$ENV_PATH" <<'IOS_MONITOR_REMOTE_ALERT_ENV'
+            \(envBody)
+            IOS_MONITOR_REMOTE_ALERT_ENV
+            chmod 600 "$ENV_PATH"
+            """
+        )
+
+        commands.append(
+            """
+            set -eu
+            ALERT_DIR="$HOME/.ios-monitor"
+            SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+            CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+            FILTERED_CRON=$(printf '%s\\n' "$CURRENT_CRON" | grep -Fv "$SCRIPT_PATH" || true)
+            NEW_ENTRY="* * * * * /bin/sh \\"$SCRIPT_PATH\\" >/dev/null 2>&1"
+            if [ -n "$FILTERED_CRON" ]; then
+              printf '%s\\n%s\\n' "$FILTERED_CRON" "$NEW_ENTRY" | crontab -
+            else
+              printf '%s\\n' "$NEW_ENTRY" | crontab -
+            fi
+            """
+        )
+
+        return commands
     }
 
     private static func makeRemoteAlertRemovalScript() -> String {
@@ -1657,6 +1717,23 @@ final class SSHMonitorService {
 
     private static func shellBool(_ value: Bool) -> String {
         value ? "1" : "0"
+    }
+
+    private static func shellChunked(_ value: String, size: Int) -> [String] {
+        guard size > 0 else {
+            return [value]
+        }
+
+        var chunks: [String] = []
+        var startIndex = value.startIndex
+
+        while startIndex < value.endIndex {
+            let endIndex = value.index(startIndex, offsetBy: size, limitedBy: value.endIndex) ?? value.endIndex
+            chunks.append(String(value[startIndex..<endIndex]))
+            startIndex = endIndex
+        }
+
+        return chunks
     }
 
     private static func shellQuoted(_ value: String) -> String {

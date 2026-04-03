@@ -323,15 +323,29 @@ struct AlertsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("当前将保存的规则")
+                Text("服务器已生效规则")
                     .font(.subheadline)
                     .fontWeight(.semibold)
 
-                if normalizedConfiguration(from: alertConfiguration).enabledRuleDescriptions.isEmpty {
-                    Text("还没有启用任何规则")
+                if (selectedStatus?.remoteRuleDescriptions.isEmpty ?? true) {
+                    Text(selectedStatus?.isInstalled == true ? "暂未识别到远端规则明细" : "服务器上还没有已生效规则")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 } else {
+                    ForEach(selectedStatus?.remoteRuleDescriptions ?? [], id: \.self) { item in
+                        Text(item)
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            if hasUnsavedChanges {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("本地待部署规则")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+
                     ForEach(normalizedConfiguration(from: alertConfiguration).enabledRuleDescriptions, id: \.self) { item in
                         Text(item)
                             .font(.footnote)

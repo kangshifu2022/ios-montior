@@ -4,6 +4,7 @@ struct RemoteAlertStatus: Codable, Sendable {
     var isInstalled: Bool = false
     var scriptPath: String = "~/.ios-monitor/cpu_alert.sh"
     var scheduleDescription: String = "cron every minute"
+    var remoteRuleDescriptions: [String] = []
     var lastCheckedAt: Date? = nil
     var lastUpdatedAt: Date? = nil
     var lastMessage: String = ""
