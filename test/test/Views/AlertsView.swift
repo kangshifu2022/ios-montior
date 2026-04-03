@@ -42,7 +42,7 @@ struct AlertsView: View {
 
     private var websiteRuleNeedsURL: Bool {
         alertConfiguration.websiteEnabled &&
-        AlertConfiguration.normalizedWebsiteURL(alertConfiguration.websiteURL).isEmpty
+        AlertConfiguration.normalizedWebsiteTargets(alertConfiguration.websiteTargets).isEmpty
     }
 
     var body: some View {
@@ -206,78 +206,40 @@ struct AlertsView: View {
 
     private var ruleConfigurationCard: some View {
         AlertSectionCard(title: "告警规则", icon: "slider.horizontal.3") {
-            AlertRuleCard(
+            CompactThresholdRuleRow(
                 title: "CPU 占用率",
-                subtitle: "当 CPU 使用率持续高于阈值时通知",
-                isEnabled: $alertConfiguration.cpuUsageEnabled
-            ) {
-                ThresholdEditor(
-                    label: "CPU 阈值",
-                    value: $alertConfiguration.cpuUsageThreshold
-                )
-            }
+                isEnabled: $alertConfiguration.cpuUsageEnabled,
+                value: $alertConfiguration.cpuUsageThreshold
+            )
 
-            AlertRuleCard(
-                title: "内存占用率",
-                subtitle: "当内存占用率高于阈值时通知",
-                isEnabled: $alertConfiguration.memoryUsageEnabled
-            ) {
-                ThresholdEditor(
-                    label: "内存阈值",
-                    value: $alertConfiguration.memoryUsageThreshold
-                )
-            }
+            CompactThresholdRuleRow(
+                title: "内存使用率",
+                isEnabled: $alertConfiguration.memoryUsageEnabled,
+                value: $alertConfiguration.memoryUsageThreshold
+            )
 
-            AlertRuleCard(
-                title: "CPU PSI(avg10)",
-                subtitle: "使用 Linux PSI 的 avg10 指标监控 CPU 压力",
-                isEnabled: $alertConfiguration.psiCPUEnabled
-            ) {
-                ThresholdEditor(
-                    label: "CPU PSI 阈值",
-                    value: $alertConfiguration.psiCPUThreshold
-                )
-            }
+            CompactThresholdRuleRow(
+                title: "CPU PSI",
+                isEnabled: $alertConfiguration.psiCPUEnabled,
+                value: $alertConfiguration.psiCPUThreshold
+            )
 
-            AlertRuleCard(
-                title: "内存 PSI(avg10)",
-                subtitle: "使用 Linux PSI 的 avg10 指标监控内存压力",
-                isEnabled: $alertConfiguration.psiMemoryEnabled
-            ) {
-                ThresholdEditor(
-                    label: "内存 PSI 阈值",
-                    value: $alertConfiguration.psiMemoryThreshold
-                )
-            }
+            CompactThresholdRuleRow(
+                title: "内存 PSI",
+                isEnabled: $alertConfiguration.psiMemoryEnabled,
+                value: $alertConfiguration.psiMemoryThreshold
+            )
 
-            AlertRuleCard(
-                title: "IO PSI(avg10)",
-                subtitle: "使用 Linux PSI 的 avg10 指标监控 IO 压力",
-                isEnabled: $alertConfiguration.psiIOEnabled
-            ) {
-                ThresholdEditor(
-                    label: "IO PSI 阈值",
-                    value: $alertConfiguration.psiIOThreshold
-                )
-            }
+            CompactThresholdRuleRow(
+                title: "IO PSI",
+                isEnabled: $alertConfiguration.psiIOEnabled,
+                value: $alertConfiguration.psiIOThreshold
+            )
 
-            AlertRuleCard(
-                title: "网站连通性",
-                subtitle: "例如监控 https://www.youtube.com 是否可以访问",
-                isEnabled: $alertConfiguration.websiteEnabled
-            ) {
-                TextField("https://www.youtube.com", text: $alertConfiguration.websiteURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .padding(12)
-                    .background(Color(.systemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                Text("可以直接填完整 URL，也可以只填域名，例如 `www.youtube.com`。")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
+            CompactWebsiteRuleCard(
+                isEnabled: $alertConfiguration.websiteEnabled,
+                websiteTargets: $alertConfiguration.websiteTargets
+            )
 
             if websiteRuleNeedsURL {
                 Text("已开启网站连通性监控，但还没有填写网址。")
@@ -455,6 +417,7 @@ struct AlertsView: View {
         await store.removeRemoteAlert(for: selectedServer)
     }
 
+    @MainActor
     private func saveBark(url: String, cooldownMinutes: Int) {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         store.updateGlobalAlertSettings(
@@ -463,6 +426,7 @@ struct AlertsView: View {
         )
     }
 
+    @MainActor
     private func testBark(url: String) async throws {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -486,7 +450,7 @@ struct AlertsView: View {
             psiIOEnabled: configuration.psiIOEnabled,
             psiIOThreshold: configuration.psiIOThreshold,
             websiteEnabled: configuration.websiteEnabled,
-            websiteURL: configuration.websiteURL
+            websiteTargets: configuration.websiteTargets
         )
     }
 
@@ -550,62 +514,129 @@ private struct StatusPill: View {
     }
 }
 
-private struct ThresholdEditor: View {
-    let label: String
+private struct CompactThresholdRuleRow: View {
+    let title: String
+    @Binding var isEnabled: Bool
     @Binding var value: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(label)
-                Spacer()
-                Text("\(value)%")
-                    .foregroundColor(.secondary)
-            }
+        HStack(spacing: 12) {
+            Toggle(title, isOn: $isEnabled)
+                .toggleStyle(.switch)
+                .font(.subheadline)
 
-            Stepper("\(label)达到 \(value)% 时告警", value: $value, in: 1...100)
+            Spacer(minLength: 8)
+
+            HStack(spacing: 8) {
+                Text("阈值")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+
+                Button {
+                    value = max(1, value - 1)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .disabled(!isEnabled || value <= 1)
+
+                Text("\(value)%")
+                    .font(.subheadline.monospacedDigit())
+                    .frame(minWidth: 52)
+
+                Button {
+                    value = min(100, value + 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .disabled(!isEnabled || value >= 100)
+            }
+            .foregroundColor(isEnabled ? .primary : .secondary)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-private struct AlertRuleCard<Content: View>: View {
-    let title: String
-    let subtitle: String
+private struct CompactWebsiteRuleCard: View {
     @Binding var isEnabled: Bool
-    let content: Content
-
-    init(
-        title: String,
-        subtitle: String,
-        isEnabled: Binding<Bool>,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self._isEnabled = isEnabled
-        self.content = content()
-    }
+    @Binding var websiteTargets: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle(isOn: $isEnabled) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text(subtitle)
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Toggle("网站连通性", isOn: $isEnabled)
+                    .toggleStyle(.switch)
+                    .font(.subheadline)
+
+                Button {
+                    websiteTargets.append("")
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 28, height: 28)
                 }
+                .buttonStyle(.plain)
+                .disabled(!isEnabled)
             }
 
             if isEnabled {
-                content
+                ForEach(Array(websiteTargets.indices), id: \.self) { index in
+                    HStack(spacing: 8) {
+                        TextField(targetPlaceholder(for: index), text: $websiteTargets[index])
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(.secondarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        Button {
+                            websiteTargets.remove(at: index)
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.system(size: 12, weight: .bold))
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Text("支持多个目标，可填域名、完整 URL、IP，或 `IP:端口` / `域名:端口`。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onAppear {
+            ensureEditableRowIfNeeded()
+        }
+        .onChange(of: isEnabled) { _, enabled in
+            if enabled {
+                ensureEditableRowIfNeeded()
+            }
+        }
+    }
+
+    private func targetPlaceholder(for index: Int) -> String {
+        index == 0 ? "https://www.youtube.com" : "再添加一个目标"
+    }
+
+    private func ensureEditableRowIfNeeded() {
+        if isEnabled && websiteTargets.isEmpty {
+            websiteTargets = [""]
+        }
     }
 }
 
@@ -679,7 +710,9 @@ private struct BarkConfigurationSheet: View {
 
                 Section("操作") {
                     Button(isTesting ? "测试中..." : "测试 Bark") {
-                        Task { await test() }
+                        Task { @MainActor in
+                            await test()
+                        }
                     }
                     .disabled(isSaving || isTesting)
 
@@ -712,6 +745,7 @@ private struct BarkConfigurationSheet: View {
         }
     }
 
+    @MainActor
     private func save() {
         isSaving = true
         onSave(barkURL, cooldownMinutes)
@@ -725,9 +759,9 @@ private struct BarkConfigurationSheet: View {
         dismiss()
     }
 
+    @MainActor
     private func test() async {
         isTesting = true
-        defer { isTesting = false }
 
         do {
             try await onTest(barkURL)
@@ -737,5 +771,7 @@ private struct BarkConfigurationSheet: View {
             resultMessage = error.localizedDescription
             resultIsError = true
         }
+
+        isTesting = false
     }
 }

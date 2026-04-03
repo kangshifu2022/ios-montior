@@ -272,7 +272,17 @@ final class SSHMonitorService {
         [ "${PSI_CPU_ENABLED:-0}" = "1" ] && append_rule "CPU PSI(avg10) >= ${PSI_CPU_THRESHOLD:-5}%"
         [ "${PSI_MEMORY_ENABLED:-0}" = "1" ] && append_rule "内存 PSI(avg10) >= ${PSI_MEMORY_THRESHOLD:-5}%"
         [ "${PSI_IO_ENABLED:-0}" = "1" ] && append_rule "IO PSI(avg10) >= ${PSI_IO_THRESHOLD:-5}%"
-        [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ] && append_rule "网站不可达: ${WEBSITE_URL}"
+        if [ "${WEBSITE_ENABLED:-0}" = "1" ]; then
+          index=1
+          while [ "$index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
+            eval "WEBSITE_TARGET=\${WEBSITE_TARGET_${index}:-}"
+            [ -n "${WEBSITE_TARGET:-}" ] && append_rule "网站不可达: ${WEBSITE_TARGET}"
+            index=$((index + 1))
+          done
+          if [ "${WEBSITE_TARGET_COUNT:-0}" = "0" ] && [ -n "${WEBSITE_URL:-}" ]; then
+            append_rule "网站不可达: ${WEBSITE_URL}"
+          fi
+        fi
       fi
       if [ -n "${RULES:-}" ]; then
         MESSAGE="已启用规则: $RULES"
@@ -1243,6 +1253,10 @@ final class SSHMonitorService {
         let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
         let safeHostValue = normalizedHostValue(from: config)
+        let websiteTargets = AlertConfiguration.normalizedWebsiteTargets(alertConfiguration.websiteTargets)
+        let websiteTargetEnvLines = websiteTargets.enumerated().map { index, target in
+            "WEBSITE_TARGET_\(index + 1)=\(shellQuoted(target))"
+        }.joined(separator: "\n")
         let envBody = """
         BARK_URL=\(shellQuoted(barkBaseURL))
         COOLDOWN_SECONDS='\(cooldownSeconds)'
@@ -1259,7 +1273,8 @@ final class SSHMonitorService {
         PSI_IO_ENABLED='\(shellBool(alertConfiguration.psiIOEnabled))'
         PSI_IO_THRESHOLD='\(alertConfiguration.psiIOThreshold)'
         WEBSITE_ENABLED='\(shellBool(alertConfiguration.websiteEnabled))'
-        WEBSITE_URL=\(shellQuoted(alertConfiguration.websiteURL))
+        WEBSITE_TARGET_COUNT='\(websiteTargets.count)'
+        \(websiteTargetEnvLines)
         """
         let scriptFiles: [(name: String, body: String)] = [
             ("alert_transport.sh", remoteAlertTransportScript),
@@ -1465,11 +1480,25 @@ final class SSHMonitorService {
             PSI_IO=$(fetch_psi_avg10 io)
             DETAILS="$DETAILS IO_PSI=${PSI_IO}%"
           fi
-          if [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ]; then
-            if check_website "$WEBSITE_URL"; then
-              DETAILS="$DETAILS WEBSITE=ok"
-            else
-              DETAILS="$DETAILS WEBSITE=down"
+          if [ "${WEBSITE_ENABLED:-0}" = "1" ]; then
+            website_index=1
+            while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
+              eval "WEBSITE_TARGET=\${WEBSITE_TARGET_${website_index}:-}"
+              if [ -n "${WEBSITE_TARGET:-}" ]; then
+                if check_website "$WEBSITE_TARGET"; then
+                  DETAILS="$DETAILS WEBSITE${website_index}=ok"
+                else
+                  DETAILS="$DETAILS WEBSITE${website_index}=down"
+                fi
+              fi
+              website_index=$((website_index + 1))
+            done
+            if [ "${WEBSITE_TARGET_COUNT:-0}" = "0" ] && [ -n "${WEBSITE_URL:-}" ]; then
+              if check_website "$WEBSITE_URL"; then
+                DETAILS="$DETAILS WEBSITE=ok"
+              else
+                DETAILS="$DETAILS WEBSITE=down"
+              fi
             fi
           fi
           TITLE="$(title_for_alert)"
@@ -1488,15 +1517,20 @@ final class SSHMonitorService {
         PSI_MEMORY_LAST_SENT=0
         PSI_IO_STATE="normal"
         PSI_IO_LAST_SENT=0
-        WEBSITE_STATE="normal"
-        WEBSITE_LAST_SENT=0
-
         if [ -r "$STATE_PATH" ]; then
           . "$STATE_PATH"
         fi
 
         [ -n "${COOLDOWN_SECONDS:-}" ] || COOLDOWN_SECONDS=600
         NOW=$(date +%s 2>/dev/null || busybox date +%s 2>/dev/null || echo 0)
+
+        website_index=1
+        while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
+          eval ": \${WEBSITE_${website_index}_STATE:=normal}"
+          eval ": \${WEBSITE_${website_index}_LAST_SENT:=0}"
+          website_index=$((website_index + 1))
+        done
+        [ "${WEBSITE_TARGET_COUNT:-0}" = "0" ] && : "${WEBSITE_STATE:=normal}" "${WEBSITE_LAST_SENT:=0}"
 
         if [ "${CPU_USAGE_ENABLED:-0}" = "1" ]; then
           CPU_USAGE=$(fetch_cpu_usage)
@@ -1568,26 +1602,60 @@ final class SSHMonitorService {
           fi
         fi
 
-        if [ "${WEBSITE_ENABLED:-0}" = "1" ] && [ -n "${WEBSITE_URL:-}" ]; then
-          if check_website "$WEBSITE_URL"; then
-            WEBSITE_STATE="normal"
-          else
-            if should_send_again "${WEBSITE_STATE:-normal}" "${WEBSITE_LAST_SENT:-0}"; then
-              if send_bark "$(title_for_alert)" "网站连通性异常，${WEBSITE_URL} 无法访问"; then
-                WEBSITE_LAST_SENT="$NOW"
+        if [ "${WEBSITE_ENABLED:-0}" = "1" ]; then
+          website_index=1
+          while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
+            eval "WEBSITE_TARGET=\${WEBSITE_TARGET_${website_index}:-}"
+            if [ -n "${WEBSITE_TARGET:-}" ]; then
+              eval "CURRENT_WEBSITE_STATE=\${WEBSITE_${website_index}_STATE:-normal}"
+              eval "CURRENT_WEBSITE_LAST_SENT=\${WEBSITE_${website_index}_LAST_SENT:-0}"
+              if check_website "$WEBSITE_TARGET"; then
+                CURRENT_WEBSITE_STATE="normal"
+              else
+                if should_send_again "$CURRENT_WEBSITE_STATE" "$CURRENT_WEBSITE_LAST_SENT"; then
+                  if send_bark "$(title_for_alert)" "网站连通性异常，${WEBSITE_TARGET} 无法访问"; then
+                    CURRENT_WEBSITE_LAST_SENT="$NOW"
+                  fi
+                fi
+                CURRENT_WEBSITE_STATE="alert"
               fi
+              eval "WEBSITE_${website_index}_STATE=\$CURRENT_WEBSITE_STATE"
+              eval "WEBSITE_${website_index}_LAST_SENT=\$CURRENT_WEBSITE_LAST_SENT"
             fi
-            WEBSITE_STATE="alert"
+            website_index=$((website_index + 1))
+          done
+
+          if [ "${WEBSITE_TARGET_COUNT:-0}" = "0" ] && [ -n "${WEBSITE_URL:-}" ]; then
+            if check_website "$WEBSITE_URL"; then
+              WEBSITE_STATE="normal"
+            else
+              if should_send_again "${WEBSITE_STATE:-normal}" "${WEBSITE_LAST_SENT:-0}"; then
+                if send_bark "$(title_for_alert)" "网站连通性异常，${WEBSITE_URL} 无法访问"; then
+                  WEBSITE_LAST_SENT="$NOW"
+                fi
+              fi
+              WEBSITE_STATE="alert"
+            fi
           fi
         fi
 
-        printf 'CPU_STATE=%s\\nCPU_LAST_SENT=%s\\nMEMORY_STATE=%s\\nMEMORY_LAST_SENT=%s\\nPSI_CPU_STATE=%s\\nPSI_CPU_LAST_SENT=%s\\nPSI_MEMORY_STATE=%s\\nPSI_MEMORY_LAST_SENT=%s\\nPSI_IO_STATE=%s\\nPSI_IO_LAST_SENT=%s\\nWEBSITE_STATE=%s\\nWEBSITE_LAST_SENT=%s\\n' \
+        WEBSITE_STATE_LINES=""
+        website_index=1
+        while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
+          eval "CURRENT_WEBSITE_STATE=\${WEBSITE_${website_index}_STATE:-normal}"
+          eval "CURRENT_WEBSITE_LAST_SENT=\${WEBSITE_${website_index}_LAST_SENT:-0}"
+          WEBSITE_STATE_LINES="${WEBSITE_STATE_LINES}WEBSITE_${website_index}_STATE=${CURRENT_WEBSITE_STATE}\\nWEBSITE_${website_index}_LAST_SENT=${CURRENT_WEBSITE_LAST_SENT}\\n"
+          website_index=$((website_index + 1))
+        done
+
+        printf 'CPU_STATE=%s\\nCPU_LAST_SENT=%s\\nMEMORY_STATE=%s\\nMEMORY_LAST_SENT=%s\\nPSI_CPU_STATE=%s\\nPSI_CPU_LAST_SENT=%s\\nPSI_MEMORY_STATE=%s\\nPSI_MEMORY_LAST_SENT=%s\\nPSI_IO_STATE=%s\\nPSI_IO_LAST_SENT=%s\\nWEBSITE_STATE=%s\\nWEBSITE_LAST_SENT=%s\\n%b' \
           "${CPU_STATE:-normal}" "${CPU_LAST_SENT:-0}" \
           "${MEMORY_STATE:-normal}" "${MEMORY_LAST_SENT:-0}" \
           "${PSI_CPU_STATE:-normal}" "${PSI_CPU_LAST_SENT:-0}" \
           "${PSI_MEMORY_STATE:-normal}" "${PSI_MEMORY_LAST_SENT:-0}" \
           "${PSI_IO_STATE:-normal}" "${PSI_IO_LAST_SENT:-0}" \
-          "${WEBSITE_STATE:-normal}" "${WEBSITE_LAST_SENT:-0}" > "$STATE_PATH"
+          "${WEBSITE_STATE:-normal}" "${WEBSITE_LAST_SENT:-0}" \
+          "${WEBSITE_STATE_LINES:-}" > "$STATE_PATH"
         """
     }
 
@@ -1696,9 +1764,82 @@ final class SSHMonitorService {
 
     private static var remoteAlertWebsiteCheckerScript: String {
         """
+        is_tcp_target() {
+          target="$1"
+          case "$target" in
+            *://*) return 1 ;;
+            \[*\]:[0-9]* ) return 0 ;;
+            *:*)
+              port="${target##*:}"
+              host="${target%:*}"
+              case "$port" in
+                ''|*[!0-9]* ) return 1 ;;
+              esac
+              [ -n "$host" ]
+              return $?
+              ;;
+            *)
+              return 1
+              ;;
+          esac
+        }
+
+        tcp_target_host() {
+          target="$1"
+          case "$target" in
+            \[*\]:* )
+              value="${target%%]:*}"
+              printf '%s' "${value#\[}"
+              ;;
+            *:* )
+              printf '%s' "${target%:*}"
+              ;;
+            * )
+              printf '%s' "$target"
+              ;;
+          esac
+        }
+
+        tcp_target_port() {
+          target="$1"
+          case "$target" in
+            \[*\]:* )
+              printf '%s' "${target##*:}"
+              ;;
+            *:* )
+              printf '%s' "${target##*:}"
+              ;;
+            * )
+              printf '%s' ""
+              ;;
+          esac
+        }
+
+        check_tcp_target() {
+          host="$1"
+          port="$2"
+          [ -n "$host" ] || return 1
+          [ -n "$port" ] || return 1
+
+          if command -v nc >/dev/null 2>&1; then
+            nc -z -w 5 "$host" "$port" >/dev/null 2>&1
+            return $?
+          fi
+          if command -v busybox >/dev/null 2>&1; then
+            busybox nc -z -w 5 "$host" "$port" >/dev/null 2>&1
+            return $?
+          fi
+          return 1
+        }
+
         check_website() {
           target="$1"
           [ -n "$target" ] || return 1
+
+          if is_tcp_target "$target"; then
+            check_tcp_target "$(tcp_target_host "$target")" "$(tcp_target_port "$target")"
+            return $?
+          fi
 
           if command -v curl >/dev/null 2>&1; then
             curl -fsS -L --max-time 15 -o /dev/null "$target" >/dev/null 2>&1
