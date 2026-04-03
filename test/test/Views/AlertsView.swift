@@ -8,8 +8,6 @@ struct AlertsView: View {
     @State private var showInstallConfirmation = false
     @State private var showRemoveConfirmation = false
     @State private var showBarkConfigurationSheet = false
-    @State private var barkResultMessage = ""
-    @State private var showBarkResultAlert = false
 
     private var selectedServer: ServerConfig? {
         if let selectedServerID,
@@ -115,15 +113,17 @@ struct AlertsView: View {
             } message: {
                 Text("会删除选中服务器上的告警脚本、配置文件和定时任务。")
             }
-            .alert("Bark 测试结果", isPresented: $showBarkResultAlert) {
-                Button("知道了", role: .cancel) {}
-            } message: {
-                Text(barkResultMessage)
-            }
             .sheet(isPresented: $showBarkConfigurationSheet) {
-                BarkConfigurationSheet(initialBarkURL: store.alertSettings.barkURL) { barkURL in
-                    try await saveAndTestBark(url: barkURL)
-                }
+                BarkConfigurationSheet(
+                    initialBarkURL: store.alertSettings.barkURL,
+                    initialCooldownMinutes: store.alertSettings.cooldownMinutes,
+                    onSave: { barkURL, cooldownMinutes in
+                        saveBark(url: barkURL, cooldownMinutes: cooldownMinutes)
+                    },
+                    onTest: { barkURL in
+                        try await testBark(url: barkURL)
+                    }
+                )
             }
         }
     }
@@ -206,21 +206,6 @@ struct AlertsView: View {
 
     private var ruleConfigurationCard: some View {
         AlertSectionCard(title: "告警规则", icon: "slider.horizontal.3") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("重复告警间隔")
-                    Spacer()
-                    Text("\(alertConfiguration.cooldownMinutes) 分钟")
-                        .foregroundColor(.secondary)
-                }
-
-                Stepper(
-                    "持续异常时，至少间隔 \(alertConfiguration.cooldownMinutes) 分钟再次通知",
-                    value: $alertConfiguration.cooldownMinutes,
-                    in: 1...120
-                )
-            }
-
             AlertRuleCard(
                 title: "CPU 占用率",
                 subtitle: "当 CPU 使用率持续高于阈值时通知",
@@ -470,21 +455,26 @@ struct AlertsView: View {
         await store.removeRemoteAlert(for: selectedServer)
     }
 
-    private func saveAndTestBark(url: String) async throws {
+    private func saveBark(url: String, cooldownMinutes: Int) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.updateGlobalAlertSettings(
+            barkURL: trimmed,
+            cooldownMinutes: cooldownMinutes
+        )
+    }
+
+    private func testBark(url: String) async throws {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw BarkService.BarkError(message: "请输入 Bark 测试地址")
         }
 
-        store.updateGlobalAlertSettings(barkURL: trimmed)
-        let message = try await BarkService.sendConfigurationTest(rawURL: trimmed)
-        barkResultMessage = message
-        showBarkResultAlert = true
+        _ = try await BarkService.sendConfigurationTest(rawURL: trimmed)
     }
 
     private func normalizedConfiguration(from configuration: AlertConfiguration) -> AlertConfiguration {
         AlertConfiguration(
-            cooldownMinutes: configuration.cooldownMinutes,
+            cooldownMinutes: store.alertSettings.cooldownMinutes,
             cpuUsageEnabled: configuration.cpuUsageEnabled,
             cpuUsageThreshold: configuration.cpuUsageThreshold,
             memoryUsageEnabled: configuration.memoryUsageEnabled,
@@ -625,18 +615,26 @@ private struct BarkConfigurationSheet: View {
     @FocusState private var barkURLFocused: Bool
 
     @State private var barkURL: String
+    @State private var cooldownMinutes: Int
     @State private var isSaving = false
-    @State private var errorMessage: String?
+    @State private var isTesting = false
+    @State private var resultMessage: String?
+    @State private var resultIsError = false
 
     private let barkAppStoreURL = URL(string: "https://apps.apple.com/app/id1403753865")!
-    let onSaveAndTest: (String) async throws -> Void
+    let onSave: (String, Int) -> Void
+    let onTest: (String) async throws -> Void
 
     init(
         initialBarkURL: String,
-        onSaveAndTest: @escaping (String) async throws -> Void
+        initialCooldownMinutes: Int,
+        onSave: @escaping (String, Int) -> Void,
+        onTest: @escaping (String) async throws -> Void
     ) {
         self._barkURL = State(initialValue: initialBarkURL)
-        self.onSaveAndTest = onSaveAndTest
+        self._cooldownMinutes = State(initialValue: max(1, initialCooldownMinutes))
+        self.onSave = onSave
+        self.onTest = onTest
     }
 
     var body: some View {
@@ -649,9 +647,24 @@ private struct BarkConfigurationSheet: View {
                         .keyboardType(.URL)
                         .focused($barkURLFocused)
 
-                    Text("保存时会立刻从 App 端测试 Bark 连通性，发送内容固定为“bark通知成功配置”。")
+                    Text("保存只会记录地址。测试会从 App 端直接发送固定内容“bark通知成功配置”。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
+                }
+
+                Section("通知间隔") {
+                    HStack {
+                        Text("再次通知间隔")
+                        Spacer()
+                        Text("\(cooldownMinutes) 分钟")
+                            .foregroundColor(.secondary)
+                    }
+
+                    Stepper(
+                        "持续异常时，至少间隔 \(cooldownMinutes) 分钟再次通知",
+                        value: $cooldownMinutes,
+                        in: 1...120
+                    )
                 }
 
                 Section("获取方式") {
@@ -661,13 +674,25 @@ private struct BarkConfigurationSheet: View {
 
                     Text("1. 在 iPhone 上安装并打开 Bark。")
                     Text("2. 在 Bark 首页复制测试地址。")
-                    Text("3. 回到这里粘贴并保存。")
+                    Text("3. 回到这里粘贴后，可以先测试，再保存。")
                 }
 
-                if let errorMessage, !errorMessage.isEmpty {
-                    Section("测试结果") {
-                        Text(errorMessage)
-                            .foregroundColor(.red)
+                Section("操作") {
+                    Button(isTesting ? "测试中..." : "测试 Bark") {
+                        Task { await test() }
+                    }
+                    .disabled(isSaving || isTesting)
+
+                    Button(isSaving ? "保存中..." : "保存 Bark 地址") {
+                        save()
+                    }
+                    .disabled(isSaving || isTesting)
+                }
+
+                if let resultMessage, !resultMessage.isEmpty {
+                    Section("结果") {
+                        Text(resultMessage)
+                            .foregroundColor(resultIsError ? .red : .green)
                     }
                 }
             }
@@ -678,13 +703,7 @@ private struct BarkConfigurationSheet: View {
                     Button("取消") {
                         dismiss()
                     }
-                    .disabled(isSaving)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isSaving ? "测试中..." : "保存并测试") {
-                        Task { await save() }
-                    }
-                    .disabled(isSaving)
+                    .disabled(isSaving || isTesting)
                 }
             }
             .onAppear {
@@ -693,15 +712,30 @@ private struct BarkConfigurationSheet: View {
         }
     }
 
-    private func save() async {
+    private func save() {
         isSaving = true
-        defer { isSaving = false }
+        onSave(barkURL, cooldownMinutes)
+        if barkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            resultMessage = "已清空 Bark 地址，并保存再次通知间隔"
+        } else {
+            resultMessage = "Bark 地址和再次通知间隔已保存"
+        }
+        resultIsError = false
+        isSaving = false
+        dismiss()
+    }
+
+    private func test() async {
+        isTesting = true
+        defer { isTesting = false }
 
         do {
-            try await onSaveAndTest(barkURL)
-            dismiss()
+            try await onTest(barkURL)
+            resultMessage = "Bark 连通性测试成功，已发送“bark通知成功配置”"
+            resultIsError = false
         } catch {
-            errorMessage = error.localizedDescription
+            resultMessage = error.localizedDescription
+            resultIsError = true
         }
     }
 }

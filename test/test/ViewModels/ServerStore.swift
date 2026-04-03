@@ -113,13 +113,17 @@ final class ServerStore: ObservableObject {
         save()
     }
 
-    func updateGlobalAlertSettings(barkURL: String) {
+    func updateGlobalAlertSettings(barkURL: String, cooldownMinutes: Int) {
         let normalizedBarkURL = barkURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard alertSettings.barkURL != normalizedBarkURL else {
+        let normalizedCooldown = max(1, cooldownMinutes)
+        guard alertSettings.barkURL != normalizedBarkURL || alertSettings.cooldownMinutes != normalizedCooldown else {
             return
         }
 
-        alertSettings = AlertSettings(barkURL: normalizedBarkURL)
+        alertSettings = AlertSettings(
+            barkURL: normalizedBarkURL,
+            cooldownMinutes: normalizedCooldown
+        )
         saveAlertSettings()
     }
 
@@ -359,7 +363,14 @@ final class ServerStore: ObservableObject {
             .lazy
             .map { $0.barkURL.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty } ?? ""
-        alertSettings = AlertSettings(barkURL: migratedBarkURL)
+        let migratedCooldown = servers
+            .lazy
+            .map { max(1, $0.alertConfiguration.cooldownMinutes) }
+            .first ?? 10
+        alertSettings = AlertSettings(
+            barkURL: migratedBarkURL,
+            cooldownMinutes: migratedCooldown
+        )
         saveAlertSettings()
     }
 
@@ -469,6 +480,7 @@ final class ServerStore: ObservableObject {
             return nil
         }
         config.barkURL = alertSettings.barkURL
+        config.alertConfiguration.cooldownMinutes = alertSettings.cooldownMinutes
         return config
     }
 
