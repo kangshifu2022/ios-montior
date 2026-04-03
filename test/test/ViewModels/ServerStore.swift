@@ -18,10 +18,13 @@ final class ServerStore: ObservableObject {
     @Published private(set) var staticInfoByServerID: [UUID: ServerStaticInfo] = [:]
     @Published private(set) var dynamicInfoByServerID: [UUID: ServerDynamicInfo] = [:]
     @Published private(set) var refreshingServerIDs: Set<UUID> = []
+    @Published private(set) var remoteAlertStatusByServerID: [UUID: RemoteAlertStatus] = [:]
+    @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
 
     private let serversKey = "saved_servers"
     private let staticInfoKey = "cached_server_static_info"
     private let dynamicInfoKey = "cached_server_dynamic_info"
+    private let remoteAlertStatusKey = "cached_remote_alert_status"
     private let legacyStatsKey = "cached_server_stats"
     private var lastStaticRefreshDates: [UUID: Date] = [:]
     private var lastDynamicRefreshDates: [UUID: Date] = [:]
@@ -43,9 +46,11 @@ final class ServerStore: ObservableObject {
             servers[index] = server
             staticInfoByServerID.removeValue(forKey: server.id)
             dynamicInfoByServerID.removeValue(forKey: server.id)
+            remoteAlertStatusByServerID.removeValue(forKey: server.id)
             lastStaticRefreshDates.removeValue(forKey: server.id)
             lastDynamicRefreshDates.removeValue(forKey: server.id)
             refreshingServerIDs.remove(server.id)
+            remoteAlertOperationServerIDs.remove(server.id)
             save()
             saveCachedInfo()
         }
@@ -57,9 +62,11 @@ final class ServerStore: ObservableObject {
         deletedIDs.forEach {
             staticInfoByServerID.removeValue(forKey: $0)
             dynamicInfoByServerID.removeValue(forKey: $0)
+            remoteAlertStatusByServerID.removeValue(forKey: $0)
             lastStaticRefreshDates.removeValue(forKey: $0)
             lastDynamicRefreshDates.removeValue(forKey: $0)
             refreshingServerIDs.remove($0)
+            remoteAlertOperationServerIDs.remove($0)
         }
         save()
         saveCachedInfo()
@@ -81,6 +88,114 @@ final class ServerStore: ObservableObject {
 
     func isRefreshing(_ id: UUID) -> Bool {
         refreshingServerIDs.contains(id)
+    }
+
+    func remoteAlertStatus(for config: ServerConfig) -> RemoteAlertStatus? {
+        remoteAlertStatusByServerID[config.id]
+    }
+
+    func isPerformingRemoteAlertAction(_ id: UUID) -> Bool {
+        remoteAlertOperationServerIDs.contains(id)
+    }
+
+    func updateAlertSettings(
+        for id: UUID,
+        barkURL: String,
+        cpuAlertThreshold: Int,
+        cpuAlertCooldownMinutes: Int
+    ) {
+        guard let index = servers.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        servers[index].barkURL = barkURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        servers[index].cpuAlertThreshold = max(1, min(cpuAlertThreshold, 100))
+        servers[index].cpuAlertCooldownMinutes = max(1, cpuAlertCooldownMinutes)
+        save()
+    }
+
+    func refreshRemoteAlertStatus(for config: ServerConfig) async {
+        guard let latestConfig = latestConfig(for: config.id) else { return }
+        beginRemoteAlertOperation(for: latestConfig.id)
+        defer { endRemoteAlertOperation(for: latestConfig.id) }
+
+        switch await SSHMonitorService.fetchRemoteAlertStatus(config: latestConfig) {
+        case .success(var status):
+            status.lastCheckedAt = Date()
+            if status.isInstalled {
+                status.lastUpdatedAt = remoteAlertStatusByServerID[latestConfig.id]?.lastUpdatedAt
+            }
+            remoteAlertStatusByServerID[latestConfig.id] = status
+        case .failure(let message):
+            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        }
+
+        saveCachedInfo()
+    }
+
+    func deployRemoteAlert(for config: ServerConfig) async {
+        guard let latestConfig = latestConfig(for: config.id) else { return }
+        beginRemoteAlertOperation(for: latestConfig.id)
+        defer { endRemoteAlertOperation(for: latestConfig.id) }
+
+        switch await SSHMonitorService.deployCPUAlert(config: latestConfig) {
+        case .success(var status):
+            let now = Date()
+            status.lastCheckedAt = now
+            status.lastUpdatedAt = now
+            status.lastMessage = "已在目标服务器安装并启用远端告警"
+            status.lastError = nil
+            remoteAlertStatusByServerID[latestConfig.id] = status
+            setRemoteAlertEnabled(true, for: latestConfig.id)
+        case .failure(let message):
+            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        }
+
+        save()
+        saveCachedInfo()
+    }
+
+    func removeRemoteAlert(for config: ServerConfig) async {
+        guard let latestConfig = latestConfig(for: config.id) else { return }
+        beginRemoteAlertOperation(for: latestConfig.id)
+        defer { endRemoteAlertOperation(for: latestConfig.id) }
+
+        switch await SSHMonitorService.removeCPUAlert(config: latestConfig) {
+        case .success(var status):
+            let now = Date()
+            status.lastCheckedAt = now
+            status.lastUpdatedAt = now
+            status.lastMessage = "已从目标服务器卸载远端告警"
+            status.lastError = nil
+            remoteAlertStatusByServerID[latestConfig.id] = status
+            setRemoteAlertEnabled(false, for: latestConfig.id)
+        case .failure(let message):
+            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        }
+
+        save()
+        saveCachedInfo()
+    }
+
+    func sendRemoteAlertTest(for config: ServerConfig) async {
+        guard let latestConfig = latestConfig(for: config.id) else { return }
+        beginRemoteAlertOperation(for: latestConfig.id)
+        defer { endRemoteAlertOperation(for: latestConfig.id) }
+
+        switch await SSHMonitorService.sendTestBarkNotification(config: latestConfig) {
+        case .success(let message):
+            var status = remoteAlertStatusByServerID[latestConfig.id] ?? RemoteAlertStatus()
+            let now = Date()
+            status.lastCheckedAt = now
+            status.lastUpdatedAt = now
+            status.lastMessage = message
+            status.lastError = nil
+            remoteAlertStatusByServerID[latestConfig.id] = status
+        case .failure(let message):
+            mergeRemoteAlertFailure(message, for: latestConfig.id)
+        }
+
+        saveCachedInfo()
     }
 
     func refreshAllIfNeeded(forceDynamic: Bool = false, forceStatic: Bool = false) async {
@@ -207,6 +322,9 @@ final class ServerStore: ObservableObject {
         if let data = try? JSONEncoder().encode(dynamicInfoByServerID) {
             UserDefaults.standard.set(data, forKey: dynamicInfoKey)
         }
+        if let data = try? JSONEncoder().encode(remoteAlertStatusByServerID) {
+            UserDefaults.standard.set(data, forKey: remoteAlertStatusKey)
+        }
     }
 
     private func load() {
@@ -227,6 +345,11 @@ final class ServerStore: ObservableObject {
         if let dynamicData = UserDefaults.standard.data(forKey: dynamicInfoKey),
            let decodedDynamic = try? JSONDecoder().decode([UUID: ServerDynamicInfo].self, from: dynamicData) {
             dynamicInfoByServerID = decodedDynamic.filter { validIDs.contains($0.key) }
+        }
+
+        if let alertStatusData = UserDefaults.standard.data(forKey: remoteAlertStatusKey),
+           let decodedAlertStatus = try? JSONDecoder().decode([UUID: RemoteAlertStatus].self, from: alertStatusData) {
+            remoteAlertStatusByServerID = decodedAlertStatus.filter { validIDs.contains($0.key) }
         }
 
         migrateLegacyStatsIfNeeded(validIDs: validIDs)
@@ -306,5 +429,32 @@ final class ServerStore: ObservableObject {
         info.cpuCores > 0 ||
         !info.cpuFrequency.isEmpty ||
         info.memTotal > 0
+    }
+
+    private func latestConfig(for id: UUID) -> ServerConfig? {
+        servers.first(where: { $0.id == id })
+    }
+
+    private func beginRemoteAlertOperation(for id: UUID) {
+        remoteAlertOperationServerIDs.insert(id)
+    }
+
+    private func endRemoteAlertOperation(for id: UUID) {
+        remoteAlertOperationServerIDs.remove(id)
+    }
+
+    private func setRemoteAlertEnabled(_ isEnabled: Bool, for id: UUID) {
+        guard let index = servers.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        servers[index].cpuAlertEnabled = isEnabled
+    }
+
+    private func mergeRemoteAlertFailure(_ message: String, for id: UUID) {
+        var status = remoteAlertStatusByServerID[id] ?? RemoteAlertStatus()
+        status.lastCheckedAt = Date()
+        status.lastError = message
+        status.lastMessage = ""
+        remoteAlertStatusByServerID[id] = status
     }
 }

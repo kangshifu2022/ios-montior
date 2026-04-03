@@ -15,7 +15,7 @@ struct ContentView: View {
                     Label("容器", systemImage: "square.3.layers.3d")
                 }
             
-            Text("告警")
+            AlertsView(store: store)
                 .tabItem {
                     Label("告警", systemImage: "bell")
                 }

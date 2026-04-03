@@ -71,6 +71,111 @@ final class SSHMonitorService {
         }
     }
 
+    static func fetchRemoteAlertStatus(config: ServerConfig) async -> Result<RemoteAlertStatus, String> {
+        switch await execute(
+            config: config,
+            script: remoteAlertStatusScript,
+            connectionDiagnostics: [
+                "failure stage: connect",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-status",
+                "algorithms: SSHAlgorithms.all"
+            ],
+            executeDiagnostics: [
+                "failure stage: execute",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-status",
+                "algorithms: SSHAlgorithms.all"
+            ]
+        ) {
+        case .success(let output):
+            return .success(parseRemoteAlertStatus(output: output))
+        case .failure(let failure):
+            return .failure(failure.statusMessage)
+        }
+    }
+
+    static func deployCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, String> {
+        guard let barkBaseURL = barkPushBaseURL(from: config.barkURL) else {
+            return .failure("Bark 测试地址无效，请粘贴 Bark App 里的测试地址")
+        }
+
+        let deployScript = makeRemoteAlertDeploymentScript(config: config, barkBaseURL: barkBaseURL)
+        switch await execute(
+            config: config,
+            script: deployScript,
+            connectionDiagnostics: [
+                "failure stage: connect",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-deploy",
+                "algorithms: SSHAlgorithms.all"
+            ],
+            executeDiagnostics: [
+                "failure stage: execute",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-deploy",
+                "algorithms: SSHAlgorithms.all"
+            ]
+        ) {
+        case .success:
+            return await fetchRemoteAlertStatus(config: config)
+        case .failure(let failure):
+            return .failure(failure.statusMessage)
+        }
+    }
+
+    static func removeCPUAlert(config: ServerConfig) async -> Result<RemoteAlertStatus, String> {
+        switch await execute(
+            config: config,
+            script: makeRemoteAlertRemovalScript(),
+            connectionDiagnostics: [
+                "failure stage: connect",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-remove",
+                "algorithms: SSHAlgorithms.all"
+            ],
+            executeDiagnostics: [
+                "failure stage: execute",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-remove",
+                "algorithms: SSHAlgorithms.all"
+            ]
+        ) {
+        case .success:
+            return await fetchRemoteAlertStatus(config: config)
+        case .failure(let failure):
+            return .failure(failure.statusMessage)
+        }
+    }
+
+    static func sendTestBarkNotification(config: ServerConfig) async -> Result<String, String> {
+        guard let barkBaseURL = barkPushBaseURL(from: config.barkURL) else {
+            return .failure("Bark 测试地址无效，请粘贴 Bark App 里的测试地址")
+        }
+
+        switch await execute(
+            config: config,
+            script: makeRemoteAlertTestScript(config: config, barkBaseURL: barkBaseURL),
+            connectionDiagnostics: [
+                "failure stage: connect",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-test",
+                "algorithms: SSHAlgorithms.all"
+            ],
+            executeDiagnostics: [
+                "failure stage: execute",
+                "ssh stack: Citadel",
+                "request kind: remote-alert-test",
+                "algorithms: SSHAlgorithms.all"
+            ]
+        ) {
+        case .success:
+            return .success("测试通知已从目标服务器发出")
+        case .failure(let failure):
+            return .failure(failure.statusMessage)
+        }
+    }
+
     private static let fullStatsScript = """
     echo "=OS="; (if [ -f /etc/os-release ]; then . /etc/os-release; echo "${PRETTY_NAME:-$NAME}"; elif [ -f /etc/openwrt_release ]; then . /etc/openwrt_release; echo "${DISTRIB_DESCRIPTION:-$DISTRIB_ID $DISTRIB_RELEASE}"; else uname -sr; fi)
     echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
@@ -127,6 +232,29 @@ final class SSHMonitorService {
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
+    exit 0
+    """
+
+    private static let remoteAlertStatusScript = """
+    ALERT_DIR="$HOME/.ios-monitor"
+    SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+    ENV_PATH="$ALERT_DIR/cpu_alert.env"
+    INSTALLED="no"
+    MESSAGE="Remote alert is not installed"
+    if [ -f "$SCRIPT_PATH" ] && (crontab -l 2>/dev/null || true) | grep -F "$SCRIPT_PATH" >/dev/null 2>&1; then
+      INSTALLED="yes"
+      MESSAGE="Remote alert is installed"
+    fi
+    echo "=ALERT_INSTALLED="
+    echo "$INSTALLED"
+    echo "=SCRIPT_PATH="
+    echo "$SCRIPT_PATH"
+    echo "=SCHEDULE="
+    if [ "$INSTALLED" = "yes" ]; then echo "cron every minute"; else echo "not installed"; fi
+    echo "=MESSAGE="
+    echo "$MESSAGE"
+    echo "=HAS_CONFIG="
+    if [ -f "$ENV_PATH" ]; then echo "yes"; else echo "no"; fi
     exit 0
     """
 
@@ -1020,5 +1148,262 @@ final class SSHMonitorService {
                 routerInfo.connectedDevices[i].connectionType = .wired
             }
         }
+    }
+
+    private static func parseRemoteAlertStatus(output: String) -> RemoteAlertStatus {
+        let fields = parseMarkerOutput(output)
+        let installed = fields["ALERT_INSTALLED"] == "yes"
+        return RemoteAlertStatus(
+            isInstalled: installed,
+            scriptPath: fields["SCRIPT_PATH"] ?? "~/.ios-monitor/cpu_alert.sh",
+            scheduleDescription: fields["SCHEDULE"] ?? (installed ? "cron every minute" : "not installed"),
+            lastCheckedAt: Date(),
+            lastUpdatedAt: nil,
+            lastMessage: fields["MESSAGE"] ?? (installed ? "已启用远端告警" : "未在服务器上安装远端告警"),
+            lastError: nil
+        )
+    }
+
+    private static func parseMarkerOutput(_ output: String) -> [String: String] {
+        var values: [String: String] = [:]
+        var pendingKey: String?
+
+        for line in output.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            if trimmed.hasPrefix("="), trimmed.hasSuffix("="), trimmed.count > 2 {
+                pendingKey = String(trimmed.dropFirst().dropLast())
+                continue
+            }
+
+            if let key = pendingKey {
+                values[key] = trimmed
+                pendingKey = nil
+            }
+        }
+
+        return values
+    }
+
+    private static func makeRemoteAlertDeploymentScript(config: ServerConfig, barkBaseURL: String) -> String {
+        let threshold = max(1, min(config.cpuAlertThreshold, 100))
+        let cooldownSeconds = max(1, config.cpuAlertCooldownMinutes) * 60
+        let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
+        let scriptBody = remoteAlertRunnerScript
+
+        return """
+        set -eu
+        ALERT_DIR="$HOME/.ios-monitor"
+        SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+        ENV_PATH="$ALERT_DIR/cpu_alert.env"
+
+        mkdir -p "$ALERT_DIR"
+
+        if ! command -v crontab >/dev/null 2>&1; then
+          echo "crontab command is unavailable"
+          exit 1
+        fi
+
+        if command -v curl >/dev/null 2>&1; then
+          :
+        elif command -v wget >/dev/null 2>&1; then
+          :
+        elif command -v uclient-fetch >/dev/null 2>&1; then
+          :
+        else
+          echo "curl, wget, or uclient-fetch is required for Bark notifications"
+          exit 1
+        fi
+
+        cat > "$SCRIPT_PATH" <<'IOS_MONITOR_REMOTE_ALERT'
+        \(scriptBody)
+        IOS_MONITOR_REMOTE_ALERT
+        chmod 700 "$SCRIPT_PATH"
+
+        cat > "$ENV_PATH" <<'IOS_MONITOR_REMOTE_ALERT_ENV'
+        BARK_URL=\(shellQuoted(barkBaseURL))
+        CPU_THRESHOLD='\(threshold)'
+        COOLDOWN_SECONDS='\(cooldownSeconds)'
+        HOST_LABEL=\(shellQuoted(safeHostLabel))
+        IOS_MONITOR_REMOTE_ALERT_ENV
+        chmod 600 "$ENV_PATH"
+
+        CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+        FILTERED_CRON=$(printf '%s\\n' "$CURRENT_CRON" | grep -Fv "$SCRIPT_PATH" || true)
+        NEW_ENTRY="* * * * * /bin/sh \\"$SCRIPT_PATH\\" >/dev/null 2>&1"
+        if [ -n "$FILTERED_CRON" ]; then
+          printf '%s\\n%s\\n' "$FILTERED_CRON" "$NEW_ENTRY" | crontab -
+        else
+          printf '%s\\n' "$NEW_ENTRY" | crontab -
+        fi
+
+        exit 0
+        """
+    }
+
+    private static func makeRemoteAlertRemovalScript() -> String {
+        """
+        set -eu
+        ALERT_DIR="$HOME/.ios-monitor"
+        SCRIPT_PATH="$ALERT_DIR/cpu_alert.sh"
+        ENV_PATH="$ALERT_DIR/cpu_alert.env"
+        STATE_PATH="$ALERT_DIR/cpu_alert.state"
+
+        if command -v crontab >/dev/null 2>&1; then
+          CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+          FILTERED_CRON=$(printf '%s\\n' "$CURRENT_CRON" | grep -Fv "$SCRIPT_PATH" || true)
+          if [ -n "$FILTERED_CRON" ]; then
+            printf '%s\\n' "$FILTERED_CRON" | crontab -
+          else
+            crontab -r 2>/dev/null || true
+          fi
+        fi
+
+        rm -f "$SCRIPT_PATH" "$ENV_PATH" "$STATE_PATH"
+        rmdir "$ALERT_DIR" 2>/dev/null || true
+        exit 0
+        """
+    }
+
+    private static func makeRemoteAlertTestScript(config: ServerConfig, barkBaseURL: String) -> String {
+        let hostLabel = (config.name.isEmpty ? config.host : config.name).trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeHostLabel = hostLabel.isEmpty ? config.host : hostLabel
+
+        return """
+        set -eu
+        BARK_URL=\(shellQuoted(barkBaseURL))
+        HOST_LABEL=\(shellQuoted(safeHostLabel))
+
+        \(remoteAlertTransportScript)
+
+        send_bark "Test Alert" "$HOST_LABEL remote alert test from iOS Monitor"
+        """
+    }
+
+    private static var remoteAlertRunnerScript: String {
+        """
+        #!/bin/sh
+        set -eu
+
+        ALERT_DIR="${HOME}/.ios-monitor"
+        ENV_PATH="$ALERT_DIR/cpu_alert.env"
+        STATE_PATH="$ALERT_DIR/cpu_alert.state"
+
+        [ -r "$ENV_PATH" ] || exit 1
+        . "$ENV_PATH"
+
+        \(remoteAlertTransportScript)
+
+        fetch_cpu_usage() {
+          (top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {
+            for (i = 1; i <= NF; i++) {
+              if ($i ~ /id,|idle/) {
+                v = $(i - 1)
+                gsub(/[^0-9.]/, "", v)
+                if (v != "") {
+                  printf "%.0f\\n", 100 - v
+                  found = 1
+                  exit
+                }
+              }
+            }
+          } END { if (!found) print "0" }'
+        }
+
+        if [ "${1:-}" = "--test" ]; then
+          send_bark "Test Alert" "$HOST_LABEL remote alert test from iOS Monitor"
+          exit $?
+        fi
+
+        CPU_USAGE=$(fetch_cpu_usage)
+        LAST_STATE="normal"
+        LAST_SENT=0
+
+        if [ -r "$STATE_PATH" ]; then
+          . "$STATE_PATH"
+        fi
+
+        [ -n "${CPU_THRESHOLD:-}" ] || CPU_THRESHOLD=90
+        [ -n "${COOLDOWN_SECONDS:-}" ] || COOLDOWN_SECONDS=600
+        NOW=$(date +%s 2>/dev/null || busybox date +%s 2>/dev/null || echo 0)
+
+        if [ "$CPU_USAGE" -ge "$CPU_THRESHOLD" ]; then
+          SHOULD_SEND=0
+          if [ "${LAST_STATE:-normal}" != "high" ]; then
+            SHOULD_SEND=1
+          elif [ $((NOW - ${LAST_SENT:-0})) -ge "$COOLDOWN_SECONDS" ]; then
+            SHOULD_SEND=1
+          fi
+
+          if [ "$SHOULD_SEND" -eq 1 ]; then
+            if send_bark "CPU Alert" "$HOST_LABEL CPU usage is ${CPU_USAGE}% (threshold ${CPU_THRESHOLD}%)"; then
+              LAST_SENT="$NOW"
+            fi
+          fi
+          LAST_STATE="high"
+        else
+          LAST_STATE="normal"
+        fi
+
+        printf 'LAST_STATE=%s\\nLAST_SENT=%s\\n' "$LAST_STATE" "${LAST_SENT:-0}" > "$STATE_PATH"
+        """
+    }
+
+    private static var remoteAlertTransportScript: String {
+        """
+        urlencode() {
+          printf '%s' "$1" | od -An -tx1 | tr -d ' \\n' | sed 's/../%&/g'
+        }
+
+        send_bark() {
+          title="$1"
+          body="$2"
+          base="${BARK_URL%/}"
+          url="${base}/$(urlencode "$title")/$(urlencode "$body")?group=ios-monitor&isArchive=1"
+
+          if command -v curl >/dev/null 2>&1; then
+            curl -fsS "$url" >/dev/null 2>&1
+            return $?
+          fi
+          if command -v wget >/dev/null 2>&1; then
+            wget -qO- "$url" >/dev/null 2>&1
+            return $?
+          fi
+          if command -v uclient-fetch >/dev/null 2>&1; then
+            uclient-fetch -q "$url" >/dev/null 2>&1
+            return $?
+          fi
+          return 1
+        }
+        """
+    }
+
+    private static func barkPushBaseURL(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let components = URLComponents(string: trimmed),
+              let scheme = components.scheme,
+              let host = components.host else {
+            return nil
+        }
+
+        let segments = components.path.split(separator: "/").map(String.init)
+        guard let key = segments.first, !key.isEmpty else {
+            return nil
+        }
+
+        var normalized = "\(scheme)://\(host)"
+        if let port = components.port {
+            normalized += ":\(port)"
+        }
+        normalized += "/\(key)"
+        return normalized
+    }
+
+    private static func shellQuoted(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "'", with: "'\"'\"'")
+        return "'\(escaped)'"
     }
 }

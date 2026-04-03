@@ -103,7 +103,11 @@ struct AddServerView: View {
                             host: host,
                             port: Int(port) ?? 22,
                             username: username,
-                            password: password
+                            password: password,
+                            barkURL: editingServer?.barkURL ?? "",
+                            cpuAlertEnabled: editingServer?.cpuAlertEnabled ?? false,
+                            cpuAlertThreshold: editingServer?.cpuAlertThreshold ?? 90,
+                            cpuAlertCooldownMinutes: editingServer?.cpuAlertCooldownMinutes ?? 10
                         )
                         if isEditing {
                             store.update(config)
