@@ -122,7 +122,7 @@ struct AlertsView: View {
             }
             .sheet(isPresented: $showBarkConfigurationSheet) {
                 BarkConfigurationSheet(initialBarkURL: store.alertSettings.barkURL) { barkURL in
-                    await saveAndTestBark(url: barkURL)
+                    try await saveAndTestBark(url: barkURL)
                 }
             }
         }
