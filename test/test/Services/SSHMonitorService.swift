@@ -275,7 +275,7 @@ final class SSHMonitorService {
         if [ "${WEBSITE_ENABLED:-0}" = "1" ]; then
           index=1
           while [ "$index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
-            eval "WEBSITE_TARGET=\${WEBSITE_TARGET_${index}:-}"
+            eval "WEBSITE_TARGET=\\${WEBSITE_TARGET_${index}:-}"
             [ -n "${WEBSITE_TARGET:-}" ] && append_rule "网站不可达: ${WEBSITE_TARGET}"
             index=$((index + 1))
           done
@@ -1483,7 +1483,7 @@ final class SSHMonitorService {
           if [ "${WEBSITE_ENABLED:-0}" = "1" ]; then
             website_index=1
             while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
-              eval "WEBSITE_TARGET=\${WEBSITE_TARGET_${website_index}:-}"
+              eval "WEBSITE_TARGET=\\${WEBSITE_TARGET_${website_index}:-}"
               if [ -n "${WEBSITE_TARGET:-}" ]; then
                 if check_website "$WEBSITE_TARGET"; then
                   DETAILS="$DETAILS WEBSITE${website_index}=ok"
@@ -1526,8 +1526,8 @@ final class SSHMonitorService {
 
         website_index=1
         while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
-          eval ": \${WEBSITE_${website_index}_STATE:=normal}"
-          eval ": \${WEBSITE_${website_index}_LAST_SENT:=0}"
+          eval ": \\${WEBSITE_${website_index}_STATE:=normal}"
+          eval ": \\${WEBSITE_${website_index}_LAST_SENT:=0}"
           website_index=$((website_index + 1))
         done
         [ "${WEBSITE_TARGET_COUNT:-0}" = "0" ] && : "${WEBSITE_STATE:=normal}" "${WEBSITE_LAST_SENT:=0}"
@@ -1605,10 +1605,10 @@ final class SSHMonitorService {
         if [ "${WEBSITE_ENABLED:-0}" = "1" ]; then
           website_index=1
           while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
-            eval "WEBSITE_TARGET=\${WEBSITE_TARGET_${website_index}:-}"
+            eval "WEBSITE_TARGET=\\${WEBSITE_TARGET_${website_index}:-}"
             if [ -n "${WEBSITE_TARGET:-}" ]; then
-              eval "CURRENT_WEBSITE_STATE=\${WEBSITE_${website_index}_STATE:-normal}"
-              eval "CURRENT_WEBSITE_LAST_SENT=\${WEBSITE_${website_index}_LAST_SENT:-0}"
+              eval "CURRENT_WEBSITE_STATE=\\${WEBSITE_${website_index}_STATE:-normal}"
+              eval "CURRENT_WEBSITE_LAST_SENT=\\${WEBSITE_${website_index}_LAST_SENT:-0}"
               if check_website "$WEBSITE_TARGET"; then
                 CURRENT_WEBSITE_STATE="normal"
               else
@@ -1619,8 +1619,8 @@ final class SSHMonitorService {
                 fi
                 CURRENT_WEBSITE_STATE="alert"
               fi
-              eval "WEBSITE_${website_index}_STATE=\$CURRENT_WEBSITE_STATE"
-              eval "WEBSITE_${website_index}_LAST_SENT=\$CURRENT_WEBSITE_LAST_SENT"
+              eval "WEBSITE_${website_index}_STATE=\\$CURRENT_WEBSITE_STATE"
+              eval "WEBSITE_${website_index}_LAST_SENT=\\$CURRENT_WEBSITE_LAST_SENT"
             fi
             website_index=$((website_index + 1))
           done
@@ -1642,8 +1642,8 @@ final class SSHMonitorService {
         WEBSITE_STATE_LINES=""
         website_index=1
         while [ "$website_index" -le "${WEBSITE_TARGET_COUNT:-0}" ]; do
-          eval "CURRENT_WEBSITE_STATE=\${WEBSITE_${website_index}_STATE:-normal}"
-          eval "CURRENT_WEBSITE_LAST_SENT=\${WEBSITE_${website_index}_LAST_SENT:-0}"
+          eval "CURRENT_WEBSITE_STATE=\\${WEBSITE_${website_index}_STATE:-normal}"
+          eval "CURRENT_WEBSITE_LAST_SENT=\\${WEBSITE_${website_index}_LAST_SENT:-0}"
           WEBSITE_STATE_LINES="${WEBSITE_STATE_LINES}WEBSITE_${website_index}_STATE=${CURRENT_WEBSITE_STATE}\\nWEBSITE_${website_index}_LAST_SENT=${CURRENT_WEBSITE_LAST_SENT}\\n"
           website_index=$((website_index + 1))
         done
