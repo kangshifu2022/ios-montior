@@ -55,7 +55,7 @@ struct DevicesView: View {
                                 delegate: DeviceListDropDelegate(draggedServer: $draggedServer)
                             )
                             .padding(.horizontal, layout.horizontalPadding)
-                            .padding(.vertical, 20)
+                            .padding(.vertical, layout.verticalContentPadding)
                         }
                     }
                 }
@@ -82,21 +82,30 @@ struct DevicesView: View {
 
     private func layoutMetrics(for width: CGFloat) -> DeviceGridLayout {
         let horizontalPadding: CGFloat = width >= 768 ? 24 : 16
-        let spacing: CGFloat = width >= 768 ? 20 : 16
+        let columnSpacing: CGFloat = width >= 768 ? 20 : 16
         let usableWidth = max(width - horizontalPadding * 2, 0)
         let minimumCardWidth: CGFloat = width >= 1024 ? 300 : 320
-        let estimatedColumns = Int((usableWidth + spacing) / (minimumCardWidth + spacing))
+        let estimatedColumns = Int((usableWidth + columnSpacing) / (minimumCardWidth + columnSpacing))
         let columnsCount = max(1, min(3, estimatedColumns))
-        let totalSpacing = spacing * CGFloat(max(columnsCount - 1, 0))
+        let totalSpacing = columnSpacing * CGFloat(max(columnsCount - 1, 0))
         let cardWidth = (usableWidth - totalSpacing) / CGFloat(columnsCount)
-        let portraitReferenceHeight = width * 0.4
-        let proportionalHeight = cardWidth * 0.52
-        let cardHeight = min(portraitReferenceHeight, max(172, proportionalHeight))
+        let isCompactSingleColumn = columnsCount == 1 && width < 768
+        let rowSpacing: CGFloat = isCompactSingleColumn ? 22 : columnSpacing
+        let proportionalHeight = cardWidth * (isCompactSingleColumn ? 0.62 : 0.52)
+        let cardHeight: CGFloat
+
+        if isCompactSingleColumn {
+            cardHeight = min(236, max(208, proportionalHeight))
+        } else {
+            let portraitReferenceHeight = width * 0.4
+            cardHeight = min(portraitReferenceHeight, max(172, proportionalHeight))
+        }
 
         return DeviceGridLayout(
-            columns: Array(repeating: GridItem(.flexible(), spacing: spacing, alignment: .top), count: columnsCount),
-            spacing: spacing,
+            columns: Array(repeating: GridItem(.flexible(), spacing: columnSpacing, alignment: .top), count: columnsCount),
+            spacing: rowSpacing,
             horizontalPadding: horizontalPadding,
+            verticalContentPadding: isCompactSingleColumn ? 24 : 20,
             cardHeight: cardHeight
         )
     }
@@ -106,6 +115,7 @@ private struct DeviceGridLayout {
     let columns: [GridItem]
     let spacing: CGFloat
     let horizontalPadding: CGFloat
+    let verticalContentPadding: CGFloat
     let cardHeight: CGFloat
 }
 
