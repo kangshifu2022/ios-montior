@@ -218,10 +218,13 @@ struct AlertsView: View {
                 .foregroundColor(.secondary)
 
             if hasUnsavedChanges {
-                Button("保存本地配置") {
-                    saveLocalConfiguration()
+                Button {
+                    Task { await saveConfigurationAndSendPreview() }
+                } label: {
+                    actionLabel("保存并发送当前 CPU 通知", systemImage: "tray.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
+                .disabled(isBusy || !barkURLIsFilled)
             }
         }
     }
@@ -332,6 +335,13 @@ struct AlertsView: View {
             cpuAlertThreshold: cpuThreshold,
             cpuAlertCooldownMinutes: cooldownMinutes
         )
+    }
+
+    private func saveConfigurationAndSendPreview() async {
+        guard let selectedServer else { return }
+        saveLocalConfiguration()
+        guard let latestServer = store.servers.first(where: { $0.id == selectedServer.id }) else { return }
+        await store.sendRemoteAlertTest(for: latestServer)
     }
 
     private func refreshRemoteStatus() async {
