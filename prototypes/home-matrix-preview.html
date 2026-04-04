@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home Matrix Preview</title>
+  <style>
+    :root {
+      --page-bg: #07080d;
+      --page-bg-2: #0b0c12;
+      --card-bg: rgba(18, 19, 27, 0.94);
+      --card-border: rgba(255, 255, 255, 0.07);
+      --subtle: #7276a3;
+      --text: #f3f4ff;
+      --divider: rgba(255, 255, 255, 0.06);
+      --green: #31f08e;
+      --amber: #ffb21f;
+      --blue: #3887ff;
+      --blue-dim: rgba(56, 135, 255, 0.12);
+      --purple: #8f57ff;
+      --purple-dim: rgba(143, 87, 255, 0.12);
+      --matrix-side: 132px;
+      --matrix-gap: 4px;
+      --matrix-size: 10;
+      --cpu-accent: #ff5b5f;
+      --mem-accent: #35d07f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(62, 79, 165, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(77, 29, 136, 0.16), transparent 25%),
+        linear-gradient(180deg, var(--page-bg), var(--page-bg-2));
+    }
+
+    .shell {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+
+    .title p {
+      margin: 8px 0 0;
+      color: var(--subtle);
+      font-size: 14px;
+    }
+
+    .sampling-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      border-radius: 999px;
+      color: var(--text);
+      background: rgba(17, 18, 26, 0.9);
+      border: 1px solid var(--card-border);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .sampling-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--amber);
+      box-shadow: 0 0 14px rgba(255, 178, 31, 0.5);
+    }
+
+    .sampling-pill span {
+      color: var(--subtle);
+      font-weight: 500;
+    }
+
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 30px;
+      padding: 28px 30px 24px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(110deg, rgba(255, 255, 255, 0.015), transparent 30%),
+        radial-gradient(circle at 10% 0%, rgba(43, 64, 160, 0.16), transparent 24%);
+      pointer-events: none;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      margin-bottom: 26px;
+    }
+
+    .server-name {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .server-os {
+      margin-top: 6px;
+      color: var(--subtle);
+      font-size: 14px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .server-os::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(133, 142, 212, 0.6);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 15px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(49, 240, 142, 0.1);
+      border: 1px solid rgba(49, 240, 142, 0.08);
+    }
+
+    .status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(49, 240, 142, 0.48);
+    }
+
+    .metric-block {
+      display: grid;
+      gap: 14px;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) 64px;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .metric-label {
+      font-size: 15px;
+      color: var(--subtle);
+      letter-spacing: 0.08em;
+    }
+
+    .metric-value {
+      text-align: right;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .matrix-panel {
+      width: var(--matrix-side);
+      height: var(--matrix-side);
+      padding: 10px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+    }
+
+    .dot-matrix {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      grid-template-columns: repeat(var(--matrix-size), minmax(0, 1fr));
+      gap: var(--matrix-gap);
+    }
+
+    .dot {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      transition:
+        opacity 220ms ease,
+        transform 220ms ease,
+        background-color 220ms ease,
+        box-shadow 220ms ease;
+      opacity: 0.14;
+      transform: scale(0.9);
+    }
+
+    .dot.active {
+      opacity: 0.95;
+      transform: scale(1);
+    }
+
+    .dot.cpu {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .dot.cpu.active {
+      background: var(--cpu-accent);
+      box-shadow: 0 0 10px rgba(255, 91, 95, 0.24);
+    }
+
+    .dot.mem {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .dot.mem.active {
+      background: var(--mem-accent);
+      box-shadow: 0 0 10px rgba(53, 208, 127, 0.24);
+    }
+
+    .footer {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--divider);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .temp-icon {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      color: var(--green);
+      background: rgba(49, 240, 142, 0.1);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .temp-copy {
+      display: grid;
+      gap: 2px;
+    }
+
+    .temp-copy small {
+      color: var(--subtle);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    .temp-copy strong {
+      color: var(--green);
+      font-size: 21px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
+    .hint {
+      margin-top: 16px;
+      color: var(--subtle);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 920px) {
+      .metric-row {
+        grid-template-columns: 46px minmax(0, 1fr) 52px;
+        gap: 12px;
+      }
+
+      .card {
+        padding: 22px 18px 20px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .shell {
+        width: min(100vw - 20px, 1180px);
+        padding-top: 20px;
+      }
+
+      .metric-row {
+        grid-template-columns: 40px minmax(0, 1fr) 48px;
+        gap: 10px;
+      }
+
+      :root {
+        --matrix-side: 112px;
+        --matrix-gap: 3px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div class="title">
+        <h1>Pixel Matrix Cards</h1>
+        <p>先看风格，再决定要不要搬进 iOS 实验版首屏。</p>
+      </div>
+      <div class="sampling-pill">采样频率 2 秒 <span>随机模拟 CPU / MEM</span></div>
+    </div>
+
+    <div class="stack">
+      <section class="card" data-card="1">
+        <div class="card-header">
+          <div>
+            <h2 class="server-name">ress</h2>
+            <div class="server-os">Debian 12</div>
+          </div>
+          <div class="status">运行中</div>
+        </div>
+
+        <div class="metric-block">
+          <div class="metric-row">
+            <div class="metric-label">CPU</div>
+            <div class="matrix-panel" data-matrix="cpu1"></div>
+            <div class="metric-value" data-number="cpu1">34%</div>
+          </div>
+
+          <div class="metric-row">
+            <div class="metric-label">MEM</div>
+            <div class="matrix-panel" data-matrix="mem1"></div>
+            <div class="metric-value" data-number="mem1">62%</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div class="temp-icon">C</div>
+          <div class="temp-copy">
+            <small>CPU 温度</small>
+            <strong>52°C</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-card="2">
+        <div class="card-header">
+          <div>
+            <h2 class="server-name">openwrt-router</h2>
+            <div class="server-os">ImmortalWrt 24.10</div>
+          </div>
+          <div class="status">运行中</div>
+        </div>
+
+        <div class="metric-block">
+          <div class="metric-row">
+            <div class="metric-label">CPU</div>
+            <div class="matrix-panel" data-matrix="cpu2"></div>
+            <div class="metric-value" data-number="cpu2">18%</div>
+          </div>
+
+          <div class="metric-row">
+            <div class="metric-label">MEM</div>
+            <div class="matrix-panel" data-matrix="mem2"></div>
+            <div class="metric-value" data-number="mem2">31%</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div class="temp-icon">C</div>
+          <div class="temp-copy">
+            <small>CPU 温度</small>
+            <strong>44°C</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="hint">每个指标都是 10 x 10 的正方形点阵，总共 100 个点。当前占用率是多少，就点亮多少个点。</div>
+  </div>
+
+  <script>
+    const TOTAL_CELLS = 100;
+    const MATRIX_SIZE = 10;
+    const SAMPLE_INTERVAL = 2000;
+    const metrics = {
+      cpu1: { value: 34, display: 34, from: 34, to: 34, kind: "cpu", volatility: 20, floor: 6, ceiling: 95, seed: 1.2 },
+      mem1: { value: 62, display: 62, from: 62, to: 62, kind: "mem", volatility: 8, floor: 35, ceiling: 92, seed: 2.1 },
+      cpu2: { value: 18, display: 18, from: 18, to: 18, kind: "cpu", volatility: 16, floor: 4, ceiling: 82, seed: 3.3 },
+      mem2: { value: 31, display: 31, from: 31, to: 31, kind: "mem", volatility: 7, floor: 22, ceiling: 76, seed: 4.4 }
+    };
+
+    const matrices = {};
+    const numbers = {};
+    let lastSampleAt = performance.now();
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function easeInOutCubic(value) {
+      if (value < 0.5) {
+        return 4 * value * value * value;
+      }
+      return 1 - Math.pow(-2 * value + 2, 3) / 2;
+    }
+
+    function lerp(start, end, amount) {
+      return start + ((end - start) * amount);
+    }
+
+    function nextMetricValue(metric) {
+      const bias = (50 - metric.value) * (metric.kind === "cpu" ? 0.16 : 0.08);
+      const randomDelta = (Math.random() - 0.5) * metric.volatility;
+      return Math.round(clamp(metric.value + randomDelta + bias, metric.floor, metric.ceiling));
+    }
+
+    function buildMatrix(name) {
+      const root = document.querySelector(`[data-matrix="${name}"]`);
+      const kind = metrics[name].kind;
+      const cells = [];
+
+      const grid = document.createElement("div");
+      grid.className = "dot-matrix";
+
+      for (let visualRow = 0; visualRow < MATRIX_SIZE; visualRow += 1) {
+        for (let col = 0; col < MATRIX_SIZE; col += 1) {
+          const logicalRow = (MATRIX_SIZE - 1) - visualRow;
+          const index = (logicalRow * MATRIX_SIZE) + col;
+          const cell = document.createElement("span");
+          cell.className = `dot ${kind}`;
+          grid.appendChild(cell);
+          cells.push({ index, cell });
+        }
+      }
+
+      root.appendChild(grid);
+      matrices[name] = cells;
+      numbers[name] = document.querySelector(`[data-number="${name}"]`);
+    }
+
+    function dotVisuals(index, activeCount, now, metric, progress) {
+      const active = index < activeCount;
+      const age = index / (TOTAL_CELLS - 1);
+      const headDistance = Math.abs(index - Math.max(activeCount - 1, 0));
+      const headGlow = active ? Math.max(0, 1 - (headDistance / 7)) : 0;
+      const phase = (now / 1000) * (metric.kind === "cpu" ? 1.2 : 0.85);
+      const shimmer = Math.sin((index * 0.3) + phase + metric.seed) * 0.06;
+      const focusBoost = headGlow * (0.18 + progress * 0.1);
+      const opacity = active
+        ? clamp(0.42 + (age * 0.18) + shimmer + focusBoost, 0.28, 1)
+        : clamp(0.09 + (age * 0.02), 0.08, 0.16);
+      const scale = active ? 0.92 + (headGlow * 0.08) : 0.88;
+      return { active, opacity, scale };
+    }
+
+    function sampleMetrics(now) {
+      Object.values(metrics).forEach((metric) => {
+        metric.from = metric.display;
+        metric.to = nextMetricValue(metric);
+        metric.value = metric.to;
+      });
+      lastSampleAt = now;
+    }
+
+    function paintMatrix(name, now) {
+      const metric = metrics[name];
+      const rawProgress = clamp((now - lastSampleAt) / SAMPLE_INTERVAL, 0, 1);
+      const progress = easeInOutCubic(rawProgress);
+      metric.display = lerp(metric.from, metric.to, progress);
+      const activeCount = clamp(Math.round(metric.display), 0, TOTAL_CELLS);
+
+      matrices[name].forEach(({ index, cell }) => {
+        const visuals = dotVisuals(index, activeCount, now, metric, progress);
+        cell.classList.toggle("active", visuals.active);
+        cell.style.opacity = String(visuals.opacity);
+        cell.style.transform = `scale(${visuals.scale})`;
+      });
+
+      const text = `${Math.round(metric.display)}%`;
+      numbers[name].textContent = text;
+    }
+
+    function tick(now) {
+      if ((now - lastSampleAt) >= SAMPLE_INTERVAL) {
+        sampleMetrics(now);
+      }
+
+      Object.keys(matrices).forEach((name) => paintMatrix(name, now));
+      requestAnimationFrame(tick);
+    }
+
+    ["cpu1", "mem1", "cpu2", "mem2"].forEach((name) => {
+      buildMatrix(name);
+    });
+
+    Object.values(metrics).forEach((metric) => {
+      metric.from = metric.display;
+      metric.to = metric.value;
+    });
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

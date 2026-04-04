@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var store: ServerStore
     @AppStorage(HomeScreenStyle.storageKey) private var homeScreenStyleRawValue = HomeScreenStyle.classic.rawValue
+    @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @State private var showAddServer = false
     @State private var editingServer: ServerConfig? = nil
     
@@ -21,6 +22,20 @@ struct SettingsView: View {
                     }
 
                     Text(selectedHomeScreenStyle.subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    Picker("试验版主题", selection: $experimentalHomeThemeRawValue) {
+                        ForEach(ExperimentalHomeTheme.allCases) { theme in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(theme.title)
+                                Text(theme.subtitle)
+                            }
+                            .tag(theme.rawValue)
+                        }
+                    }
+
+                    Text(selectedExperimentalHomeTheme.subtitle)
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
@@ -67,5 +82,9 @@ struct SettingsView: View {
 
     private var selectedHomeScreenStyle: HomeScreenStyle {
         HomeScreenStyle(rawValue: homeScreenStyleRawValue) ?? .classic
+    }
+
+    private var selectedExperimentalHomeTheme: ExperimentalHomeTheme {
+        ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
     }
 }

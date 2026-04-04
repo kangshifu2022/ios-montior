@@ -2,21 +2,58 @@ import SwiftUI
 
 struct DevicesExperimentalView: View {
     @ObservedObject var store: ServerStore
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @State private var selectedServer: ServerConfig?
+
+    private var selectedTheme: ExperimentalHomeTheme {
+        ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
+    }
+
+    private var resolvedColorScheme: ColorScheme {
+        switch selectedTheme {
+        case .system:
+            return colorScheme
+        case .dark:
+            return .dark
+        case .light:
+            return .light
+        }
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch selectedTheme {
+        case .system:
+            return nil
+        case .dark:
+            return .dark
+        case .light:
+            return .light
+        }
+    }
+
+    private var palette: ExperimentalHomePalette {
+        ExperimentalHomePalette.palette(for: resolvedColorScheme)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 20) {
+                VStack(spacing: 18) {
+                    ExperimentalOverviewHero(store: store, palette: palette)
+
                     if store.servers.isEmpty {
                         emptyState
                     } else {
-                        ForEach(store.servers) { server in
-                            ExperimentalServerCard(
-                                config: server,
-                                stats: store.stats(for: server)
-                            ) {
-                                selectedServer = server
+                        LazyVStack(spacing: 18) {
+                            ForEach(store.servers) { server in
+                                ExperimentalServerCard(
+                                    config: server,
+                                    stats: store.stats(for: server),
+                                    palette: palette
+                                ) {
+                                    selectedServer = server
+                                }
                             }
                         }
                     }
@@ -24,8 +61,11 @@ struct DevicesExperimentalView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 18)
             }
-            .background(ExperimentalHomePalette.pageBackground.ignoresSafeArea())
+            .background(palette.pageBackground.ignoresSafeArea())
             .navigationTitle("概览")
+            .navigationDestination(item: $selectedServer) { config in
+                DeviceDetailView(config: config, store: store)
+            }
             .task(id: store.servers.map(\.id)) {
                 await store.refreshAllIfNeeded()
 
@@ -34,37 +74,151 @@ struct DevicesExperimentalView: View {
                     await store.refreshAllIfNeeded(forceDynamic: true)
                 }
             }
-            .navigationDestination(item: $selectedServer) { config in
-                DeviceDetailView(config: config, store: store)
-            }
         }
+        .preferredColorScheme(preferredColorScheme)
     }
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("还没有服务器")
                 .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundColor(ExperimentalHomePalette.primaryText)
+                .foregroundColor(palette.primaryText)
 
-            Text("先去设置里添加服务器。经典版首屏已经保留好，这里我们可以放心实验新的概览风格。")
+            Text("实验版首屏已经切到点阵方案。先去设置里添加服务器，我们再继续打磨卡片气质。")
                 .font(.subheadline)
-                .foregroundColor(ExperimentalHomePalette.secondaryText)
+                .foregroundColor(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ExperimentalHomePalette.cardBackground)
+        .background(palette.cardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(ExperimentalHomePalette.cardBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .shadow(color: palette.cardShadow, radius: 18, x: 0, y: 10)
+    }
+}
+
+private struct ExperimentalOverviewHero: View {
+    @ObservedObject var store: ServerStore
+    let palette: ExperimentalHomePalette
+
+    private var totalCount: Int {
+        store.servers.count
+    }
+
+    private var onlineCount: Int {
+        store.servers.filter { store.stats(for: $0)?.isOnline == true }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("10 x 10 Dot Matrix")
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .foregroundColor(palette.primaryText)
+
+                Text("每个矩阵总共 100 个点。CPU 或 MEM 当前是多少，就点亮多少个点，尽量让首屏既直观又有辨识度。")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ViewThatFits {
+                HStack(spacing: 10) {
+                    ExperimentalSummaryPill(
+                        title: "在线",
+                        value: "\(onlineCount)/\(totalCount)",
+                        tint: palette.online,
+                        palette: palette
+                    )
+
+                    ExperimentalSummaryPill(
+                        title: "轮询",
+                        value: "约 3 秒",
+                        tint: palette.cpuAccent,
+                        palette: palette
+                    )
+
+                    ExperimentalSummaryPill(
+                        title: "主题",
+                        value: palette.themeName,
+                        tint: palette.memoryAccent,
+                        palette: palette
+                    )
+                }
+
+                VStack(spacing: 10) {
+                    ExperimentalSummaryPill(
+                        title: "在线",
+                        value: "\(onlineCount)/\(totalCount)",
+                        tint: palette.online,
+                        palette: palette
+                    )
+
+                    ExperimentalSummaryPill(
+                        title: "轮询",
+                        value: "约 3 秒",
+                        tint: palette.cpuAccent,
+                        palette: palette
+                    )
+
+                    ExperimentalSummaryPill(
+                        title: "主题",
+                        value: palette.themeName,
+                        tint: palette.memoryAccent,
+                        palette: palette
+                    )
+                }
+            }
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.heroBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
+    }
+}
+
+private struct ExperimentalSummaryPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(palette.secondaryText)
+
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(palette.primaryText)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(palette.isDark ? 0.10 : 0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(tint.opacity(palette.isDark ? 0.18 : 0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
 private struct ExperimentalServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
+    let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
 
     private var isOnline: Bool {
@@ -73,40 +227,58 @@ private struct ExperimentalServerCard: View {
 
     var body: some View {
         Button(action: onOpenDetail) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 14) {
                 header
-                cpuAndMemorySection
-                divider
-                temperatureSection
+
+                HStack(alignment: .top, spacing: 10) {
+                    ExperimentalMetricTile(
+                        label: "CPU",
+                        caption: "实时占用",
+                        percentage: percentageValue(stats?.cpuUsage),
+                        tint: palette.cpuAccent,
+                        palette: palette
+                    )
+
+                    ExperimentalMetricTile(
+                        label: "MEM",
+                        caption: "内存占用",
+                        percentage: percentageValue(stats?.memUsage),
+                        tint: palette.memoryAccent,
+                        palette: palette
+                    )
+                }
+
+                metaSection
             }
-            .padding(22)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(ExperimentalHomePalette.cardBackground)
+            .background(palette.cardBackground)
             .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(ExperimentalHomePalette.cardBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    .stroke(palette.cardBorder, lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .shadow(color: Color.black.opacity(0.22), radius: 20, x: 0, y: 8)
+            .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
         }
         .buttonStyle(.plain)
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(config.name)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundColor(ExperimentalHomePalette.primaryText)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.primaryText)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(ExperimentalHomePalette.secondaryText.opacity(0.7))
+                        .fill(palette.secondaryText.opacity(0.75))
                         .frame(width: 5, height: 5)
+
                     Text(shortOSName)
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(ExperimentalHomePalette.secondaryText)
+                        .foregroundColor(palette.secondaryText)
                         .lineLimit(1)
                 }
             }
@@ -115,71 +287,72 @@ private struct ExperimentalServerCard: View {
 
             HStack(spacing: 8) {
                 Circle()
-                    .fill(isOnline ? ExperimentalHomePalette.online : ExperimentalHomePalette.offline)
+                    .fill(isOnline ? palette.online : palette.offline)
                     .frame(width: 8, height: 8)
 
                 Text(isOnline ? "运行中" : "离线")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(isOnline ? ExperimentalHomePalette.online : ExperimentalHomePalette.offline)
+                    .foregroundColor(isOnline ? palette.online : palette.offline)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill((isOnline ? ExperimentalHomePalette.online : ExperimentalHomePalette.offline).opacity(0.12))
+                    .fill((isOnline ? palette.online : palette.offline).opacity(palette.isDark ? 0.12 : 0.10))
             )
         }
     }
 
-    private var cpuAndMemorySection: some View {
-        VStack(spacing: 14) {
-            ExperimentalSparkMetricRow(
-                label: "CPU",
-                value: stats?.cpuUsage,
-                percentageText: percentageText(stats?.cpuUsage),
-                color: ExperimentalHomePalette.cpuSpark,
-                seed: dynamicSeed(offset: 0.37)
-            )
+    private var metaSection: some View {
+        ViewThatFits {
+            HStack(spacing: 10) {
+                ExperimentalMetaPill(
+                    title: "主机",
+                    value: config.host,
+                    tint: palette.metaTint,
+                    palette: palette
+                )
 
-            ExperimentalSparkMetricRow(
-                label: "MEM",
-                value: stats?.memUsage,
-                percentageText: percentageText(stats?.memUsage),
-                color: ExperimentalHomePalette.memorySpark,
-                seed: dynamicSeed(offset: 1.71)
-            )
-        }
-    }
+                ExperimentalMetaPill(
+                    title: "温度",
+                    value: temperatureText,
+                    tint: palette.online,
+                    palette: palette
+                )
 
-    private var temperatureSection: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(ExperimentalHomePalette.online.opacity(0.12))
-                    .frame(width: 44, height: 44)
-
-                Image(systemName: "thermometer.medium")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(ExperimentalHomePalette.online)
+                ExperimentalMetaPill(
+                    title: "在线时长",
+                    value: uptimeText,
+                    tint: palette.cpuAccent,
+                    palette: palette
+                )
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("CPU 温度")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(ExperimentalHomePalette.sectionLabel)
+            VStack(spacing: 10) {
+                ExperimentalMetaPill(
+                    title: "主机",
+                    value: config.host,
+                    tint: palette.metaTint,
+                    palette: palette
+                )
 
-                Text(temperatureText)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(ExperimentalHomePalette.online)
-                    .monospacedDigit()
+                HStack(spacing: 10) {
+                    ExperimentalMetaPill(
+                        title: "温度",
+                        value: temperatureText,
+                        tint: palette.online,
+                        palette: palette
+                    )
+
+                    ExperimentalMetaPill(
+                        title: "在线时长",
+                        value: uptimeText,
+                        tint: palette.cpuAccent,
+                        palette: palette
+                    )
+                }
             }
         }
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(ExperimentalHomePalette.divider)
-            .frame(height: 1)
     }
 
     private var shortOSName: String {
@@ -189,20 +362,15 @@ private struct ExperimentalServerCard: View {
         }
 
         let lowercased = osName.lowercased()
+        if lowercased.contains("immortalwrt") { return "ImmortalWrt" }
+        if lowercased.contains("openwrt") { return "OpenWrt" }
         if lowercased.contains("debian") { return "Debian" }
         if lowercased.contains("ubuntu") { return "Ubuntu" }
-        if lowercased.contains("openwrt") { return "OpenWrt" }
-        if lowercased.contains("immortalwrt") { return "ImmortalWrt" }
         if lowercased.contains("centos") { return "CentOS" }
         if lowercased.contains("fedora") { return "Fedora" }
         if lowercased.contains("arch") { return "Arch Linux" }
         if lowercased.contains("linux") { return "Linux" }
         return osName
-    }
-
-    private func percentageText(_ value: Double?) -> String {
-        guard let value else { return "--" }
-        return "\(Int((min(max(value, 0), 1) * 100).rounded()))%"
     }
 
     private var temperatureText: String {
@@ -212,113 +380,259 @@ private struct ExperimentalServerCard: View {
         return "\(Int(temp.rounded()))°C"
     }
 
-    private func dynamicSeed(offset: Double) -> Double {
-        let components = config.id.uuidString.unicodeScalars.map { Double($0.value) }
-        let base = components.reduce(0, +) / Double(max(components.count, 1))
-        return base * 0.013 + offset
+    private var uptimeText: String {
+        let uptime = (stats?.uptime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return uptime.isEmpty ? "--" : uptime
+    }
+
+    private func percentageValue(_ value: Double?) -> Int? {
+        guard let value else { return nil }
+        return Int((min(max(value, 0), 1) * 100).rounded())
     }
 }
 
-private struct ExperimentalSparkMetricRow: View {
-    let label: String
-    let value: Double?
-    let percentageText: String
-    let color: Color
-    let seed: Double
+private struct ExperimentalMetaPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+    let palette: ExperimentalHomePalette
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Text(label)
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
-                .foregroundColor(ExperimentalHomePalette.sectionLabel)
-                .frame(width: 40, alignment: .leading)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(palette.secondaryText)
 
-            ExperimentalLiveSparkBars(
-                value: value,
-                tint: color,
-                seed: seed
+            Text(value)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundColor(palette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(palette.isDark ? 0.08 : 0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(tint.opacity(palette.isDark ? 0.16 : 0.20), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct ExperimentalMetricTile: View {
+    let label: String
+    let caption: String
+    let percentage: Int?
+    let tint: Color
+    let palette: ExperimentalHomePalette
+
+    private var percentageText: String {
+        guard let percentage else { return "--" }
+        return "\(percentage)%"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(palette.primaryText)
+
+                    Text(caption)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(palette.secondaryText)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(percentageText)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.primaryText)
+                    .monospacedDigit()
+            }
+
+            ExperimentalDotMatrix(
+                percentage: percentage,
+                tint: tint,
+                palette: palette
             )
             .frame(maxWidth: .infinity)
-
-            Text(percentageText)
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundColor(ExperimentalHomePalette.primaryText)
-                .monospacedDigit()
-                .frame(width: 54, alignment: .trailing)
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.subcardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .opacity(percentage == nil ? 0.78 : 1)
     }
 }
 
-private struct ExperimentalLiveSparkBars: View {
-    let value: Double?
+private struct ExperimentalDotMatrix: View {
+    let percentage: Int?
     let tint: Color
-    let seed: Double
+    let palette: ExperimentalHomePalette
+
+    private let size = 10
+
+    private var activeCount: Int {
+        min(max(percentage ?? 0, 0), size * size)
+    }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.33, paused: false)) { context in
-            GeometryReader { geometry in
-                let bars = sparkValues(for: context.date)
-                let itemCount = max(bars.count, 1)
-                let spacing: CGFloat = 4
-                let totalSpacing = spacing * CGFloat(max(itemCount - 1, 0))
-                let barWidth = max((geometry.size.width - totalSpacing) / CGFloat(itemCount), 3)
+        GeometryReader { geometry in
+            let side = min(geometry.size.width, geometry.size.height)
+            let spacing: CGFloat = side < 110 ? 2.5 : 3
+            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 3.5)
 
-                HStack(alignment: .bottom, spacing: spacing) {
-                    ForEach(Array(bars.enumerated()), id: \.offset) { _, rawValue in
-                        let safeValue = min(max(rawValue, 0), 1)
-                        let barHeight = max(CGFloat(safeValue), 0.18) * geometry.size.height
+            VStack(spacing: spacing) {
+                ForEach(0..<size, id: \.self) { visualRow in
+                    HStack(spacing: spacing) {
+                        ForEach(0..<size, id: \.self) { column in
+                            let logicalRow = (size - 1) - visualRow
+                            let index = (logicalRow * size) + column
+                            let isActive = index < activeCount
+                            let frontier = max(activeCount - 1, 0)
+                            let distance = abs(index - frontier)
+                            let glow = isActive ? max(0, 1 - (Double(distance) / 8)) : 0
 
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(tint.gradient)
-                            .frame(width: barWidth, height: barHeight)
-                            .opacity(value == nil ? 0.35 : 1)
+                            RoundedRectangle(cornerRadius: min(tile * 0.28, 5), style: .continuous)
+                                .fill(fillColor(isActive: isActive, glow: glow))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: min(tile * 0.28, 5), style: .continuous)
+                                        .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.6)
+                                )
+                                .frame(width: tile, height: tile)
+                                .scaleEffect(isActive ? (0.96 + (glow * 0.06)) : 0.9)
+                                .shadow(
+                                    color: isActive ? tint.opacity((palette.isDark ? 0.12 : 0.08) + (glow * 0.14)) : .clear,
+                                    radius: isActive ? (2 + (glow * 4)) : 0
+                                )
+                        }
                     }
                 }
-                .animation(.easeInOut(duration: 0.28), value: bars)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
-            .frame(height: 34)
+            .frame(width: side, height: side)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
+        .aspectRatio(1, contentMode: .fit)
+        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: activeCount)
     }
 
-    private func sparkValues(for date: Date) -> [Double] {
-        let baseline = min(max(value ?? 0, 0), 1)
-        let amplitude = value == nil ? 0.05 : 0.07 + baseline * 0.16
-        let speed = 0.85 + baseline * 1.5
-        let time = date.timeIntervalSinceReferenceDate * speed + seed
-        let count = 36
-
-        return (0..<count).map { index in
-            let x = Double(index)
-            let waveA = sin(time * 1.9 + x * 0.33 + seed * 1.7)
-            let waveB = cos(time * 1.2 + x * 0.19 + seed * 2.4)
-            let waveC = sin(time * 2.7 + x * 0.11 + seed * 0.8)
-            let blended = (waveA * 0.52) + (waveB * 0.33) + (waveC * 0.15)
-            let value = baseline + blended * amplitude
-            return min(max(value, 0.04), 1)
+    private func fillColor(isActive: Bool, glow: Double) -> Color {
+        if isActive {
+            return tint.opacity((palette.isDark ? 0.56 : 0.48) + (glow * 0.30))
         }
+        return palette.matrixInactive
+    }
+
+    private func borderColor(isActive: Bool, glow: Double) -> Color {
+        if isActive {
+            return palette.activeMatrixBorder.opacity((palette.isDark ? 0.08 : 0.12) + (glow * 0.08))
+        }
+        return palette.inactiveMatrixBorder
     }
 }
 
-private enum ExperimentalHomePalette {
-    static let pageBackground = LinearGradient(
-        colors: [
-            Color(red: 0.07, green: 0.07, blue: 0.10),
-            Color(red: 0.05, green: 0.05, blue: 0.08)
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
+private struct ExperimentalHomePalette {
+    let isDark: Bool
+    let themeName: String
+    let pageBackground: LinearGradient
+    let heroBackground: LinearGradient
+    let cardBackground: Color
+    let subcardBackground: Color
+    let cardBorder: Color
+    let matrixInactive: Color
+    let inactiveMatrixBorder: Color
+    let activeMatrixBorder: Color
+    let primaryText: Color
+    let secondaryText: Color
+    let online: Color
+    let offline: Color
+    let cpuAccent: Color
+    let memoryAccent: Color
+    let metaTint: Color
+    let cardShadow: Color
 
-    static let cardBackground = Color(red: 0.09, green: 0.09, blue: 0.12)
-    static let subcardBackground = Color(red: 0.12, green: 0.12, blue: 0.15)
-    static let cardBorder = Color.white.opacity(0.07)
-    static let divider = Color.white.opacity(0.06)
-    static let primaryText = Color(red: 0.96, green: 0.96, blue: 0.99)
-    static let secondaryText = Color(red: 0.46, green: 0.47, blue: 0.67)
-    static let sectionLabel = Color(red: 0.42, green: 0.43, blue: 0.64)
-    static let online = Color(red: 0.23, green: 0.92, blue: 0.56)
-    static let offline = Color(red: 0.98, green: 0.74, blue: 0.22)
-    static let cpuSpark = Color(red: 0.23, green: 0.49, blue: 0.85)
-    static let memorySpark = Color(red: 0.49, green: 0.31, blue: 0.90)
+    static func palette(for colorScheme: ColorScheme) -> ExperimentalHomePalette {
+        switch colorScheme {
+        case .dark:
+            return ExperimentalHomePalette(
+                isDark: true,
+                themeName: "深色",
+                pageBackground: LinearGradient(
+                    colors: [
+                        Color(red: 0.06, green: 0.07, blue: 0.09),
+                        Color(red: 0.04, green: 0.05, blue: 0.07)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                heroBackground: LinearGradient(
+                    colors: [
+                        Color(red: 0.11, green: 0.12, blue: 0.17),
+                        Color(red: 0.08, green: 0.09, blue: 0.13)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                cardBackground: Color(red: 0.09, green: 0.10, blue: 0.13),
+                subcardBackground: Color(red: 0.12, green: 0.13, blue: 0.17),
+                cardBorder: Color.white.opacity(0.07),
+                matrixInactive: Color.white.opacity(0.055),
+                inactiveMatrixBorder: Color.white.opacity(0.02),
+                activeMatrixBorder: Color.white,
+                primaryText: Color(red: 0.95, green: 0.96, blue: 0.99),
+                secondaryText: Color(red: 0.49, green: 0.52, blue: 0.66),
+                online: Color(red: 0.22, green: 0.86, blue: 0.53),
+                offline: Color(red: 0.98, green: 0.73, blue: 0.24),
+                cpuAccent: Color(red: 0.98, green: 0.36, blue: 0.39),
+                memoryAccent: Color(red: 0.22, green: 0.81, blue: 0.50),
+                metaTint: Color(red: 0.35, green: 0.53, blue: 0.93),
+                cardShadow: Color.black.opacity(0.22)
+            )
+        case .light:
+            return ExperimentalHomePalette(
+                isDark: false,
+                themeName: "浅色",
+                pageBackground: LinearGradient(
+                    colors: [
+                        Color(red: 0.95, green: 0.97, blue: 1.00),
+                        Color(red: 0.92, green: 0.94, blue: 0.98)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                heroBackground: LinearGradient(
+                    colors: [
+                        Color(red: 0.99, green: 0.995, blue: 1.0),
+                        Color(red: 0.94, green: 0.96, blue: 0.99)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                cardBackground: Color.white.opacity(0.95),
+                subcardBackground: Color(red: 0.96, green: 0.97, blue: 0.995),
+                cardBorder: Color(red: 0.11, green: 0.15, blue: 0.24).opacity(0.08),
+                matrixInactive: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.08),
+                inactiveMatrixBorder: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.05),
+                activeMatrixBorder: Color.white,
+                primaryText: Color(red: 0.12, green: 0.15, blue: 0.22),
+                secondaryText: Color(red: 0.43, green: 0.49, blue: 0.60),
+                online: Color(red: 0.12, green: 0.68, blue: 0.40),
+                offline: Color(red: 0.92, green: 0.63, blue: 0.15),
+                cpuAccent: Color(red: 0.93, green: 0.33, blue: 0.36),
+                memoryAccent: Color(red: 0.16, green: 0.70, blue: 0.42),
+                metaTint: Color(red: 0.29, green: 0.47, blue: 0.88),
+                cardShadow: Color.black.opacity(0.08)
+            )
+        @unknown default:
+            return palette(for: .dark)
+        }
+    }
 }
