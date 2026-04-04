@@ -521,55 +521,49 @@ private struct ExperimentalRateValue: View {
         ExperimentalRateParts(rawValue: value)
     }
 
+    private var valueColor: Color {
+        guard let numericValue = parts.numericValue, numericValue > 0 else {
+            return palette.secondaryText.opacity(palette.isDark ? 0.72 : 0.84)
+        }
+        return accent
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 7) {
-            Text(parts.displayNumber)
+        HStack(alignment: .center, spacing: 4) {
+            Group {
+                if let numericValue = parts.numericValue {
+                    Text("\(numericValue)")
+                        .contentTransition(.numericText(value: Double(numericValue)))
+                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: numericValue)
+                } else {
+                    Text(parts.displayNumber)
+                }
+            }
                 .font(.system(size: 31, weight: .semibold, design: .rounded))
-                .foregroundColor(accent)
+                .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
-            VStack(spacing: 0) {
-                ExperimentalRateBadgeCell(
-                    text: parts.unit.isEmpty ? "--" : parts.unit,
-                    palette: palette
-                )
+            VStack(alignment: .leading, spacing: -2) {
+                Text(parts.unit.isEmpty ? "--" : parts.unit)
+                    .font(.system(size: 9, weight: .regular, design: .rounded))
+                    .foregroundColor(palette.secondaryText)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
 
-                Rectangle()
-                    .fill(palette.cardBorder.opacity(palette.isDark ? 0.95 : 1))
-                    .frame(height: 1)
-
-                ExperimentalRateBadgeCell(
-                    text: caption,
-                    palette: palette
-                )
+                Text(caption)
+                    .font(.system(size: 9, weight: .regular, design: .rounded))
+                    .foregroundColor(palette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
             }
-            .frame(width: 42, height: 44)
-            .background(palette.subcardBackground.opacity(palette.isDark ? 0.46 : 0.72))
-            .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(palette.cardBorder.opacity(palette.isDark ? 0.9 : 1), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .frame(width: 34, height: 32, alignment: .center)
         }
-        .frame(height: 44, alignment: .center)
+        .frame(height: 40, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct ExperimentalRateBadgeCell: View {
-    let text: String
-    let palette: ExperimentalHomePalette
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium, design: .rounded))
-            .foregroundColor(palette.secondaryText)
-            .lineLimit(1)
-            .minimumScaleFactor(0.68)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -626,6 +620,7 @@ private struct ExperimentalRateParts {
     let number: String
     let unit: String
     let displayNumber: String
+    let numericValue: Int?
 
     init(rawValue: String) {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -635,6 +630,7 @@ private struct ExperimentalRateParts {
             number = "--"
             unit = ""
             displayNumber = "--"
+            numericValue = nil
             return
         }
 
@@ -647,17 +643,19 @@ private struct ExperimentalRateParts {
 
         number = parsedNumber.isEmpty ? compact : parsedNumber
         unit = parsedNumber.isEmpty ? "" : parsedUnit
-        displayNumber = ExperimentalRateParts.integerDisplay(from: number)
+        let integerValue = ExperimentalRateParts.integerDisplay(from: number)
+        displayNumber = integerValue.map(String.init) ?? rawNumber
+        numericValue = integerValue
     }
 
-    private static func integerDisplay(from rawNumber: String) -> String {
+    private static func integerDisplay(from rawNumber: String) -> Int? {
         let normalized = rawNumber.replacingOccurrences(of: ",", with: ".")
 
         if let value = Double(normalized) {
-            return String(Int(value.rounded(.towardZero)))
+            return Int(value.rounded(.towardZero))
         }
 
-        return rawNumber
+        return nil
     }
 }
 
@@ -812,7 +810,7 @@ private struct ExperimentalHomePalette {
                 online: Color(red: 0.22, green: 0.86, blue: 0.53),
                 offline: Color(red: 0.98, green: 0.73, blue: 0.24),
                 cpuAccent: Color(red: 0.98, green: 0.36, blue: 0.39),
-                memoryAccent: Color(red: 0.18, green: 0.92, blue: 0.46),
+                memoryAccent: Color(red: 16.0 / 255.0, green: 192.0 / 255.0, blue: 7.0 / 255.0),
                 metaTint: Color(red: 0.35, green: 0.53, blue: 0.93),
                 cardShadow: Color.black.opacity(0.16)
             )
@@ -834,7 +832,7 @@ private struct ExperimentalHomePalette {
                 online: Color(red: 0.12, green: 0.68, blue: 0.40),
                 offline: Color(red: 0.92, green: 0.63, blue: 0.15),
                 cpuAccent: Color(red: 0.93, green: 0.33, blue: 0.36),
-                memoryAccent: Color(red: 0.10, green: 0.80, blue: 0.36),
+                memoryAccent: Color(red: 16.0 / 255.0, green: 192.0 / 255.0, blue: 7.0 / 255.0),
                 metaTint: Color(red: 0.29, green: 0.47, blue: 0.88),
                 cardShadow: Color.black.opacity(0.16)
             )
