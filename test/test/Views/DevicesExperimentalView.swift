@@ -61,6 +61,9 @@ struct DevicesExperimentalView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 18)
             }
+            .refreshable {
+                await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
+            }
             .background(palette.pageBackground.ignoresSafeArea())
             .navigationTitle("概览")
             .navigationDestination(item: $selectedServer) { config in
@@ -120,7 +123,7 @@ private struct ExperimentalOverviewHero: View {
                     .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .foregroundColor(palette.primaryText)
 
-                Text("首屏卡片先切成 2 x 2 四分区，左边保留点阵读数，右边放网络和磁盘速率，方便一起比较。")
+                Text("实验版设备卡片已经切到新首屏样式，左侧看 CPU / MEM 点阵，右侧对照 WLAN / DISK 速率，顶部保留温度和终端入口。")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundColor(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -227,48 +230,26 @@ private struct ExperimentalServerCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 24) {
             header
 
-            HStack(alignment: .top, spacing: 10) {
-                ExperimentalMetricTile(
-                    label: "CPU",
-                    percentage: percentageValue(stats?.cpuUsage),
-                    tint: palette.cpuAccent,
-                    palette: palette
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .bottom, spacing: 24) {
+                    metricSection
+                    Spacer(minLength: 0)
+                    rateSection
+                }
 
-                ExperimentalMetricTile(
-                    label: "MEM",
-                    percentage: percentageValue(stats?.memUsage),
-                    tint: palette.memoryAccent,
-                    palette: palette
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                ExperimentalRateTile(
-                    leadingSymbol: "arrow.up",
-                    leadingValue: uploadSpeedText,
-                    trailingSymbol: "arrow.down",
-                    trailingValue: downloadSpeedText,
-                    palette: palette
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                ExperimentalRateTile(
-                    leadingSymbol: "arrow.right",
-                    leadingValue: diskReadSpeedText,
-                    trailingSymbol: "arrow.left",
-                    trailingValue: diskWriteSpeedText,
-                    palette: palette
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 22) {
+                    metricSection
+                    rateSection
+                }
             }
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
-        .padding(18)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
         .overlay(
@@ -283,21 +264,47 @@ private struct ExperimentalServerCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(config.name)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 16)
 
-            HStack(spacing: 8) {
-                Text(headerUptimeText)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(palette.secondaryText)
-                    .lineLimit(1)
+            HStack(spacing: 14) {
+                if let cpuTemperatureText {
+                    ExperimentalHeaderBadge(
+                        symbol: "microchip",
+                        value: cpuTemperatureText,
+                        palette: palette
+                    )
+                }
+
+                if let wirelessTemperatureText {
+                    ExperimentalHeaderBadge(
+                        symbol: "wifi",
+                        value: wirelessTemperatureText,
+                        palette: palette
+                    )
+                }
+
+                if !isOnline {
+                    ExperimentalHeaderBadge(
+                        symbol: "exclamationmark.triangle",
+                        value: offlineText,
+                        palette: palette,
+                        tint: palette.offline
+                    )
+                } else if cpuTemperatureText == nil && wirelessTemperatureText == nil, headerUptimeText != "--" {
+                    ExperimentalHeaderBadge(
+                        symbol: "clock",
+                        value: headerUptimeText,
+                        palette: palette
+                    )
+                }
 
                 terminalButton
             }
@@ -307,13 +314,66 @@ private struct ExperimentalServerCard: View {
     private var terminalButton: some View {
         Button(action: { showTerminal = true }) {
             Image(systemName: "terminal")
-                .font(.caption)
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(terminalButtonForeground)
-                .frame(width: 26, height: 26)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(palette.cardBorder.opacity(isOnline ? 1 : 0.65), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
         .disabled(!isOnline)
         .opacity(isOnline ? 1 : 0.45)
+    }
+
+    private var metricSection: some View {
+        HStack(alignment: .top, spacing: 22) {
+            ExperimentalMetricTile(
+                label: "CPU",
+                percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
+                matrixTint: palette.cpuAccent,
+                valueTint: palette.memoryAccent,
+                palette: palette
+            )
+
+            ExperimentalMetricTile(
+                label: "MEM",
+                percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
+                matrixTint: palette.memoryAccent,
+                valueTint: palette.memoryAccent,
+                palette: palette
+            )
+        }
+        .frame(maxWidth: 320, alignment: .leading)
+    }
+
+    private var rateSection: some View {
+        HStack(alignment: .top, spacing: 26) {
+            ExperimentalRateColumn(
+                title: "WLAN",
+                primaryValue: uploadSpeedText,
+                primaryCaption: "upload",
+                secondaryValue: downloadSpeedText,
+                secondaryCaption: "down",
+                accent: palette.memoryAccent,
+                palette: palette
+            )
+
+            ExperimentalRateColumn(
+                title: "DISK",
+                primaryValue: diskReadSpeedText,
+                primaryCaption: "read",
+                secondaryValue: diskWriteSpeedText,
+                secondaryCaption: "write",
+                accent: palette.memoryAccent,
+                palette: palette
+            )
+        }
     }
 
     private var downloadSpeedText: String {
@@ -369,113 +429,219 @@ private struct ExperimentalServerCard: View {
         isOnline ? palette.primaryText : palette.secondaryText
     }
 
+    private var cpuTemperatureText: String? {
+        guard isOnline, let value = stats?.cpuTemperatureC else {
+            return nil
+        }
+        return temperatureText(for: value)
+    }
+
+    private var wirelessTemperatureText: String? {
+        guard isOnline else {
+            return nil
+        }
+
+        if let value = stats?.wifi5TemperatureC {
+            return temperatureText(for: value)
+        }
+
+        if let value = stats?.wifi24TemperatureC {
+            return temperatureText(for: value)
+        }
+
+        return nil
+    }
+
+    private var offlineText: String {
+        "offline"
+    }
+
     private func percentageValue(_ value: Double?) -> Int? {
         guard let value else { return nil }
         return Int((min(max(value, 0), 1) * 100).rounded())
+    }
+
+    private func temperatureText(for value: Double) -> String {
+        "\(Int(value.rounded()))°C"
     }
 }
 
 private struct ExperimentalMetricTile: View {
     let label: String
     let percentage: Int?
-    let tint: Color
+    let matrixTint: Color
+    let valueTint: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ExperimentalDotMatrix(
-                percentage: percentage,
-                tint: tint,
-                palette: palette
-            )
-            .frame(height: 60)
-
-            HStack(alignment: .center, spacing: 6) {
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(palette.secondaryText)
-
-                Spacer(minLength: 0)
+        VStack(spacing: 14) {
+            ZStack {
+                ExperimentalDotMatrix(
+                    percentage: percentage,
+                    tint: matrixTint,
+                    palette: palette
+                )
+                .frame(height: 86)
 
                 ExperimentalRollingPercentageText(
                     percentage: percentage,
-                    palette: palette
+                    tint: valueTint
                 )
             }
+
+            Text(label)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(palette.secondaryText)
+                .tracking(0.5)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .top)
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
 
-private struct ExperimentalRateTile: View {
-    let leadingSymbol: String
-    let leadingValue: String
-    let trailingSymbol: String
-    let trailingValue: String
+private struct ExperimentalRateColumn: View {
+    let title: String
+    let primaryValue: String
+    let primaryCaption: String
+    let secondaryValue: String
+    let secondaryCaption: String
+    let accent: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ExperimentalRateRow(
-                symbol: leadingSymbol,
-                value: leadingValue,
+        VStack(alignment: .leading, spacing: 18) {
+            ExperimentalRateValue(
+                value: primaryValue,
+                caption: primaryCaption,
+                accent: accent,
                 palette: palette
             )
 
-            ExperimentalRateRow(
-                symbol: trailingSymbol,
-                value: trailingValue,
+            ExperimentalRateValue(
+                value: secondaryValue,
+                caption: secondaryCaption,
+                accent: accent,
                 palette: palette
             )
+
+            Text(title)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(palette.secondaryText)
+                .tracking(0.5)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(minWidth: 110, alignment: .topLeading)
     }
 }
 
-private struct ExperimentalRateRow: View {
-    let symbol: String
+private struct ExperimentalRateValue: View {
     let value: String
+    let caption: String
+    let accent: Color
     let palette: ExperimentalHomePalette
 
+    private var parts: ExperimentalRateParts {
+        ExperimentalRateParts(rawValue: value)
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(palette.secondaryText)
-                .frame(width: 12, alignment: .center)
-
-            Spacer(minLength: 0)
-
-            Text(value)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundColor(palette.primaryText)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(parts.number)
+                .font(.system(size: 26, weight: .semibold, design: .rounded))
+                .foregroundColor(accent)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .minimumScaleFactor(0.7)
+
+            VStack(alignment: .leading, spacing: 2) {
+                if !parts.unit.isEmpty {
+                    Text(parts.unit)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.secondaryText)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+
+                Text(caption)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.secondaryText)
+                    .lineLimit(1)
+            }
         }
     }
 }
 
 private struct ExperimentalRollingPercentageText: View {
     let percentage: Int?
-    let palette: ExperimentalHomePalette
+    let tint: Color
 
     var body: some View {
-        Group {
-            if let percentage {
-                Text("\(percentage)%")
-                    .contentTransition(.numericText(value: Double(percentage)))
-                    .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
-            } else {
-                Text("--")
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+            Group {
+                if let percentage {
+                    Text("\(percentage)")
+                        .contentTransition(.numericText(value: Double(percentage)))
+                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
+                } else {
+                    Text("--")
+                }
             }
+
+            Text("%")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .opacity(percentage == nil ? 0 : 0.62)
         }
-        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-        .foregroundColor(palette.primaryText)
+        .font(.system(size: 24, weight: .semibold, design: .rounded))
+        .foregroundColor(tint)
         .monospacedDigit()
         .lineLimit(1)
-        .minimumScaleFactor(0.8)
+        .minimumScaleFactor(0.72)
+    }
+}
+
+private struct ExperimentalHeaderBadge: View {
+    let symbol: String
+    let value: String
+    let palette: ExperimentalHomePalette
+    var tint: Color? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(palette.secondaryText)
+
+            Text(value)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(tint ?? palette.secondaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct ExperimentalRateParts {
+    let number: String
+    let unit: String
+
+    init(rawValue: String) {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let compact = trimmed.replacingOccurrences(of: " ", with: "")
+
+        guard !compact.isEmpty, compact != "--" else {
+            number = "--"
+            unit = ""
+            return
+        }
+
+        let splitIndex = compact.firstIndex(where: { character in
+            !character.isNumber && character != "." && character != "," && character != "-"
+        }) ?? compact.endIndex
+
+        let parsedNumber = String(compact[..<splitIndex])
+        let parsedUnit = splitIndex == compact.endIndex ? "" : String(compact[splitIndex...])
+
+        number = parsedNumber.isEmpty ? compact : parsedNumber
+        unit = parsedNumber.isEmpty ? "" : parsedUnit
     }
 }
 
@@ -494,15 +660,18 @@ private struct ExperimentalDotMatrix: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let side = min(geometry.size.width, geometry.size.height)
-            let spacing: CGFloat = side < 72 ? 1.2 : 1.5
-            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
-            let dashWidth = max(tile * 0.92, 1.8)
-            let dashHeight = max(tile * 0.28, 1.2)
+            let width = max(geometry.size.width, 1)
+            let height = max(geometry.size.height, 1)
+            let horizontalSpacing: CGFloat = width < 120 ? 1.4 : 1.8
+            let verticalSpacing: CGFloat = height < 72 ? 1.2 : 1.5
+            let tileWidth = max((width - (horizontalSpacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
+            let tileHeight = max((height - (verticalSpacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
+            let dashWidth = max(tileWidth * 0.88, 1.8)
+            let dashHeight = max(tileHeight * 0.30, 1.2)
 
-            VStack(spacing: spacing) {
+            VStack(spacing: verticalSpacing) {
                 ForEach(0..<size, id: \.self) { visualRow in
-                    HStack(spacing: spacing) {
+                    HStack(spacing: horizontalSpacing) {
                         ForEach(0..<size, id: \.self) { column in
                             let logicalRow = (size - 1) - visualRow
                             let index = (logicalRow * size) + column
@@ -521,16 +690,15 @@ private struct ExperimentalDotMatrix: View {
                                         .stroke(borderColor(isActive: isActive), lineWidth: 0.3)
                                 )
                                 .frame(width: dashWidth, height: dashHeight)
-                                .frame(width: tile, height: tile)
+                                .frame(width: tileWidth, height: tileHeight)
                                 .scaleEffect(isActive ? 0.94 : 0.8)
                         }
                     }
                 }
             }
-            .frame(width: side, height: side)
+            .frame(width: width, height: height)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .aspectRatio(1, contentMode: .fit)
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: activeCount)
     }
 
