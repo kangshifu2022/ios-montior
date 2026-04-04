@@ -423,14 +423,6 @@ private struct ExperimentalDetailPanel: View {
                 }
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .background(palette.subcardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(palette.cardBorder, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -513,22 +505,15 @@ private struct ExperimentalDotMatrix: View {
                             let logicalRow = (size - 1) - visualRow
                             let index = (logicalRow * size) + column
                             let isActive = index < activeCount
-                            let frontier = max(activeCount - 1, 0)
-                            let distance = abs(index - frontier)
-                            let glow = isActive ? max(0, 1 - (Double(distance) / 8)) : 0
 
                             Circle()
-                                .fill(fillColor(isActive: isActive, glow: glow))
+                                .fill(fillColor(isActive: isActive))
                                 .overlay(
                                     Circle()
-                                        .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.3)
+                                        .stroke(borderColor(isActive: isActive), lineWidth: 0.3)
                                 )
                                 .frame(width: tile, height: tile)
-                                .scaleEffect(isActive ? (0.9 + (glow * 0.05)) : 0.74)
-                                .shadow(
-                                    color: isActive ? tint.opacity((palette.isDark ? 0.07 : 0.04) + (glow * 0.06)) : .clear,
-                                    radius: isActive ? (0.8 + (glow * 1.1)) : 0
-                                )
+                                .scaleEffect(isActive ? 0.88 : 0.74)
                         }
                     }
                 }
@@ -540,16 +525,16 @@ private struct ExperimentalDotMatrix: View {
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: activeCount)
     }
 
-    private func fillColor(isActive: Bool, glow: Double) -> Color {
+    private func fillColor(isActive: Bool) -> Color {
         if isActive {
-            return tint.opacity((palette.isDark ? 0.62 : 0.56) + (glow * 0.22))
+            return tint
         }
         return palette.matrixInactive
     }
 
-    private func borderColor(isActive: Bool, glow: Double) -> Color {
+    private func borderColor(isActive: Bool) -> Color {
         if isActive {
-            return palette.activeMatrixBorder.opacity((palette.isDark ? 0.08 : 0.12) + (glow * 0.08))
+            return palette.activeMatrixBorder.opacity(palette.isDark ? 0.08 : 0.12)
         }
         return palette.inactiveMatrixBorder
     }
@@ -575,77 +560,87 @@ private struct ExperimentalHomePalette {
     let metaTint: Color
     let cardShadow: Color
 
+    private static var classicPageBackground: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(.systemGroupedBackground),
+                Color(.systemGroupedBackground)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    private static var classicCardBackground: Color {
+        Color(uiColor: UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor(red: 25.0 / 255.0, green: 26.0 / 255.0, blue: 27.0 / 255.0, alpha: 1)
+            }
+            return .systemBackground
+        })
+    }
+
+    private static var classicCardBorder: Color {
+        Color(uiColor: UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor.white.withAlphaComponent(0.08)
+            }
+            return UIColor.black.withAlphaComponent(0.06)
+        })
+    }
+
+    private static var classicSecondaryFill: Color {
+        Color(uiColor: UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor(red: 0.23, green: 0.24, blue: 0.26, alpha: 1)
+            }
+            return .secondarySystemBackground
+        })
+    }
+
     static func palette(for colorScheme: ColorScheme) -> ExperimentalHomePalette {
         switch colorScheme {
         case .dark:
             return ExperimentalHomePalette(
                 isDark: true,
                 themeName: "深色",
-                pageBackground: LinearGradient(
-                    colors: [
-                        Color(red: 0.06, green: 0.07, blue: 0.09),
-                        Color(red: 0.04, green: 0.05, blue: 0.07)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                heroBackground: LinearGradient(
-                    colors: [
-                        Color(red: 0.11, green: 0.12, blue: 0.17),
-                        Color(red: 0.08, green: 0.09, blue: 0.13)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                cardBackground: Color(red: 0.09, green: 0.10, blue: 0.13),
-                subcardBackground: Color(red: 0.12, green: 0.13, blue: 0.17),
-                cardBorder: Color.white.opacity(0.07),
+                pageBackground: classicPageBackground,
+                heroBackground: classicPageBackground,
+                cardBackground: classicCardBackground,
+                subcardBackground: classicSecondaryFill,
+                cardBorder: classicCardBorder,
                 matrixInactive: Color.white.opacity(0.16),
                 inactiveMatrixBorder: Color.white.opacity(0.02),
                 activeMatrixBorder: Color.white,
-                primaryText: Color(red: 0.95, green: 0.96, blue: 0.99),
-                secondaryText: Color(red: 0.49, green: 0.52, blue: 0.66),
+                primaryText: .primary,
+                secondaryText: .secondary,
                 online: Color(red: 0.22, green: 0.86, blue: 0.53),
                 offline: Color(red: 0.98, green: 0.73, blue: 0.24),
                 cpuAccent: Color(red: 0.98, green: 0.36, blue: 0.39),
                 memoryAccent: Color(red: 0.18, green: 0.92, blue: 0.46),
                 metaTint: Color(red: 0.35, green: 0.53, blue: 0.93),
-                cardShadow: Color.black.opacity(0.22)
+                cardShadow: Color.black.opacity(0.16)
             )
         case .light:
             return ExperimentalHomePalette(
                 isDark: false,
                 themeName: "浅色",
-                pageBackground: LinearGradient(
-                    colors: [
-                        Color(red: 0.95, green: 0.97, blue: 1.00),
-                        Color(red: 0.92, green: 0.94, blue: 0.98)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                heroBackground: LinearGradient(
-                    colors: [
-                        Color(red: 0.99, green: 0.995, blue: 1.0),
-                        Color(red: 0.94, green: 0.96, blue: 0.99)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                cardBackground: Color.white.opacity(0.95),
-                subcardBackground: Color(red: 0.96, green: 0.97, blue: 0.995),
-                cardBorder: Color(red: 0.11, green: 0.15, blue: 0.24).opacity(0.08),
+                pageBackground: classicPageBackground,
+                heroBackground: classicPageBackground,
+                cardBackground: classicCardBackground,
+                subcardBackground: classicSecondaryFill,
+                cardBorder: classicCardBorder,
                 matrixInactive: Color.white.opacity(0.72),
                 inactiveMatrixBorder: Color.white.opacity(0.34),
                 activeMatrixBorder: Color.white,
-                primaryText: Color(red: 0.12, green: 0.15, blue: 0.22),
-                secondaryText: Color(red: 0.43, green: 0.49, blue: 0.60),
+                primaryText: .primary,
+                secondaryText: .secondary,
                 online: Color(red: 0.12, green: 0.68, blue: 0.40),
                 offline: Color(red: 0.92, green: 0.63, blue: 0.15),
                 cpuAccent: Color(red: 0.93, green: 0.33, blue: 0.36),
                 memoryAccent: Color(red: 0.10, green: 0.80, blue: 0.36),
                 metaTint: Color(red: 0.29, green: 0.47, blue: 0.88),
-                cardShadow: Color.black.opacity(0.08)
+                cardShadow: Color.black.opacity(0.16)
             )
         @unknown default:
             return palette(for: .dark)
