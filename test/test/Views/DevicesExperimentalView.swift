@@ -116,11 +116,11 @@ private struct ExperimentalOverviewHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("10 x 10 Dot Matrix")
+                Text("10 x 10 Dash Matrix")
                     .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .foregroundColor(palette.primaryText)
 
-                Text("点阵区域继续保持紧凑，但内部恢复到 10 x 10 小圆点。这样在不明显增加卡片高度的前提下，读数会更细一点。")
+                Text("首屏卡片先切成 2 x 2 四分区，左边保留点阵读数，右边放网络和磁盘速率，方便一起比较。")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundColor(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -231,14 +231,13 @@ private struct ExperimentalServerCard: View {
             header
 
             HStack(alignment: .top, spacing: 10) {
-                HStack(alignment: .top, spacing: 14) {
+                VStack(spacing: 10) {
                     ExperimentalMetricTile(
                         label: "CPU",
                         percentage: percentageValue(stats?.cpuUsage),
-                        tint: palette.cpuAccent,
+                        tint: palette.memoryAccent,
                         palette: palette
                     )
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     ExperimentalMetricTile(
                         label: "MEM",
@@ -246,14 +245,32 @@ private struct ExperimentalServerCard: View {
                         tint: palette.memoryAccent,
                         palette: palette
                     )
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                ExperimentalDetailPanel(
-                    items: detailItems,
-                    palette: palette
-                )
+                VStack(spacing: 10) {
+                    ExperimentalRateTile(
+                        title: "网络速率",
+                        leadingLabel: "下行",
+                        leadingValue: downloadSpeedText,
+                        leadingTint: palette.online,
+                        trailingLabel: "上行",
+                        trailingValue: uploadSpeedText,
+                        trailingTint: palette.metaTint,
+                        palette: palette
+                    )
+
+                    ExperimentalRateTile(
+                        title: "磁盘速率",
+                        leadingLabel: "读取",
+                        leadingValue: diskReadSpeedText,
+                        leadingTint: palette.cpuAccent,
+                        trailingLabel: "写入",
+                        trailingValue: diskWriteSpeedText,
+                        trailingTint: palette.memoryAccent,
+                        palette: palette
+                    )
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -307,46 +324,24 @@ private struct ExperimentalServerCard: View {
         .opacity(isOnline ? 1 : 0.45)
     }
 
-    private var detailItems: [ExperimentalDetailItem] {
-        var items: [ExperimentalDetailItem] = []
-
-        if let temperatureText {
-            items.append(ExperimentalDetailItem(label: "CPU 温度", value: temperatureText, tint: palette.online))
-        }
-
-        if let wifi24 = wifi24TemperatureText {
-            items.append(ExperimentalDetailItem(label: "WiFi 2.4G", value: wifi24, tint: palette.memoryAccent))
-        }
-
-        if let wifi5 = wifi5TemperatureText {
-            items.append(ExperimentalDetailItem(label: "WiFi 5G", value: wifi5, tint: palette.cpuAccent))
-        }
-
-        items.append(ExperimentalDetailItem(label: "在线时长", value: uptimeText, tint: palette.metaTint))
-        items.append(ExperimentalDetailItem(label: "主机", value: config.host, tint: palette.metaTint))
-
-        return Array(items.prefix(4))
+    private var downloadSpeedText: String {
+        guard isOnline else { return "--" }
+        return stats?.downloadSpeed ?? "--"
     }
 
-    private var temperatureText: String? {
-        guard let temp = stats?.cpuTemperatureC else {
-            return nil
-        }
-        return "\(Int(temp.rounded()))°C"
+    private var uploadSpeedText: String {
+        guard isOnline else { return "--" }
+        return stats?.uploadSpeed ?? "--"
     }
 
-    private var wifi24TemperatureText: String? {
-        guard let temp = stats?.wifi24TemperatureC else {
-            return nil
-        }
-        return "\(Int(temp.rounded()))°C"
+    private var diskReadSpeedText: String {
+        guard isOnline else { return "--" }
+        return stats?.diskReadSpeed ?? "--"
     }
 
-    private var wifi5TemperatureText: String? {
-        guard let temp = stats?.wifi5TemperatureC else {
-            return nil
-        }
-        return "\(Int(temp.rounded()))°C"
+    private var diskWriteSpeedText: String {
+        guard isOnline else { return "--" }
+        return stats?.diskWriteSpeed ?? "--"
     }
 
     private var uptimeText: String {
@@ -388,44 +383,6 @@ private struct ExperimentalServerCard: View {
     }
 }
 
-private struct ExperimentalDetailItem: Identifiable {
-    let label: String
-    let value: String
-    let tint: Color
-
-    var id: String { label }
-}
-
-private struct ExperimentalDetailPanel: View {
-    let items: [ExperimentalDetailItem]
-    let palette: ExperimentalHomePalette
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(items) { item in
-                HStack(alignment: .center, spacing: 8) {
-                    Circle()
-                        .fill(item.tint)
-                        .frame(width: 5, height: 5)
-
-                    Text(item.label)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(palette.secondaryText)
-                        .frame(width: 56, alignment: .leading)
-
-                    Text(item.value)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundColor(palette.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
-}
-
 private struct ExperimentalMetricTile: View {
     let label: String
     let percentage: Int?
@@ -433,27 +390,109 @@ private struct ExperimentalMetricTile: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(spacing: 8) {
-            ExperimentalDotMatrix(
-                percentage: percentage,
-                tint: tint,
-                palette: palette
-            )
-            .frame(maxWidth: .infinity)
-
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 6) {
                 Text(label)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundColor(palette.secondaryText)
+
+                Spacer(minLength: 0)
 
                 ExperimentalRollingPercentageText(
                     percentage: percentage,
                     palette: palette
                 )
             }
+
+            ExperimentalDotMatrix(
+                percentage: percentage,
+                tint: tint,
+                palette: palette
+            )
+            .frame(height: 72)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
+        .padding(14)
+        .background(palette.subcardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .opacity(percentage == nil ? 0.78 : 1)
+    }
+}
+
+private struct ExperimentalRateTile: View {
+    let title: String
+    let leadingLabel: String
+    let leadingValue: String
+    let leadingTint: Color
+    let trailingLabel: String
+    let trailingValue: String
+    let trailingTint: Color
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(palette.secondaryText)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ExperimentalRateRow(
+                    label: leadingLabel,
+                    value: leadingValue,
+                    tint: leadingTint,
+                    palette: palette
+                )
+
+                ExperimentalRateRow(
+                    label: trailingLabel,
+                    value: trailingValue,
+                    tint: trailingTint,
+                    palette: palette
+                )
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
+        .padding(14)
+        .background(palette.subcardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct ExperimentalRateRow: View {
+    let label: String
+    let value: String
+    let tint: Color
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(tint)
+                .frame(width: 12, height: 4)
+
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(palette.secondaryText)
+
+            Spacer(minLength: 0)
+
+            Text(value)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(palette.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
     }
 }
 
@@ -497,6 +536,8 @@ private struct ExperimentalDotMatrix: View {
             let side = min(geometry.size.width, geometry.size.height)
             let spacing: CGFloat = side < 72 ? 1.2 : 1.5
             let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
+            let dashWidth = max(tile * 0.92, 1.8)
+            let dashHeight = max(tile * 0.28, 1.2)
 
             VStack(spacing: spacing) {
                 ForEach(0..<size, id: \.self) { visualRow in
@@ -506,14 +547,21 @@ private struct ExperimentalDotMatrix: View {
                             let index = (logicalRow * size) + column
                             let isActive = index < activeCount
 
-                            Circle()
+                            RoundedRectangle(
+                                cornerRadius: dashHeight / 2,
+                                style: .continuous
+                            )
                                 .fill(fillColor(isActive: isActive))
                                 .overlay(
-                                    Circle()
+                                    RoundedRectangle(
+                                        cornerRadius: dashHeight / 2,
+                                        style: .continuous
+                                    )
                                         .stroke(borderColor(isActive: isActive), lineWidth: 0.3)
                                 )
+                                .frame(width: dashWidth, height: dashHeight)
                                 .frame(width: tile, height: tile)
-                                .scaleEffect(isActive ? 0.88 : 0.74)
+                                .scaleEffect(isActive ? 0.94 : 0.8)
                         }
                     }
                 }

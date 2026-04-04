@@ -185,6 +185,51 @@ final class SSHMonitorService {
     }
 
     private static let fullStatsScript = """
+    resolve_disk_source() {
+      for mount_point in /overlay /; do
+        source=""
+        if command -v findmnt >/dev/null 2>&1; then
+          source=$(findmnt -n -o SOURCE "$mount_point" 2>/dev/null | awk 'NR==1 {print; exit}')
+        fi
+        [ -n "$source" ] || source=$(df -kP "$mount_point" 2>/dev/null | awk 'NR==2 {print $1}')
+        case "$source" in
+          /dev/*)
+            printf '%s\n' "$source"
+            return 0
+            ;;
+        esac
+      done
+      return 1
+    }
+    resolve_disk_device() {
+      source=$(resolve_disk_source 2>/dev/null)
+      [ -n "$source" ] || return 1
+      resolved=$(readlink -f "$source" 2>/dev/null)
+      if [ -n "$resolved" ] && [ -b "$resolved" ]; then
+        source="$resolved"
+      fi
+      device=$(basename "$source")
+      if [ -r "/sys/class/block/$device/stat" ]; then
+        printf '%s\n' "$device"
+        return 0
+      fi
+      if command -v lsblk >/dev/null 2>&1; then
+        parent=$(lsblk -ndo PKNAME "$source" 2>/dev/null | awk 'NR==1 {print; exit}')
+        if [ -n "$parent" ] && [ -r "/sys/class/block/$parent/stat" ]; then
+          printf '%s\n' "$parent"
+          return 0
+        fi
+      fi
+      return 1
+    }
+    read_disk_counters() {
+      device="$1"
+      if [ -n "$device" ] && [ -r "/sys/class/block/$device/stat" ]; then
+        awk '{print $3, $7; found=1; exit} END {if (!found) print "0 0"}' "/sys/class/block/$device/stat" 2>/dev/null
+      else
+        echo "0 0"
+      fi
+    }
     echo "=OS="; (if [ -f /etc/os-release ]; then . /etc/os-release; echo "${PRETTY_NAME:-$NAME}"; elif [ -f /etc/openwrt_release ]; then . /etc/openwrt_release; echo "${DISTRIB_DESCRIPTION:-$DISTRIB_ID $DISTRIB_RELEASE}"; else uname -sr; fi)
     echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
@@ -207,9 +252,12 @@ final class SSHMonitorService {
     NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
+    DISK_DEVICE=$(resolve_disk_device 2>/dev/null)
     echo "=NET="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
+    echo "=DISK_IO="; (read_disk_counters "$DISK_DEVICE")
     sleep 1
     echo "=NET2="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
+    echo "=DISK_IO2="; (read_disk_counters "$DISK_DEVICE")
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -217,6 +265,51 @@ final class SSHMonitorService {
     """
 
     private static let dynamicStatsScript = """
+    resolve_disk_source() {
+      for mount_point in /overlay /; do
+        source=""
+        if command -v findmnt >/dev/null 2>&1; then
+          source=$(findmnt -n -o SOURCE "$mount_point" 2>/dev/null | awk 'NR==1 {print; exit}')
+        fi
+        [ -n "$source" ] || source=$(df -kP "$mount_point" 2>/dev/null | awk 'NR==2 {print $1}')
+        case "$source" in
+          /dev/*)
+            printf '%s\n' "$source"
+            return 0
+            ;;
+        esac
+      done
+      return 1
+    }
+    resolve_disk_device() {
+      source=$(resolve_disk_source 2>/dev/null)
+      [ -n "$source" ] || return 1
+      resolved=$(readlink -f "$source" 2>/dev/null)
+      if [ -n "$resolved" ] && [ -b "$resolved" ]; then
+        source="$resolved"
+      fi
+      device=$(basename "$source")
+      if [ -r "/sys/class/block/$device/stat" ]; then
+        printf '%s\n' "$device"
+        return 0
+      fi
+      if command -v lsblk >/dev/null 2>&1; then
+        parent=$(lsblk -ndo PKNAME "$source" 2>/dev/null | awk 'NR==1 {print; exit}')
+        if [ -n "$parent" ] && [ -r "/sys/class/block/$parent/stat" ]; then
+          printf '%s\n' "$parent"
+          return 0
+        fi
+      fi
+      return 1
+    }
+    read_disk_counters() {
+      device="$1"
+      if [ -n "$device" ] && [ -r "/sys/class/block/$device/stat" ]; then
+        awk '{print $3, $7; found=1; exit} END {if (!found) print "0 0"}' "/sys/class/block/$device/stat" 2>/dev/null
+      else
+        echo "0 0"
+      fi
+    }
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
     echo "=WIFI_PHY_BANDS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then found=""; for p in /sys/class/ieee80211/phy*; do [ -d "$p" ] || continue; phy=$(basename "$p"); band=$(iw phy "$phy" info 2>/dev/null | awk '/Band 1:/{band="24g"} /Band 2:/{band="5g"} /Band 3:/{band="6g"} END{if(band) print band}'); [ -n "$band" ] || band="unknown"; printf "%s,%s;" "$phy" "$band"; found=1; done; if [ -n "$found" ]; then echo; else echo "none"; fi; else echo "none"; fi)
     echo "=TEMP_SENSORS="; (found=""; for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/temp}; label=$(cat "$d/type" 2>/dev/null); [ -n "$label" ] || label=$(basename "$d"); label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/*}; phy=$(printf '%s' "$f" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; d=${f%/*}; resolved=$(readlink -f "$d" 2>/dev/null); v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; phy=$(printf '%s' "$resolved" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; if [ -n "$found" ]; then echo; else echo "unavailable"; fi)
@@ -234,9 +327,12 @@ final class SSHMonitorService {
     NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
+    DISK_DEVICE=$(resolve_disk_device 2>/dev/null)
     echo "=NET="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
+    echo "=DISK_IO="; (read_disk_counters "$DISK_DEVICE")
     sleep 1
     echo "=NET2="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
+    echo "=DISK_IO2="; (read_disk_counters "$DISK_DEVICE")
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -369,6 +465,7 @@ final class SSHMonitorService {
         let lines = output.components(separatedBy: "\n")
         var i = 0
         var net1: (rx: Double, tx: Double)?
+        var disk1: (readSectors: Double, writeSectors: Double)?
         var wifiPhyBands: [String: String] = [:]
         var seenMarkers = Set<String>()
 
@@ -437,9 +534,15 @@ final class SSHMonitorService {
             } else if line == "=NET=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 net1 = parseNetCounters(from: lines[i + 1])
+            } else if line == "=DISK_IO=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                disk1 = parseDiskCounters(from: lines[i + 1])
             } else if line == "=NET2=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyNetworkSpeeds(firstSample: net1, secondLine: lines[i + 1], to: &stats)
+            } else if line == "=DISK_IO2=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyDiskIOSpeeds(firstSample: disk1, secondLine: lines[i + 1], to: &stats)
             } else if line == "=IS_ROUTER=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 stats.routerInfo.isRouter = lines[i + 1].trimmingCharacters(in: .whitespaces) == "yes"
@@ -475,7 +578,9 @@ final class SSHMonitorService {
             "=PSI_IO=",
             "=CPU_USAGE=",
             "=NET=",
-            "=NET2="
+            "=DISK_IO=",
+            "=NET2=",
+            "=DISK_IO2="
         ]
         let missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
         if !missingMarkers.isEmpty {
@@ -516,6 +621,7 @@ final class SSHMonitorService {
         let lines = output.components(separatedBy: "\n")
         var i = 0
         var net1: (rx: Double, tx: Double)?
+        var disk1: (readSectors: Double, writeSectors: Double)?
         var wifiPhyBands: [String: String] = [:]
         var seenMarkers = Set<String>()
 
@@ -569,9 +675,15 @@ final class SSHMonitorService {
             } else if line == "=NET=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 net1 = parseNetCounters(from: lines[i + 1])
+            } else if line == "=DISK_IO=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                disk1 = parseDiskCounters(from: lines[i + 1])
             } else if line == "=NET2=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyNetworkSpeeds(firstSample: net1, secondLine: lines[i + 1], to: &dynamic)
+            } else if line == "=DISK_IO2=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyDiskIOSpeeds(firstSample: disk1, secondLine: lines[i + 1], to: &dynamic)
             } else if line == "=IS_ROUTER=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 dynamic.routerInfo.isRouter = lines[i + 1].trimmingCharacters(in: .whitespaces) == "yes"
@@ -602,7 +714,9 @@ final class SSHMonitorService {
             "=PSI_IO=",
             "=CPU_USAGE=",
             "=NET=",
-            "=NET2="
+            "=DISK_IO=",
+            "=NET2=",
+            "=DISK_IO2="
         ]
         let missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
         if !missingMarkers.isEmpty {
@@ -1011,6 +1125,15 @@ final class SSHMonitorService {
         return (rx: Double(parts[0]) ?? 0, tx: Double(parts[1]) ?? 0)
     }
 
+    private static func parseDiskCounters(from line: String) -> (readSectors: Double, writeSectors: Double)? {
+        let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ")
+        guard parts.count >= 2 else { return nil }
+        return (
+            readSectors: Double(parts[0]) ?? 0,
+            writeSectors: Double(parts[1]) ?? 0
+        )
+    }
+
     private static func applyNetworkSpeeds(
         firstSample: (rx: Double, tx: Double)?,
         secondLine: String,
@@ -1035,6 +1158,38 @@ final class SSHMonitorService {
         }
         dynamic.downloadSpeed = formatSpeed(secondSample.rx - firstSample.rx)
         dynamic.uploadSpeed = formatSpeed(secondSample.tx - firstSample.tx)
+    }
+
+    private static func applyDiskIOSpeeds(
+        firstSample: (readSectors: Double, writeSectors: Double)?,
+        secondLine: String,
+        to stats: inout ServerStats
+    ) {
+        guard let firstSample,
+              let secondSample = parseDiskCounters(from: secondLine) else {
+            return
+        }
+
+        let readBytes = max(0, secondSample.readSectors - firstSample.readSectors) * 512
+        let writeBytes = max(0, secondSample.writeSectors - firstSample.writeSectors) * 512
+        stats.diskReadSpeed = formatSpeed(readBytes)
+        stats.diskWriteSpeed = formatSpeed(writeBytes)
+    }
+
+    private static func applyDiskIOSpeeds(
+        firstSample: (readSectors: Double, writeSectors: Double)?,
+        secondLine: String,
+        to dynamic: inout ServerDynamicInfo
+    ) {
+        guard let firstSample,
+              let secondSample = parseDiskCounters(from: secondLine) else {
+            return
+        }
+
+        let readBytes = max(0, secondSample.readSectors - firstSample.readSectors) * 512
+        let writeBytes = max(0, secondSample.writeSectors - firstSample.writeSectors) * 512
+        dynamic.diskReadSpeed = formatSpeed(readBytes)
+        dynamic.diskWriteSpeed = formatSpeed(writeBytes)
     }
 
     private static func parseUptime(_ raw: String) -> String {
