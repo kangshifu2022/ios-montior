@@ -238,7 +238,6 @@ private struct ExperimentalServerCard: View {
                             tint: palette.cpuAccent,
                             palette: palette
                         )
-                        .frame(width: 82)
 
                         ExperimentalMetricTile(
                             label: "MEM",
@@ -246,7 +245,6 @@ private struct ExperimentalServerCard: View {
                             tint: palette.memoryAccent,
                             palette: palette
                         )
-                        .frame(width: 82)
                     }
 
                     ExperimentalDetailPanel(
@@ -442,14 +440,13 @@ private struct ExperimentalMetricTile: View {
     }
 
     var body: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 8) {
             ExperimentalDotMatrix(
                 percentage: percentage,
                 tint: tint,
                 palette: palette
             )
             .frame(width: 42, height: 42)
-            .frame(maxWidth: .infinity, alignment: .center)
 
             Text(compactLabelText)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -457,17 +454,8 @@ private struct ExperimentalMetricTile: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .background(palette.subcardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(palette.cardBorder, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .fixedSize()
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
