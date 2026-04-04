@@ -231,46 +231,44 @@ private struct ExperimentalServerCard: View {
             header
 
             HStack(alignment: .top, spacing: 10) {
-                VStack(spacing: 10) {
-                    ExperimentalMetricTile(
-                        label: "CPU",
-                        percentage: percentageValue(stats?.cpuUsage),
-                        tint: palette.memoryAccent,
-                        palette: palette
-                    )
-
-                    ExperimentalMetricTile(
-                        label: "MEM",
-                        percentage: percentageValue(stats?.memUsage),
-                        tint: palette.memoryAccent,
-                        palette: palette
-                    )
-                }
+                ExperimentalMetricTile(
+                    label: "CPU",
+                    percentage: percentageValue(stats?.cpuUsage),
+                    tint: palette.cpuAccent,
+                    palette: palette
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(spacing: 10) {
-                    ExperimentalRateTile(
-                        title: "网络速率",
-                        leadingLabel: "下行",
-                        leadingValue: downloadSpeedText,
-                        leadingTint: palette.online,
-                        trailingLabel: "上行",
-                        trailingValue: uploadSpeedText,
-                        trailingTint: palette.metaTint,
-                        palette: palette
-                    )
+                ExperimentalMetricTile(
+                    label: "MEM",
+                    percentage: percentageValue(stats?.memUsage),
+                    tint: palette.memoryAccent,
+                    palette: palette
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    ExperimentalRateTile(
-                        title: "磁盘速率",
-                        leadingLabel: "读取",
-                        leadingValue: diskReadSpeedText,
-                        leadingTint: palette.cpuAccent,
-                        trailingLabel: "写入",
-                        trailingValue: diskWriteSpeedText,
-                        trailingTint: palette.memoryAccent,
-                        palette: palette
-                    )
-                }
+                ExperimentalRateTile(
+                    title: "上传 / 下载",
+                    leadingLabel: "下行",
+                    leadingValue: downloadSpeedText,
+                    leadingTint: palette.online,
+                    trailingLabel: "上行",
+                    trailingValue: uploadSpeedText,
+                    trailingTint: palette.metaTint,
+                    palette: palette
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ExperimentalRateTile(
+                    title: "磁盘读 / 写",
+                    leadingLabel: "读取",
+                    leadingValue: diskReadSpeedText,
+                    leadingTint: palette.cpuAccent,
+                    trailingLabel: "写入",
+                    trailingValue: diskWriteSpeedText,
+                    trailingTint: palette.memoryAccent,
+                    palette: palette
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -391,6 +389,13 @@ private struct ExperimentalMetricTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ExperimentalDotMatrix(
+                percentage: percentage,
+                tint: tint,
+                palette: palette
+            )
+            .frame(height: 60)
+
             HStack(alignment: .center, spacing: 6) {
                 Text(label)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -403,22 +408,8 @@ private struct ExperimentalMetricTile: View {
                     palette: palette
                 )
             }
-
-            ExperimentalDotMatrix(
-                percentage: percentage,
-                tint: tint,
-                palette: palette
-            )
-            .frame(height: 72)
         }
-        .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-        .padding(14)
-        .background(palette.subcardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(palette.cardBorder, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
@@ -435,10 +426,6 @@ private struct ExperimentalRateTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(palette.secondaryText)
-
             VStack(alignment: .leading, spacing: 10) {
                 ExperimentalRateRow(
                     label: leadingLabel,
@@ -455,16 +442,11 @@ private struct ExperimentalRateTile: View {
                 )
             }
 
-            Spacer(minLength: 0)
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(palette.secondaryText)
         }
-        .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-        .padding(14)
-        .background(palette.subcardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(palette.cardBorder, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
