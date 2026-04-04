@@ -30,8 +30,12 @@ final class ServerStore: ObservableObject {
     private let legacyStatsKey = "cached_server_stats"
     private var lastStaticRefreshDates: [UUID: Date] = [:]
     private var lastDynamicRefreshDates: [UUID: Date] = [:]
+    private var lastSuccessfulDynamicRefreshDates: [UUID: Date] = [:]
+    private var consecutiveDynamicFailureCounts: [UUID: Int] = [:]
     private let staticRefreshInterval: TimeInterval = 60
     private let dynamicRefreshInterval: TimeInterval = 3
+    private let offlineTransitionFailureThreshold = 2
+    private let offlineTransitionGraceInterval: TimeInterval = 12
 
     init() {
         load()
@@ -52,6 +56,8 @@ final class ServerStore: ObservableObject {
             remoteAlertStatusByServerID.removeValue(forKey: server.id)
             lastStaticRefreshDates.removeValue(forKey: server.id)
             lastDynamicRefreshDates.removeValue(forKey: server.id)
+            lastSuccessfulDynamicRefreshDates.removeValue(forKey: server.id)
+            consecutiveDynamicFailureCounts.removeValue(forKey: server.id)
             refreshingServerIDs.remove(server.id)
             remoteAlertOperationServerIDs.remove(server.id)
             save()
@@ -68,6 +74,8 @@ final class ServerStore: ObservableObject {
             remoteAlertStatusByServerID.removeValue(forKey: $0)
             lastStaticRefreshDates.removeValue(forKey: $0)
             lastDynamicRefreshDates.removeValue(forKey: $0)
+            lastSuccessfulDynamicRefreshDates.removeValue(forKey: $0)
+            consecutiveDynamicFailureCounts.removeValue(forKey: $0)
             refreshingServerIDs.remove($0)
             remoteAlertOperationServerIDs.remove($0)
         }
@@ -289,6 +297,7 @@ final class ServerStore: ObservableObject {
 
             for await result in group {
                 guard let result else { continue }
+                let now = Date()
                 switch result {
                 case .full(let id, let stats):
                     let mergedStaticInfo = mergeStaticInfo(
@@ -297,14 +306,24 @@ final class ServerStore: ObservableObject {
                     )
                     if let mergedStaticInfo {
                         staticInfoByServerID[id] = mergedStaticInfo
-                        lastStaticRefreshDates[id] = Date()
+                        lastStaticRefreshDates[id] = now
                     }
-                    dynamicInfoByServerID[id] = ServerDynamicInfo(stats: stats)
-                    lastDynamicRefreshDates[id] = Date()
+                    let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
+                        serverID: id,
+                        incoming: ServerDynamicInfo(stats: stats),
+                        now: now
+                    )
+                    dynamicInfoByServerID[id] = resolvedDynamicInfo
+                    lastDynamicRefreshDates[id] = now
                     refreshingServerIDs.remove(id)
                 case .dynamic(let id, let dynamic):
-                    dynamicInfoByServerID[id] = dynamic
-                    lastDynamicRefreshDates[id] = Date()
+                    let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
+                        serverID: id,
+                        incoming: dynamic,
+                        now: now
+                    )
+                    dynamicInfoByServerID[id] = resolvedDynamicInfo
+                    lastDynamicRefreshDates[id] = now
                     refreshingServerIDs.remove(id)
                 }
                 switch result {
@@ -398,8 +417,12 @@ final class ServerStore: ObservableObject {
         for id in staticInfoByServerID.keys {
             lastStaticRefreshDates[id] = now
         }
-        for id in dynamicInfoByServerID.keys {
+        for (id, dynamicInfo) in dynamicInfoByServerID {
             lastDynamicRefreshDates[id] = now.addingTimeInterval(-dynamicRefreshInterval)
+            if dynamicInfo.isOnline {
+                lastSuccessfulDynamicRefreshDates[id] = now
+                consecutiveDynamicFailureCounts[id] = 0
+            }
         }
     }
 
@@ -460,6 +483,58 @@ final class ServerStore: ObservableObject {
             merged.memTotal = update.memTotal
         }
         return merged
+    }
+
+    private func resolvedDynamicInfoUpdate(
+        serverID: UUID,
+        incoming: ServerDynamicInfo,
+        now: Date
+    ) -> ServerDynamicInfo {
+        if incoming.isOnline {
+            consecutiveDynamicFailureCounts[serverID] = 0
+            lastSuccessfulDynamicRefreshDates[serverID] = now
+            return incoming
+        }
+
+        let nextFailureCount = (consecutiveDynamicFailureCounts[serverID] ?? 0) + 1
+        consecutiveDynamicFailureCounts[serverID] = nextFailureCount
+
+        guard shouldDelayOfflineTransition(
+            serverID: serverID,
+            failureCount: nextFailureCount,
+            now: now
+        ),
+        let currentDynamicInfo = dynamicInfoByServerID[serverID] else {
+            return incoming
+        }
+
+        var preservedDynamicInfo = currentDynamicInfo
+        if !incoming.diagnostics.isEmpty {
+            preservedDynamicInfo.diagnostics = incoming.diagnostics
+        }
+        if !incoming.rawOutput.isEmpty {
+            preservedDynamicInfo.rawOutput = incoming.rawOutput
+        }
+        return preservedDynamicInfo
+    }
+
+    private func shouldDelayOfflineTransition(
+        serverID: UUID,
+        failureCount: Int,
+        now: Date
+    ) -> Bool {
+        guard failureCount < offlineTransitionFailureThreshold,
+              let currentDynamicInfo = dynamicInfoByServerID[serverID],
+              currentDynamicInfo.isOnline else {
+            return false
+        }
+
+        let lastSuccess = lastSuccessfulDynamicRefreshDates[serverID] ?? lastDynamicRefreshDates[serverID]
+        guard let lastSuccess else {
+            return false
+        }
+
+        return now.timeIntervalSince(lastSuccess) <= offlineTransitionGraceInterval
     }
 
     private func hasMeaningfulStaticInfo(_ info: ServerStaticInfo) -> Bool {

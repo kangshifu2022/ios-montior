@@ -233,11 +233,11 @@ private struct ExperimentalServerCard: View {
         VStack(alignment: .leading, spacing: 24) {
             header
 
-            HStack(alignment: .bottom, spacing: 18) {
+            HStack(alignment: .bottom, spacing: 14) {
                 ExperimentalMetricTile(
                     label: "CPU",
                     percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
-                    matrixTint: palette.cpuAccent,
+                    matrixTint: palette.matrixAccent,
                     valueTint: palette.memoryAccent,
                     palette: palette
                 )
@@ -245,7 +245,7 @@ private struct ExperimentalServerCard: View {
                 ExperimentalMetricTile(
                     label: "MEM",
                     percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
-                    matrixTint: palette.memoryAccent,
+                    matrixTint: palette.matrixAccent,
                     valueTint: palette.memoryAccent,
                     palette: palette
                 )
@@ -292,7 +292,7 @@ private struct ExperimentalServerCard: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(config.name)
-                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .font(.system(size: 29, weight: .light, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .lineLimit(1)
             }
@@ -342,14 +342,6 @@ private struct ExperimentalServerCard: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(terminalButtonForeground)
                 .frame(width: 30, height: 30)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .stroke(palette.cardBorder.opacity(isOnline ? 1 : 0.65), lineWidth: 1)
-                )
         }
         .buttonStyle(.plain)
         .disabled(!isOnline)
@@ -461,16 +453,20 @@ private struct ExperimentalMetricTile: View {
                     tint: matrixTint,
                     palette: palette
                 )
+                .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 86)
 
                 ExperimentalRollingPercentageText(
                     percentage: percentage,
                     tint: valueTint
                 )
+                .frame(width: 68, alignment: .center)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
 
             Text(label)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .light, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .tracking(0.5)
         }
@@ -490,7 +486,7 @@ private struct ExperimentalRateColumn: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             ExperimentalRateValue(
                 value: primaryValue,
                 caption: primaryCaption,
@@ -506,7 +502,7 @@ private struct ExperimentalRateColumn: View {
             )
 
             Text(title)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .light, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .tracking(0.5)
         }
@@ -526,29 +522,54 @@ private struct ExperimentalRateValue: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(parts.number)
-                .font(.system(size: 26, weight: .semibold, design: .rounded))
+        HStack(alignment: .center, spacing: 7) {
+            Text(parts.displayNumber)
+                .font(.system(size: 31, weight: .semibold, design: .rounded))
                 .foregroundColor(accent)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.62)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: 2) {
-                if !parts.unit.isEmpty {
-                    Text(parts.unit)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(palette.secondaryText)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                }
+            VStack(spacing: 0) {
+                ExperimentalRateBadgeCell(
+                    text: parts.unit.isEmpty ? "--" : parts.unit,
+                    palette: palette
+                )
 
-                Text(caption)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(palette.secondaryText)
-                    .lineLimit(1)
+                Rectangle()
+                    .fill(palette.cardBorder.opacity(palette.isDark ? 0.95 : 1))
+                    .frame(height: 1)
+
+                ExperimentalRateBadgeCell(
+                    text: caption,
+                    palette: palette
+                )
             }
+            .frame(width: 42, height: 44)
+            .background(palette.subcardBackground.opacity(palette.isDark ? 0.46 : 0.72))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(palette.cardBorder.opacity(palette.isDark ? 0.9 : 1), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
+        .frame(height: 44, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ExperimentalRateBadgeCell: View {
+    let text: String
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundColor(palette.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.68)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -604,6 +625,7 @@ private struct ExperimentalHeaderBadge: View {
 private struct ExperimentalRateParts {
     let number: String
     let unit: String
+    let displayNumber: String
 
     init(rawValue: String) {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -612,6 +634,7 @@ private struct ExperimentalRateParts {
         guard !compact.isEmpty, compact != "--" else {
             number = "--"
             unit = ""
+            displayNumber = "--"
             return
         }
 
@@ -624,6 +647,17 @@ private struct ExperimentalRateParts {
 
         number = parsedNumber.isEmpty ? compact : parsedNumber
         unit = parsedNumber.isEmpty ? "" : parsedUnit
+        displayNumber = ExperimentalRateParts.integerDisplay(from: number)
+    }
+
+    private static func integerDisplay(from rawNumber: String) -> String {
+        let normalized = rawNumber.replacingOccurrences(of: ",", with: ".")
+
+        if let value = Double(normalized) {
+            return String(Int(value.rounded(.towardZero)))
+        }
+
+        return rawNumber
     }
 }
 
@@ -693,7 +727,7 @@ private struct ExperimentalDotMatrix: View {
 
     private func borderColor(isActive: Bool) -> Color {
         if isActive {
-            return palette.activeMatrixBorder.opacity(palette.isDark ? 0.08 : 0.12)
+            return tint.opacity(palette.isDark ? 0.28 : 0.22)
         }
         return palette.inactiveMatrixBorder
     }
@@ -708,6 +742,7 @@ private struct ExperimentalHomePalette {
     let subcardBackground: Color
     let cardBorder: Color
     let matrixInactive: Color
+    let matrixAccent: Color
     let inactiveMatrixBorder: Color
     let activeMatrixBorder: Color
     let primaryText: Color
@@ -769,6 +804,7 @@ private struct ExperimentalHomePalette {
                 subcardBackground: classicSecondaryFill,
                 cardBorder: classicCardBorder,
                 matrixInactive: Color.white.opacity(0.16),
+                matrixAccent: Color(red: 0.18, green: 0.45, blue: 0.24),
                 inactiveMatrixBorder: Color.white.opacity(0.02),
                 activeMatrixBorder: Color.white,
                 primaryText: .primary,
@@ -790,6 +826,7 @@ private struct ExperimentalHomePalette {
                 subcardBackground: classicSecondaryFill,
                 cardBorder: classicCardBorder,
                 matrixInactive: Color.white.opacity(0.72),
+                matrixAccent: Color(red: 0.23, green: 0.56, blue: 0.30),
                 inactiveMatrixBorder: Color.white.opacity(0.34),
                 activeMatrixBorder: Color.white,
                 primaryText: .primary,
