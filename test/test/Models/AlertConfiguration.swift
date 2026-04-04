@@ -182,7 +182,7 @@ struct AlertConfiguration: Codable, Hashable, Sendable {
     static func normalizedWebsiteTargets(_ values: [String]) -> [String] {
         var seen = Set<String>()
         return values
-            .map(normalizedWebsiteTarget)
+            .map { Self.normalizedWebsiteTarget($0) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }
     }

@@ -644,7 +644,7 @@ private struct ExperimentalRateParts {
         number = parsedNumber.isEmpty ? compact : parsedNumber
         unit = parsedNumber.isEmpty ? "" : parsedUnit
         let integerValue = ExperimentalRateParts.integerDisplay(from: number)
-        displayNumber = integerValue.map(String.init) ?? rawNumber
+        displayNumber = integerValue.map(String.init) ?? number
         numericValue = integerValue
     }
 
