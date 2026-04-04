@@ -116,11 +116,11 @@ private struct ExperimentalOverviewHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("7 x 7 Dot Matrix")
+                Text("10 x 10 Dot Matrix")
                     .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .foregroundColor(palette.primaryText)
 
-                Text("把原来的 10 x 10 收紧成 7 x 7 小圆点矩阵。CPU 和 MEM 仍然按比例点亮，只是占位更小，更适合首屏卡片。")
+                Text("点阵区域继续保持紧凑，但内部恢复到 10 x 10 小圆点。这样在不明显增加卡片高度的前提下，读数会更细一点。")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundColor(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -144,7 +144,7 @@ private struct ExperimentalOverviewHero: View {
 
                     ExperimentalSummaryPill(
                         title: "矩阵",
-                        value: "7 x 7",
+                        value: "10 x 10",
                         tint: palette.memoryAccent,
                         palette: palette
                     )
@@ -167,7 +167,7 @@ private struct ExperimentalOverviewHero: View {
 
                     ExperimentalSummaryPill(
                         title: "矩阵",
-                        value: "7 x 7",
+                        value: "10 x 10",
                         tint: palette.memoryAccent,
                         palette: palette
                     )
@@ -310,9 +310,11 @@ private struct ExperimentalServerCard: View {
     }
 
     private var detailItems: [ExperimentalDetailItem] {
-        var items: [ExperimentalDetailItem] = [
-            ExperimentalDetailItem(label: "CPU 温度", value: temperatureText, tint: palette.online)
-        ]
+        var items: [ExperimentalDetailItem] = []
+
+        if let temperatureText {
+            items.append(ExperimentalDetailItem(label: "CPU 温度", value: temperatureText, tint: palette.online))
+        }
 
         if let wifi24 = wifi24TemperatureText {
             items.append(ExperimentalDetailItem(label: "WiFi 2.4G", value: wifi24, tint: palette.memoryAccent))
@@ -346,9 +348,9 @@ private struct ExperimentalServerCard: View {
         return osName
     }
 
-    private var temperatureText: String {
+    private var temperatureText: String? {
         guard let temp = stats?.cpuTemperatureC else {
-            return "--"
+            return nil
         }
         return "\(Int(temp.rounded()))°C"
     }
@@ -435,30 +437,31 @@ private struct ExperimentalMetricTile: View {
         return "\(percentage)%"
     }
 
+    private var compactLabelText: String {
+        "\(label) \(percentageText)"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(label)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(palette.secondaryText)
-
-                Spacer(minLength: 4)
-                Text(percentageText)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.primaryText)
-                    .monospacedDigit()
-            }
-
+        VStack(spacing: 7) {
             ExperimentalDotMatrix(
                 percentage: percentage,
                 tint: tint,
                 palette: palette
             )
-            .frame(width: 42, height: 42, alignment: .leading)
+            .frame(width: 42, height: 42)
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            Text(compactLabelText)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(palette.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
         .background(palette.subcardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -474,7 +477,7 @@ private struct ExperimentalDotMatrix: View {
     let tint: Color
     let palette: ExperimentalHomePalette
 
-    private let size = 7
+    private let size = 10
 
     private var activeCount: Int {
         let total = size * size
@@ -485,8 +488,8 @@ private struct ExperimentalDotMatrix: View {
     var body: some View {
         GeometryReader { geometry in
             let side = min(geometry.size.width, geometry.size.height)
-            let spacing: CGFloat = side < 46 ? 2 : 2.5
-            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 2.2)
+            let spacing: CGFloat = side < 46 ? 1.2 : 1.5
+            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
 
             VStack(spacing: spacing) {
                 ForEach(0..<size, id: \.self) { visualRow in
@@ -503,13 +506,13 @@ private struct ExperimentalDotMatrix: View {
                                 .fill(fillColor(isActive: isActive, glow: glow))
                                 .overlay(
                                     Circle()
-                                        .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.4)
+                                        .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.3)
                                 )
                                 .frame(width: tile, height: tile)
-                                .scaleEffect(isActive ? (0.92 + (glow * 0.06)) : 0.78)
+                                .scaleEffect(isActive ? (0.9 + (glow * 0.05)) : 0.74)
                                 .shadow(
-                                    color: isActive ? tint.opacity((palette.isDark ? 0.08 : 0.05) + (glow * 0.08)) : .clear,
-                                    radius: isActive ? (1 + (glow * 1.5)) : 0
+                                    color: isActive ? tint.opacity((palette.isDark ? 0.07 : 0.04) + (glow * 0.06)) : .clear,
+                                    radius: isActive ? (0.8 + (glow * 1.1)) : 0
                                 )
                         }
                     }
