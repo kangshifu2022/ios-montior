@@ -280,39 +280,18 @@ private struct ExperimentalServerCard: View {
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(palette.secondaryText.opacity(0.75))
-                        .frame(width: 5, height: 5)
-
-                    Text(shortOSName)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(palette.secondaryText)
-                        .lineLimit(1)
-                }
             }
 
             Spacer()
 
             HStack(spacing: 8) {
-                Text(uptimeText)
+                Text(headerUptimeText)
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(palette.secondaryText)
                     .lineLimit(1)
 
-                Circle()
-                    .fill(isOnline ? palette.online : palette.offline)
-                    .frame(width: 8, height: 8)
-
                 terminalButton
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(palette.subcardBackground)
-            )
         }
     }
 
@@ -349,24 +328,6 @@ private struct ExperimentalServerCard: View {
         return Array(items.prefix(4))
     }
 
-    private var shortOSName: String {
-        let osName = (stats?.osName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !osName.isEmpty else {
-            return "--"
-        }
-
-        let lowercased = osName.lowercased()
-        if lowercased.contains("immortalwrt") { return "ImmortalWrt" }
-        if lowercased.contains("openwrt") { return "OpenWrt" }
-        if lowercased.contains("debian") { return "Debian" }
-        if lowercased.contains("ubuntu") { return "Ubuntu" }
-        if lowercased.contains("centos") { return "CentOS" }
-        if lowercased.contains("fedora") { return "Fedora" }
-        if lowercased.contains("arch") { return "Arch Linux" }
-        if lowercased.contains("linux") { return "Linux" }
-        return osName
-    }
-
     private var temperatureText: String? {
         guard let temp = stats?.cpuTemperatureC else {
             return nil
@@ -391,6 +352,30 @@ private struct ExperimentalServerCard: View {
     private var uptimeText: String {
         let uptime = (stats?.uptime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return uptime.isEmpty ? "--" : uptime
+    }
+
+    private var headerUptimeText: String {
+        guard uptimeText != "--" else {
+            return "--"
+        }
+
+        let raw = uptimeText.lowercased()
+
+        if let range = raw.range(of: #"\d+\s*d"#, options: .regularExpression) {
+            return raw[range].replacingOccurrences(of: " ", with: "")
+        }
+
+        if let range = raw.range(of: #"\d+\s*day"#, options: .regularExpression) {
+            let digits = raw[range].filter(\.isNumber)
+            return digits.isEmpty ? "0d" : "\(digits)d"
+        }
+
+        if let range = raw.range(of: #"\d+\s*天"#, options: .regularExpression) {
+            let digits = raw[range].filter(\.isNumber)
+            return digits.isEmpty ? "0d" : "\(digits)d"
+        }
+
+        return "--"
     }
 
     private var terminalButtonForeground: Color {
@@ -455,15 +440,6 @@ private struct ExperimentalMetricTile: View {
     let tint: Color
     let palette: ExperimentalHomePalette
 
-    private var percentageText: String {
-        guard let percentage else { return "--" }
-        return "\(percentage)%"
-    }
-
-    private var compactLabelText: String {
-        "\(label) \(percentageText)"
-    }
-
     var body: some View {
         VStack(spacing: 8) {
             ExperimentalDotMatrix(
@@ -473,15 +449,41 @@ private struct ExperimentalMetricTile: View {
             )
             .frame(maxWidth: .infinity)
 
-            Text(compactLabelText)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(palette.primaryText)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(palette.secondaryText)
+
+                ExperimentalRollingPercentageText(
+                    percentage: percentage,
+                    palette: palette
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(percentage == nil ? 0.78 : 1)
+    }
+}
+
+private struct ExperimentalRollingPercentageText: View {
+    let percentage: Int?
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        Group {
+            if let percentage {
+                Text("\(percentage)%")
+                    .contentTransition(.numericText(value: Double(percentage)))
+                    .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
+            } else {
+                Text("--")
+            }
+        }
+        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        .foregroundColor(palette.primaryText)
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 }
 
@@ -598,7 +600,7 @@ private struct ExperimentalHomePalette {
                 cardBackground: Color(red: 0.09, green: 0.10, blue: 0.13),
                 subcardBackground: Color(red: 0.12, green: 0.13, blue: 0.17),
                 cardBorder: Color.white.opacity(0.07),
-                matrixInactive: Color.white.opacity(0.085),
+                matrixInactive: Color.white.opacity(0.16),
                 inactiveMatrixBorder: Color.white.opacity(0.02),
                 activeMatrixBorder: Color.white,
                 primaryText: Color(red: 0.95, green: 0.96, blue: 0.99),
@@ -633,8 +635,8 @@ private struct ExperimentalHomePalette {
                 cardBackground: Color.white.opacity(0.95),
                 subcardBackground: Color(red: 0.96, green: 0.97, blue: 0.995),
                 cardBorder: Color(red: 0.11, green: 0.15, blue: 0.24).opacity(0.08),
-                matrixInactive: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.12),
-                inactiveMatrixBorder: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.05),
+                matrixInactive: Color.white.opacity(0.72),
+                inactiveMatrixBorder: Color.white.opacity(0.34),
                 activeMatrixBorder: Color.white,
                 primaryText: Color(red: 0.12, green: 0.15, blue: 0.22),
                 secondaryText: Color(red: 0.43, green: 0.49, blue: 0.60),
