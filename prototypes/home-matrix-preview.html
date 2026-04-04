@@ -222,10 +222,10 @@
       aspect-ratio: 1;
       border-radius: 6px;
       transition:
-        opacity 220ms ease,
-        transform 220ms ease,
-        background-color 220ms ease,
-        box-shadow 220ms ease;
+        opacity 320ms ease,
+        transform 320ms ease,
+        background-color 320ms ease,
+        box-shadow 320ms ease;
       opacity: 0.14;
       transform: scale(0.9);
     }
@@ -241,7 +241,7 @@
 
     .dot.cpu.active {
       background: var(--cpu-accent);
-      box-shadow: 0 0 10px rgba(255, 91, 95, 0.24);
+      box-shadow: 0 0 6px rgba(255, 91, 95, 0.18);
     }
 
     .dot.mem {
@@ -250,7 +250,7 @@
 
     .dot.mem.active {
       background: var(--mem-accent);
-      box-shadow: 0 0 10px rgba(53, 208, 127, 0.24);
+      box-shadow: 0 0 6px rgba(53, 208, 127, 0.18);
     }
 
     .footer {
@@ -404,7 +404,7 @@
       </section>
     </div>
 
-    <div class="hint">每个指标都是 10 x 10 的正方形点阵，总共 100 个点。当前占用率是多少，就点亮多少个点。</div>
+    <div class="hint">每个指标都是 10 x 10 的正方形点阵，总共 100 个点。现在只在每次采样时更新一次，不再持续逐帧重绘。</div>
   </div>
 
   <script>
@@ -420,21 +420,10 @@
 
     const matrices = {};
     const numbers = {};
-    let lastSampleAt = performance.now();
+    let sampleTimer = null;
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
-    }
-
-    function easeInOutCubic(value) {
-      if (value < 0.5) {
-        return 4 * value * value * value;
-      }
-      return 1 - Math.pow(-2 * value + 2, 3) / 2;
-    }
-
-    function lerp(start, end, amount) {
-      return start + ((end - start) * amount);
     }
 
     function nextMetricValue(metric) {
@@ -467,14 +456,13 @@
       numbers[name] = document.querySelector(`[data-number="${name}"]`);
     }
 
-    function dotVisuals(index, activeCount, now, metric, progress) {
+    function dotVisuals(index, activeCount) {
       const active = index < activeCount;
       const age = index / (TOTAL_CELLS - 1);
       const headDistance = Math.abs(index - Math.max(activeCount - 1, 0));
       const headGlow = active ? Math.max(0, 1 - (headDistance / 7)) : 0;
-      const phase = (now / 1000) * (metric.kind === "cpu" ? 1.2 : 0.85);
-      const shimmer = Math.sin((index * 0.3) + phase + metric.seed) * 0.06;
-      const focusBoost = headGlow * (0.18 + progress * 0.1);
+      const shimmer = active ? (0.03 + (headGlow * 0.04)) : 0;
+      const focusBoost = headGlow * 0.16;
       const opacity = active
         ? clamp(0.42 + (age * 0.18) + shimmer + focusBoost, 0.28, 1)
         : clamp(0.09 + (age * 0.02), 0.08, 0.16);
@@ -482,51 +470,62 @@
       return { active, opacity, scale };
     }
 
-    function sampleMetrics(now) {
-      Object.values(metrics).forEach((metric) => {
-        metric.from = metric.display;
-        metric.to = nextMetricValue(metric);
-        metric.value = metric.to;
-      });
-      lastSampleAt = now;
-    }
-
-    function paintMatrix(name, now) {
+    function renderMetric(name) {
       const metric = metrics[name];
-      const rawProgress = clamp((now - lastSampleAt) / SAMPLE_INTERVAL, 0, 1);
-      const progress = easeInOutCubic(rawProgress);
-      metric.display = lerp(metric.from, metric.to, progress);
       const activeCount = clamp(Math.round(metric.display), 0, TOTAL_CELLS);
 
       matrices[name].forEach(({ index, cell }) => {
-        const visuals = dotVisuals(index, activeCount, now, metric, progress);
+        const visuals = dotVisuals(index, activeCount);
         cell.classList.toggle("active", visuals.active);
         cell.style.opacity = String(visuals.opacity);
         cell.style.transform = `scale(${visuals.scale})`;
       });
 
-      const text = `${Math.round(metric.display)}%`;
-      numbers[name].textContent = text;
+      numbers[name].textContent = `${Math.round(metric.display)}%`;
     }
 
-    function tick(now) {
-      if ((now - lastSampleAt) >= SAMPLE_INTERVAL) {
-        sampleMetrics(now);
-      }
+    function renderAll() {
+      Object.keys(matrices).forEach(renderMetric);
+    }
 
-      Object.keys(matrices).forEach((name) => paintMatrix(name, now));
-      requestAnimationFrame(tick);
+    function sampleMetrics() {
+      Object.values(metrics).forEach((metric) => {
+        metric.value = nextMetricValue(metric);
+        metric.display = metric.value;
+      });
+      renderAll();
+    }
+
+    function startSampling() {
+      if (sampleTimer !== null) {
+        return;
+      }
+      sampleTimer = window.setInterval(sampleMetrics, SAMPLE_INTERVAL);
+    }
+
+    function stopSampling() {
+      if (sampleTimer === null) {
+        return;
+      }
+      window.clearInterval(sampleTimer);
+      sampleTimer = null;
     }
 
     ["cpu1", "mem1", "cpu2", "mem2"].forEach((name) => {
       buildMatrix(name);
     });
 
-    Object.values(metrics).forEach((metric) => {
-      metric.from = metric.display;
-      metric.to = metric.value;
+    renderAll();
+    startSampling();
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stopSampling();
+      } else {
+        sampleMetrics();
+        startSampling();
+      }
     });
-    requestAnimationFrame(tick);
   </script>
 </body>
 </html>

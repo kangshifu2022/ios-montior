@@ -116,11 +116,11 @@ private struct ExperimentalOverviewHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("10 x 10 Dot Matrix")
+                Text("7 x 7 Dot Matrix")
                     .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .foregroundColor(palette.primaryText)
 
-                Text("每个矩阵总共 100 个点。CPU 或 MEM 当前是多少，就点亮多少个点，尽量让首屏既直观又有辨识度。")
+                Text("把原来的 10 x 10 收紧成 7 x 7 小圆点矩阵。CPU 和 MEM 仍然按比例点亮，只是占位更小，更适合首屏卡片。")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundColor(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -143,8 +143,8 @@ private struct ExperimentalOverviewHero: View {
                     )
 
                     ExperimentalSummaryPill(
-                        title: "主题",
-                        value: palette.themeName,
+                        title: "矩阵",
+                        value: "7 x 7",
                         tint: palette.memoryAccent,
                         palette: palette
                     )
@@ -166,8 +166,8 @@ private struct ExperimentalOverviewHero: View {
                     )
 
                     ExperimentalSummaryPill(
-                        title: "主题",
-                        value: palette.themeName,
+                        title: "矩阵",
+                        value: "7 x 7",
                         tint: palette.memoryAccent,
                         palette: palette
                     )
@@ -438,7 +438,7 @@ private struct ExperimentalMetricTile: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundColor(palette.primaryText)
 
                     Text(caption)
@@ -449,7 +449,7 @@ private struct ExperimentalMetricTile: View {
                 Spacer(minLength: 8)
 
                 Text(percentageText)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .monospacedDigit()
             }
@@ -478,17 +478,19 @@ private struct ExperimentalDotMatrix: View {
     let tint: Color
     let palette: ExperimentalHomePalette
 
-    private let size = 10
+    private let size = 7
 
     private var activeCount: Int {
-        min(max(percentage ?? 0, 0), size * size)
+        let total = size * size
+        let normalized = Double(min(max(percentage ?? 0, 0), 100)) / 100
+        return Int((normalized * Double(total)).rounded())
     }
 
     var body: some View {
         GeometryReader { geometry in
             let side = min(geometry.size.width, geometry.size.height)
-            let spacing: CGFloat = side < 110 ? 2.5 : 3
-            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 3.5)
+            let spacing: CGFloat = side < 90 ? 3 : 4
+            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 4)
 
             VStack(spacing: spacing) {
                 ForEach(0..<size, id: \.self) { visualRow in
@@ -501,17 +503,17 @@ private struct ExperimentalDotMatrix: View {
                             let distance = abs(index - frontier)
                             let glow = isActive ? max(0, 1 - (Double(distance) / 8)) : 0
 
-                            RoundedRectangle(cornerRadius: min(tile * 0.28, 5), style: .continuous)
+                            Circle()
                                 .fill(fillColor(isActive: isActive, glow: glow))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: min(tile * 0.28, 5), style: .continuous)
+                                    Circle()
                                         .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.6)
                                 )
                                 .frame(width: tile, height: tile)
-                                .scaleEffect(isActive ? (0.96 + (glow * 0.06)) : 0.9)
+                                .scaleEffect(isActive ? (0.94 + (glow * 0.08)) : 0.82)
                                 .shadow(
-                                    color: isActive ? tint.opacity((palette.isDark ? 0.12 : 0.08) + (glow * 0.14)) : .clear,
-                                    radius: isActive ? (2 + (glow * 4)) : 0
+                                    color: isActive ? tint.opacity((palette.isDark ? 0.10 : 0.06) + (glow * 0.10)) : .clear,
+                                    radius: isActive ? (1.5 + (glow * 2.5)) : 0
                                 )
                         }
                     }
@@ -526,7 +528,7 @@ private struct ExperimentalDotMatrix: View {
 
     private func fillColor(isActive: Bool, glow: Double) -> Color {
         if isActive {
-            return tint.opacity((palette.isDark ? 0.56 : 0.48) + (glow * 0.30))
+            return tint.opacity((palette.isDark ? 0.62 : 0.56) + (glow * 0.22))
         }
         return palette.matrixInactive
     }
