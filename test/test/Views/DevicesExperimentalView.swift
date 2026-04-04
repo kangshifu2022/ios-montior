@@ -3,7 +3,6 @@ import SwiftUI
 struct DevicesExperimentalView: View {
     @ObservedObject var store: ServerStore
     @State private var selectedServer: ServerConfig?
-    @State private var metricHistoryByServerID: [UUID: ExperimentalMetricHistory] = [:]
 
     var body: some View {
         NavigationStack {
@@ -15,8 +14,7 @@ struct DevicesExperimentalView: View {
                         ForEach(store.servers) { server in
                             ExperimentalServerCard(
                                 config: server,
-                                stats: store.stats(for: server),
-                                history: metricHistoryByServerID[server.id]
+                                stats: store.stats(for: server)
                             ) {
                                 selectedServer = server
                             }
@@ -30,16 +28,10 @@ struct DevicesExperimentalView: View {
             .navigationTitle("概览")
             .task(id: store.servers.map(\.id)) {
                 await store.refreshAllIfNeeded()
-                await MainActor.run {
-                    recordCurrentSamples()
-                }
 
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     await store.refreshAllIfNeeded(forceDynamic: true)
-                    await MainActor.run {
-                        recordCurrentSamples()
-                    }
                 }
             }
             .navigationDestination(item: $selectedServer) { config in
@@ -68,50 +60,12 @@ struct DevicesExperimentalView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
-
-    @MainActor
-    private func recordCurrentSamples() {
-        let validIDs = Set(store.servers.map(\.id))
-        metricHistoryByServerID = metricHistoryByServerID.filter { validIDs.contains($0.key) }
-
-        for server in store.servers {
-            guard let stats = store.stats(for: server) else { continue }
-
-            let sample = ExperimentalMetricSample(
-                cpuUsage: stats.isOnline ? stats.cpuUsage : 0,
-                memoryUsage: stats.isOnline ? stats.memUsage : 0,
-                cpuPSI: stats.pressure.cpuSomeAvg10 ?? 0,
-                memoryPSI: max(stats.pressure.memoryFullAvg10 ?? 0, stats.pressure.memorySomeAvg10 ?? 0),
-                ioPSI: max(stats.pressure.ioFullAvg10 ?? 0, stats.pressure.ioSomeAvg10 ?? 0)
-            )
-
-            var history = metricHistoryByServerID[server.id] ?? ExperimentalMetricHistory(seed: sample)
-            history.append(sample)
-            metricHistoryByServerID[server.id] = history
-        }
-    }
 }
 
 private struct ExperimentalServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
-    let history: ExperimentalMetricHistory?
     let onOpenDetail: () -> Void
-
-    private var currentHistory: ExperimentalMetricHistory {
-        if let history {
-            return history
-        }
-
-        let fallback = ExperimentalMetricSample(
-            cpuUsage: stats?.cpuUsage ?? 0,
-            memoryUsage: stats?.memUsage ?? 0,
-            cpuPSI: stats?.pressure.cpuSomeAvg10 ?? 0,
-            memoryPSI: max(stats?.pressure.memoryFullAvg10 ?? 0, stats?.pressure.memorySomeAvg10 ?? 0),
-            ioPSI: max(stats?.pressure.ioFullAvg10 ?? 0, stats?.pressure.ioSomeAvg10 ?? 0)
-        )
-        return ExperimentalMetricHistory(seed: fallback)
-    }
 
     private var isOnline: Bool {
         stats?.isOnline == true
@@ -119,11 +73,9 @@ private struct ExperimentalServerCard: View {
 
     var body: some View {
         Button(action: onOpenDetail) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 header
                 cpuAndMemorySection
-                divider
-                psiSection
                 divider
                 temperatureSection
             }
@@ -183,51 +135,19 @@ private struct ExperimentalServerCard: View {
         VStack(spacing: 14) {
             ExperimentalSparkMetricRow(
                 label: "CPU",
-                values: currentHistory.cpuUsage,
+                value: stats?.cpuUsage,
                 percentageText: percentageText(stats?.cpuUsage),
-                color: ExperimentalHomePalette.cpuSpark
+                color: ExperimentalHomePalette.cpuSpark,
+                seed: dynamicSeed(offset: 0.37)
             )
 
             ExperimentalSparkMetricRow(
                 label: "MEM",
-                values: currentHistory.memoryUsage,
+                value: stats?.memUsage,
                 percentageText: percentageText(stats?.memUsage),
-                color: ExperimentalHomePalette.memorySpark
+                color: ExperimentalHomePalette.memorySpark,
+                seed: dynamicSeed(offset: 1.71)
             )
-        }
-    }
-
-    private var psiSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("PSI 压力指数")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(ExperimentalHomePalette.sectionLabel)
-
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
-                spacing: 12
-            ) {
-                ExperimentalPSICard(
-                    title: "CPU PSI",
-                    value: stats?.pressure.cpuSomeAvg10,
-                    values: currentHistory.cpuPSI,
-                    tint: psiTint(for: stats?.pressure.cpuSomeAvg10)
-                )
-
-                ExperimentalPSICard(
-                    title: "MEM PSI",
-                    value: max(stats?.pressure.memoryFullAvg10 ?? 0, stats?.pressure.memorySomeAvg10 ?? 0),
-                    values: currentHistory.memoryPSI,
-                    tint: psiTint(for: max(stats?.pressure.memoryFullAvg10 ?? 0, stats?.pressure.memorySomeAvg10 ?? 0))
-                )
-
-                ExperimentalPSICard(
-                    title: "IO PSI",
-                    value: max(stats?.pressure.ioFullAvg10 ?? 0, stats?.pressure.ioSomeAvg10 ?? 0),
-                    values: currentHistory.ioPSI,
-                    tint: psiTint(for: max(stats?.pressure.ioFullAvg10 ?? 0, stats?.pressure.ioSomeAvg10 ?? 0))
-                )
-            }
         }
     }
 
@@ -292,23 +212,19 @@ private struct ExperimentalServerCard: View {
         return "\(Int(temp.rounded()))°C"
     }
 
-    private func psiTint(for value: Double?) -> Color {
-        let safeValue = value ?? 0
-        if safeValue >= 5 {
-            return ExperimentalHomePalette.psiHigh
-        }
-        if safeValue >= 2 {
-            return ExperimentalHomePalette.psiMedium
-        }
-        return ExperimentalHomePalette.psiLow
+    private func dynamicSeed(offset: Double) -> Double {
+        let components = config.id.uuidString.unicodeScalars.map { Double($0.value) }
+        let base = components.reduce(0, +) / Double(max(components.count, 1))
+        return base * 0.013 + offset
     }
 }
 
 private struct ExperimentalSparkMetricRow: View {
     let label: String
-    let values: [Double]
+    let value: Double?
     let percentageText: String
     let color: Color
+    let seed: Double
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
@@ -317,10 +233,10 @@ private struct ExperimentalSparkMetricRow: View {
                 .foregroundColor(ExperimentalHomePalette.sectionLabel)
                 .frame(width: 40, alignment: .leading)
 
-            ExperimentalSparkBars(
-                values: values,
+            ExperimentalLiveSparkBars(
+                value: value,
                 tint: color,
-                minimumHeightRatio: 0.18
+                seed: seed
             )
             .frame(maxWidth: .infinity)
 
@@ -333,133 +249,54 @@ private struct ExperimentalSparkMetricRow: View {
     }
 }
 
-private struct ExperimentalPSICard: View {
-    let title: String
+private struct ExperimentalLiveSparkBars: View {
     let value: Double?
-    let values: [Double]
     let tint: Color
+    let seed: Double
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(ExperimentalHomePalette.sectionLabel)
+        TimelineView(.animation(minimumInterval: 0.33, paused: false)) { context in
+            GeometryReader { geometry in
+                let bars = sparkValues(for: context.date)
+                let itemCount = max(bars.count, 1)
+                let spacing: CGFloat = 4
+                let totalSpacing = spacing * CGFloat(max(itemCount - 1, 0))
+                let barWidth = max((geometry.size.width - totalSpacing) / CGFloat(itemCount), 3)
 
-            Text(formattedValue)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(tint)
-                .monospacedDigit()
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(Array(bars.enumerated()), id: \.offset) { _, rawValue in
+                        let safeValue = min(max(rawValue, 0), 1)
+                        let barHeight = max(CGFloat(safeValue), 0.18) * geometry.size.height
 
-            Spacer(minLength: 0)
-
-            ExperimentalSparkBars(
-                values: normalizedPSIValues,
-                tintProvider: { psiColor(for: $0) },
-                minimumHeightRatio: 0.10,
-                cornerRadius: 2,
-                height: 22
-            )
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 138, alignment: .leading)
-        .background(ExperimentalHomePalette.subcardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private var formattedValue: String {
-        guard let value else { return "--" }
-        return String(format: "%.1f%%", value)
-    }
-
-    private var normalizedPSIValues: [Double] {
-        values.map { sample in
-            let normalized = min(max(sample / 8.0, 0), 1)
-            return max(normalized, sample > 0 ? 0.08 : 0)
-        }
-    }
-
-    private func psiColor(for normalizedValue: Double) -> Color {
-        if normalizedValue >= 0.65 {
-            return ExperimentalHomePalette.psiHigh
-        }
-        if normalizedValue >= 0.28 {
-            return ExperimentalHomePalette.psiMedium
-        }
-        return ExperimentalHomePalette.psiLow
-    }
-}
-
-private struct ExperimentalSparkBars: View {
-    let values: [Double]
-    var tint: Color? = nil
-    var tintProvider: ((Double) -> Color)? = nil
-    var minimumHeightRatio: Double = 0.12
-    var cornerRadius: CGFloat = 3
-    var height: CGFloat = 34
-
-    var body: some View {
-        GeometryReader { geometry in
-            let itemCount = max(values.count, 1)
-            let spacing: CGFloat = 4
-            let totalSpacing = spacing * CGFloat(max(itemCount - 1, 0))
-            let barWidth = max((geometry.size.width - totalSpacing) / CGFloat(itemCount), 3)
-
-            HStack(alignment: .bottom, spacing: spacing) {
-                ForEach(Array(values.enumerated()), id: \.offset) { _, rawValue in
-                    let safeValue = min(max(rawValue, 0), 1)
-                    let height = max(CGFloat(safeValue), CGFloat(minimumHeightRatio)) * geometry.size.height
-
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill((tintProvider?(safeValue) ?? tint ?? ExperimentalHomePalette.cpuSpark).gradient)
-                        .frame(width: barWidth, height: height)
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(tint.gradient)
+                            .frame(width: barWidth, height: barHeight)
+                            .opacity(value == nil ? 0.35 : 1)
+                    }
                 }
+                .animation(.easeInOut(duration: 0.28), value: bars)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .frame(height: 34)
         }
-        .frame(height: height)
-    }
-}
-
-private struct ExperimentalMetricSample {
-    let cpuUsage: Double
-    let memoryUsage: Double
-    let cpuPSI: Double
-    let memoryPSI: Double
-    let ioPSI: Double
-}
-
-private struct ExperimentalMetricHistory {
-    var cpuUsage: [Double]
-    var memoryUsage: [Double]
-    var cpuPSI: [Double]
-    var memoryPSI: [Double]
-    var ioPSI: [Double]
-
-    private static let maxSamples = 36
-
-    init(seed sample: ExperimentalMetricSample) {
-        cpuUsage = Array(repeating: min(max(sample.cpuUsage, 0), 1), count: Self.maxSamples)
-        memoryUsage = Array(repeating: min(max(sample.memoryUsage, 0), 1), count: Self.maxSamples)
-        cpuPSI = Array(repeating: max(sample.cpuPSI, 0), count: Self.maxSamples)
-        memoryPSI = Array(repeating: max(sample.memoryPSI, 0), count: Self.maxSamples)
-        ioPSI = Array(repeating: max(sample.ioPSI, 0), count: Self.maxSamples)
     }
 
-    mutating func append(_ sample: ExperimentalMetricSample) {
-        cpuUsage = appended(cpuUsage, value: min(max(sample.cpuUsage, 0), 1))
-        memoryUsage = appended(memoryUsage, value: min(max(sample.memoryUsage, 0), 1))
-        cpuPSI = appended(cpuPSI, value: max(sample.cpuPSI, 0))
-        memoryPSI = appended(memoryPSI, value: max(sample.memoryPSI, 0))
-        ioPSI = appended(ioPSI, value: max(sample.ioPSI, 0))
-    }
+    private func sparkValues(for date: Date) -> [Double] {
+        let baseline = min(max(value ?? 0, 0), 1)
+        let amplitude = value == nil ? 0.05 : 0.07 + baseline * 0.16
+        let speed = 0.85 + baseline * 1.5
+        let time = date.timeIntervalSinceReferenceDate * speed + seed
+        let count = 36
 
-    private func appended(_ values: [Double], value: Double) -> [Double] {
-        var next = values
-        next.append(value)
-        if next.count > Self.maxSamples {
-            next.removeFirst(next.count - Self.maxSamples)
+        return (0..<count).map { index in
+            let x = Double(index)
+            let waveA = sin(time * 1.9 + x * 0.33 + seed * 1.7)
+            let waveB = cos(time * 1.2 + x * 0.19 + seed * 2.4)
+            let waveC = sin(time * 2.7 + x * 0.11 + seed * 0.8)
+            let blended = (waveA * 0.52) + (waveB * 0.33) + (waveC * 0.15)
+            let value = baseline + blended * amplitude
+            return min(max(value, 0.04), 1)
         }
-        return next
     }
 }
 
@@ -484,7 +321,4 @@ private enum ExperimentalHomePalette {
     static let offline = Color(red: 0.98, green: 0.74, blue: 0.22)
     static let cpuSpark = Color(red: 0.23, green: 0.49, blue: 0.85)
     static let memorySpark = Color(red: 0.49, green: 0.31, blue: 0.90)
-    static let psiLow = Color(red: 0.23, green: 0.92, blue: 0.56)
-    static let psiMedium = Color(red: 1.00, green: 0.69, blue: 0.10)
-    static let psiHigh = Color(red: 0.88, green: 0.27, blue: 0.30)
 }
