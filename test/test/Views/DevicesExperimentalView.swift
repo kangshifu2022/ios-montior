@@ -233,17 +233,42 @@ private struct ExperimentalServerCard: View {
         VStack(alignment: .leading, spacing: 24) {
             header
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .bottom, spacing: 24) {
-                    metricSection
-                    Spacer(minLength: 0)
-                    rateSection
-                }
+            HStack(alignment: .bottom, spacing: 18) {
+                ExperimentalMetricTile(
+                    label: "CPU",
+                    percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
+                    matrixTint: palette.cpuAccent,
+                    valueTint: palette.memoryAccent,
+                    palette: palette
+                )
 
-                VStack(alignment: .leading, spacing: 22) {
-                    metricSection
-                    rateSection
-                }
+                ExperimentalMetricTile(
+                    label: "MEM",
+                    percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
+                    matrixTint: palette.memoryAccent,
+                    valueTint: palette.memoryAccent,
+                    palette: palette
+                )
+
+                ExperimentalRateColumn(
+                    title: "WLAN",
+                    primaryValue: uploadSpeedText,
+                    primaryCaption: "upload",
+                    secondaryValue: downloadSpeedText,
+                    secondaryCaption: "down",
+                    accent: palette.memoryAccent,
+                    palette: palette
+                )
+
+                ExperimentalRateColumn(
+                    title: "DISK",
+                    primaryValue: diskReadSpeedText,
+                    primaryCaption: "read",
+                    secondaryValue: diskWriteSpeedText,
+                    secondaryCaption: "write",
+                    accent: palette.memoryAccent,
+                    palette: palette
+                )
             }
         }
         .contentShape(Rectangle())
@@ -329,51 +354,6 @@ private struct ExperimentalServerCard: View {
         .buttonStyle(.plain)
         .disabled(!isOnline)
         .opacity(isOnline ? 1 : 0.45)
-    }
-
-    private var metricSection: some View {
-        HStack(alignment: .top, spacing: 22) {
-            ExperimentalMetricTile(
-                label: "CPU",
-                percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
-                matrixTint: palette.cpuAccent,
-                valueTint: palette.memoryAccent,
-                palette: palette
-            )
-
-            ExperimentalMetricTile(
-                label: "MEM",
-                percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
-                matrixTint: palette.memoryAccent,
-                valueTint: palette.memoryAccent,
-                palette: palette
-            )
-        }
-        .frame(maxWidth: 320, alignment: .leading)
-    }
-
-    private var rateSection: some View {
-        HStack(alignment: .top, spacing: 26) {
-            ExperimentalRateColumn(
-                title: "WLAN",
-                primaryValue: uploadSpeedText,
-                primaryCaption: "upload",
-                secondaryValue: downloadSpeedText,
-                secondaryCaption: "down",
-                accent: palette.memoryAccent,
-                palette: palette
-            )
-
-            ExperimentalRateColumn(
-                title: "DISK",
-                primaryValue: diskReadSpeedText,
-                primaryCaption: "read",
-                secondaryValue: diskWriteSpeedText,
-                secondaryCaption: "write",
-                accent: palette.memoryAccent,
-                palette: palette
-            )
-        }
     }
 
     private var downloadSpeedText: String {
@@ -495,6 +475,7 @@ private struct ExperimentalMetricTile: View {
                 .tracking(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .layoutPriority(1)
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
@@ -529,7 +510,8 @@ private struct ExperimentalRateColumn: View {
                 .foregroundColor(palette.secondaryText)
                 .tracking(0.5)
         }
-        .frame(minWidth: 110, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .layoutPriority(1)
     }
 }
 
