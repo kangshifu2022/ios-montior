@@ -230,6 +230,28 @@ final class SSHMonitorService {
         echo "0 0"
       fi
     }
+    read_cpu_totals() {
+      if [ -r /proc/stat ]; then
+        awk '/^cpu / {idle=$5+$6; total=0; for (i=2; i<=NF; i++) total+=$i; printf "%.0f %.0f\\n", total, idle; found=1; exit} END {if (!found) print "0 0"}' /proc/stat 2>/dev/null
+      else
+        echo "0 0"
+      fi
+    }
+    calculate_cpu_usage() {
+      first_sample="$1"
+      second_sample="$2"
+      awk -v first="$first_sample" -v second="$second_sample" 'BEGIN {
+        split(first, a, " ")
+        split(second, b, " ")
+        totald = (b[1] + 0) - (a[1] + 0)
+        idled = (b[2] + 0) - (a[2] + 0)
+        if (totald <= 0) { print "0"; exit }
+        usage = ((totald - idled) * 100) / totald
+        if (usage < 0) usage = 0
+        if (usage > 100) usage = 100
+        printf "%.1f\\n", usage
+      }'
+    }
     echo "=OS="; (if [ -f /etc/os-release ]; then . /etc/os-release; echo "${PRETTY_NAME:-$NAME}"; elif [ -f /etc/openwrt_release ]; then . /etc/openwrt_release; echo "${DISTRIB_DESCRIPTION:-$DISTRIB_ID $DISTRIB_RELEASE}"; else uname -sr; fi)
     echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
@@ -248,7 +270,7 @@ final class SSHMonitorService {
     echo "=PSI_CPU="; (if [ -r /proc/pressure/cpu ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/cpu 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_MEMORY="; (if [ -r /proc/pressure/memory ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/memory 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_IO="; (if [ -r /proc/pressure/io ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/io 2>/dev/null; echo; else echo "unavailable"; fi)
-    echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
+    CPU_SAMPLE_1=$(read_cpu_totals)
     NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
@@ -256,8 +278,10 @@ final class SSHMonitorService {
     echo "=NET="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=DISK_IO="; (read_disk_counters "$DISK_DEVICE")
     sleep 1
+    CPU_SAMPLE_2=$(read_cpu_totals)
     echo "=NET2="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=DISK_IO2="; (read_disk_counters "$DISK_DEVICE")
+    echo "=CPU_USAGE="; (calculate_cpu_usage "$CPU_SAMPLE_1" "$CPU_SAMPLE_2")
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -310,6 +334,28 @@ final class SSHMonitorService {
         echo "0 0"
       fi
     }
+    read_cpu_totals() {
+      if [ -r /proc/stat ]; then
+        awk '/^cpu / {idle=$5+$6; total=0; for (i=2; i<=NF; i++) total+=$i; printf "%.0f %.0f\\n", total, idle; found=1; exit} END {if (!found) print "0 0"}' /proc/stat 2>/dev/null
+      else
+        echo "0 0"
+      fi
+    }
+    calculate_cpu_usage() {
+      first_sample="$1"
+      second_sample="$2"
+      awk -v first="$first_sample" -v second="$second_sample" 'BEGIN {
+        split(first, a, " ")
+        split(second, b, " ")
+        totald = (b[1] + 0) - (a[1] + 0)
+        idled = (b[2] + 0) - (a[2] + 0)
+        if (totald <= 0) { print "0"; exit }
+        usage = ((totald - idled) * 100) / totald
+        if (usage < 0) usage = 0
+        if (usage > 100) usage = 100
+        printf "%.1f\\n", usage
+      }'
+    }
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
     echo "=WIFI_PHY_BANDS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then found=""; for p in /sys/class/ieee80211/phy*; do [ -d "$p" ] || continue; phy=$(basename "$p"); band=$(iw phy "$phy" info 2>/dev/null | awk '/Band 1:/{band="24g"} /Band 2:/{band="5g"} /Band 3:/{band="6g"} END{if(band) print band}'); [ -n "$band" ] || band="unknown"; printf "%s,%s;" "$phy" "$band"; found=1; done; if [ -n "$found" ]; then echo; else echo "none"; fi; else echo "none"; fi)
     echo "=TEMP_SENSORS="; (found=""; for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/temp}; label=$(cat "$d/type" 2>/dev/null); [ -n "$label" ] || label=$(basename "$d"); label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/*}; phy=$(printf '%s' "$f" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; d=${f%/*}; resolved=$(readlink -f "$d" 2>/dev/null); v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; phy=$(printf '%s' "$resolved" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; if [ -n "$found" ]; then echo; else echo "unavailable"; fi)
@@ -323,7 +369,7 @@ final class SSHMonitorService {
     echo "=PSI_CPU="; (if [ -r /proc/pressure/cpu ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/cpu 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_MEMORY="; (if [ -r /proc/pressure/memory ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/memory 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_IO="; (if [ -r /proc/pressure/io ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/io 2>/dev/null; echo; else echo "unavailable"; fi)
-    echo "=CPU_USAGE="; ((top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {for (i=1; i<=NF; i++) {if ($i ~ /id,|idle/) {v=$(i-1); gsub(/[^0-9.]/, "", v); if (v != "") {printf "%.1f\\n", 100 - v; found=1; exit}}}} END {if (!found) print "0"}')
+    CPU_SAMPLE_1=$(read_cpu_totals)
     NET_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$NET_IFACE" ] || NET_IFACE=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
@@ -331,8 +377,10 @@ final class SSHMonitorService {
     echo "=NET="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=DISK_IO="; (read_disk_counters "$DISK_DEVICE")
     sleep 1
+    CPU_SAMPLE_2=$(read_cpu_totals)
     echo "=NET2="; (if [ -n "$NET_IFACE" ]; then awk -F'[: ]+' -v iface="$NET_IFACE" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=DISK_IO2="; (read_disk_counters "$DISK_DEVICE")
+    echo "=CPU_USAGE="; (calculate_cpu_usage "$CPU_SAMPLE_1" "$CPU_SAMPLE_2")
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -2016,19 +2064,30 @@ final class SSHMonitorService {
     private static var remoteAlertCPUReaderScript: String {
         """
         fetch_cpu_usage() {
-          (top -bn1 2>/dev/null || top -n1 2>/dev/null) | awk '/Cpu\\(s\\)|CPU:/ {
-            for (i = 1; i <= NF; i++) {
-              if ($i ~ /id,|idle/) {
-                v = $(i - 1)
-                gsub(/[^0-9.]/, "", v)
-                if (v != "") {
-                  printf "%.0f\\n", 100 - v
-                  found = 1
-                  exit
-                }
-              }
-            }
-          } END { if (!found) print "0" }'
+          if [ ! -r /proc/stat ]; then
+            echo "0"
+            return
+          fi
+
+          cpu_sample() {
+            awk '/^cpu / {idle=$5+$6; total=0; for (i=2; i<=NF; i++) total+=$i; printf "%.0f %.0f\\n", total, idle; found=1; exit} END {if (!found) print "0 0"}' /proc/stat 2>/dev/null
+          }
+
+          first=$(cpu_sample)
+          sleep 1
+          second=$(cpu_sample)
+
+          awk -v first="$first" -v second="$second" 'BEGIN {
+            split(first, a, " ")
+            split(second, b, " ")
+            totald = (b[1] + 0) - (a[1] + 0)
+            idled = (b[2] + 0) - (a[2] + 0)
+            if (totald <= 0) { print "0"; exit }
+            usage = ((totald - idled) * 100) / totald
+            if (usage < 0) usage = 0
+            if (usage > 100) usage = 100
+            printf "%.0f\\n", usage
+          }'
         }
         """
     }

@@ -666,10 +666,8 @@ private struct ExperimentalDotMatrix: View {
 
     private let size = 10
 
-    private var activeCount: Int {
-        let total = size * size
-        let normalized = Double(min(max(percentage ?? 0, 0), 100)) / 100
-        return Int((normalized * Double(total)).rounded())
+    private var normalizedLevel: Double {
+        Double(min(max(percentage ?? 0, 0), 100)) / 100
     }
 
     var body: some View {
@@ -688,24 +686,23 @@ private struct ExperimentalDotMatrix: View {
                     HStack(spacing: horizontalSpacing) {
                         ForEach(0..<size, id: \.self) { column in
                             let logicalRow = (size - 1) - visualRow
-                            let index = (logicalRow * size) + column
-                            let isActive = index < activeCount
+                            let activation = activationLevel(for: logicalRow, column: column)
 
                             RoundedRectangle(
                                 cornerRadius: dashHeight / 2,
                                 style: .continuous
                             )
-                                .fill(fillColor(isActive: isActive))
+                                .fill(fillColor(for: activation))
                                 .overlay(
                                     RoundedRectangle(
                                         cornerRadius: dashHeight / 2,
                                         style: .continuous
                                     )
-                                        .stroke(borderColor(isActive: isActive), lineWidth: 0.3)
+                                        .stroke(borderColor(for: activation), lineWidth: 0.3)
                                 )
                                 .frame(width: dashWidth, height: dashHeight)
                                 .frame(width: tileWidth, height: tileHeight)
-                                .scaleEffect(isActive ? 0.94 : 0.8)
+                                .scaleEffect(scale(for: activation))
                         }
                     }
                 }
@@ -713,21 +710,51 @@ private struct ExperimentalDotMatrix: View {
             .frame(width: width, height: height)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: activeCount)
+        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage ?? -1)
     }
 
-    private func fillColor(isActive: Bool) -> Color {
-        if isActive {
-            return tint
-        }
-        return palette.matrixInactive
+    private func activationLevel(for logicalRow: Int, column: Int) -> Double {
+        let threshold = activationThreshold(for: logicalRow, column: column)
+        return normalizedLevel - threshold
     }
 
-    private func borderColor(isActive: Bool) -> Color {
-        if isActive {
-            return tint.opacity(palette.isDark ? 0.28 : 0.22)
+    private func activationThreshold(for logicalRow: Int, column: Int) -> Double {
+        let rowProgress = Double(logicalRow) / Double(max(size - 1, 1))
+        let center = Double(size - 1) / 2
+        let centerDistance = abs(Double(column) - center) / max(center, 1)
+        let columnBias = centerDistance * 0.16
+        let staggerPattern = ((logicalRow * 7) + (column * 11)) % 9
+        let stagger = Double(staggerPattern) / 100
+        let rowBias = rowProgress * 0.74
+
+        return min(max(rowBias + columnBias + stagger, 0), 0.98)
+    }
+
+    private func fillColor(for activation: Double) -> Color {
+        guard activation > 0 else {
+            return palette.matrixInactive
         }
-        return palette.inactiveMatrixBorder
+
+        let intensity = min(max(activation / 0.22, 0), 1)
+        return tint.opacity(0.42 + (intensity * 0.36))
+    }
+
+    private func borderColor(for activation: Double) -> Color {
+        guard activation > 0 else {
+            return palette.inactiveMatrixBorder
+        }
+
+        let intensity = min(max(activation / 0.22, 0), 1)
+        return tint.opacity(0.16 + (intensity * 0.16))
+    }
+
+    private func scale(for activation: Double) -> CGFloat {
+        guard activation > 0 else {
+            return 0.78
+        }
+
+        let intensity = min(max(activation / 0.22, 0), 1)
+        return 0.82 + (intensity * 0.10)
     }
 }
 
