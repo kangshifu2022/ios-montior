@@ -220,54 +220,57 @@ private struct ExperimentalServerCard: View {
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
+    @State private var showTerminal = false
 
     private var isOnline: Bool {
         stats?.isOnline == true
     }
 
     var body: some View {
-        Button(action: onOpenDetail) {
-            VStack(alignment: .leading, spacing: 14) {
-                header
+        VStack(alignment: .leading, spacing: 14) {
+            header
 
-                HStack(alignment: .top, spacing: 10) {
-                    HStack(alignment: .top, spacing: 8) {
-                        ExperimentalMetricTile(
-                            label: "CPU",
-                            percentage: percentageValue(stats?.cpuUsage),
-                            tint: palette.cpuAccent,
-                            palette: palette
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        ExperimentalMetricTile(
-                            label: "MEM",
-                            percentage: percentageValue(stats?.memUsage),
-                            tint: palette.memoryAccent,
-                            palette: palette
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+            HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: 14) {
+                    ExperimentalMetricTile(
+                        label: "CPU",
+                        percentage: percentageValue(stats?.cpuUsage),
+                        tint: palette.cpuAccent,
+                        palette: palette
+                    )
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    ExperimentalDetailPanel(
-                        items: detailItems,
+                    ExperimentalMetricTile(
+                        label: "MEM",
+                        percentage: percentageValue(stats?.memUsage),
+                        tint: palette.memoryAccent,
                         palette: palette
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ExperimentalDetailPanel(
+                    items: detailItems,
+                    palette: palette
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(palette.cardBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: 30, style: .continuous)
-                    .stroke(palette.cardBorder, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpenDetail)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
+        .fullScreenCover(isPresented: $showTerminal) {
+            TerminalView(server: config)
+        }
     }
 
     private var header: some View {
@@ -293,21 +296,36 @@ private struct ExperimentalServerCard: View {
             Spacer()
 
             HStack(spacing: 8) {
+                Text(uptimeText)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(palette.secondaryText)
+                    .lineLimit(1)
+
                 Circle()
                     .fill(isOnline ? palette.online : palette.offline)
                     .frame(width: 8, height: 8)
 
-                Text(isOnline ? "运行中" : "离线")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(isOnline ? palette.online : palette.offline)
+                terminalButton
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill((isOnline ? palette.online : palette.offline).opacity(palette.isDark ? 0.12 : 0.10))
+                    .fill(palette.subcardBackground)
             )
         }
+    }
+
+    private var terminalButton: some View {
+        Button(action: { showTerminal = true }) {
+            Image(systemName: "terminal")
+                .font(.caption)
+                .foregroundColor(terminalButtonForeground)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isOnline)
+        .opacity(isOnline ? 1 : 0.45)
     }
 
     private var detailItems: [ExperimentalDetailItem] {
@@ -373,6 +391,10 @@ private struct ExperimentalServerCard: View {
     private var uptimeText: String {
         let uptime = (stats?.uptime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return uptime.isEmpty ? "--" : uptime
+    }
+
+    private var terminalButtonForeground: Color {
+        isOnline ? palette.primaryText : palette.secondaryText
     }
 
     private func percentageValue(_ value: Double?) -> Int? {
@@ -576,7 +598,7 @@ private struct ExperimentalHomePalette {
                 cardBackground: Color(red: 0.09, green: 0.10, blue: 0.13),
                 subcardBackground: Color(red: 0.12, green: 0.13, blue: 0.17),
                 cardBorder: Color.white.opacity(0.07),
-                matrixInactive: Color.white.opacity(0.055),
+                matrixInactive: Color.white.opacity(0.085),
                 inactiveMatrixBorder: Color.white.opacity(0.02),
                 activeMatrixBorder: Color.white,
                 primaryText: Color(red: 0.95, green: 0.96, blue: 0.99),
@@ -584,7 +606,7 @@ private struct ExperimentalHomePalette {
                 online: Color(red: 0.22, green: 0.86, blue: 0.53),
                 offline: Color(red: 0.98, green: 0.73, blue: 0.24),
                 cpuAccent: Color(red: 0.98, green: 0.36, blue: 0.39),
-                memoryAccent: Color(red: 0.22, green: 0.81, blue: 0.50),
+                memoryAccent: Color(red: 0.18, green: 0.92, blue: 0.46),
                 metaTint: Color(red: 0.35, green: 0.53, blue: 0.93),
                 cardShadow: Color.black.opacity(0.22)
             )
@@ -611,7 +633,7 @@ private struct ExperimentalHomePalette {
                 cardBackground: Color.white.opacity(0.95),
                 subcardBackground: Color(red: 0.96, green: 0.97, blue: 0.995),
                 cardBorder: Color(red: 0.11, green: 0.15, blue: 0.24).opacity(0.08),
-                matrixInactive: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.08),
+                matrixInactive: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.12),
                 inactiveMatrixBorder: Color(red: 0.18, green: 0.23, blue: 0.34).opacity(0.05),
                 activeMatrixBorder: Color.white,
                 primaryText: Color(red: 0.12, green: 0.15, blue: 0.22),
@@ -619,7 +641,7 @@ private struct ExperimentalHomePalette {
                 online: Color(red: 0.12, green: 0.68, blue: 0.40),
                 offline: Color(red: 0.92, green: 0.63, blue: 0.15),
                 cpuAccent: Color(red: 0.93, green: 0.33, blue: 0.36),
-                memoryAccent: Color(red: 0.16, green: 0.70, blue: 0.42),
+                memoryAccent: Color(red: 0.10, green: 0.80, blue: 0.36),
                 metaTint: Color(red: 0.29, green: 0.47, blue: 0.88),
                 cardShadow: Color.black.opacity(0.08)
             )
