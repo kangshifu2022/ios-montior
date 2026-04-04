@@ -248,25 +248,19 @@ private struct ExperimentalServerCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 ExperimentalRateTile(
-                    title: "上传 / 下载",
-                    leadingLabel: "下行",
-                    leadingValue: downloadSpeedText,
-                    leadingTint: palette.online,
-                    trailingLabel: "上行",
-                    trailingValue: uploadSpeedText,
-                    trailingTint: palette.metaTint,
+                    leadingSymbol: "arrow.up",
+                    leadingValue: uploadSpeedText,
+                    trailingSymbol: "arrow.down",
+                    trailingValue: downloadSpeedText,
                     palette: palette
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 ExperimentalRateTile(
-                    title: "磁盘读 / 写",
-                    leadingLabel: "读取",
+                    leadingSymbol: "arrow.right",
                     leadingValue: diskReadSpeedText,
-                    leadingTint: palette.cpuAccent,
-                    trailingLabel: "写入",
+                    trailingSymbol: "arrow.left",
                     trailingValue: diskWriteSpeedText,
-                    trailingTint: palette.memoryAccent,
                     palette: palette
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -415,56 +409,41 @@ private struct ExperimentalMetricTile: View {
 }
 
 private struct ExperimentalRateTile: View {
-    let title: String
-    let leadingLabel: String
+    let leadingSymbol: String
     let leadingValue: String
-    let leadingTint: Color
-    let trailingLabel: String
+    let trailingSymbol: String
     let trailingValue: String
-    let trailingTint: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 10) {
-                ExperimentalRateRow(
-                    label: leadingLabel,
-                    value: leadingValue,
-                    tint: leadingTint,
-                    palette: palette
-                )
+        VStack(alignment: .leading, spacing: 8) {
+            ExperimentalRateRow(
+                symbol: leadingSymbol,
+                value: leadingValue,
+                palette: palette
+            )
 
-                ExperimentalRateRow(
-                    label: trailingLabel,
-                    value: trailingValue,
-                    tint: trailingTint,
-                    palette: palette
-                )
-            }
-
-            Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(palette.secondaryText)
+            ExperimentalRateRow(
+                symbol: trailingSymbol,
+                value: trailingValue,
+                palette: palette
+            )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
 private struct ExperimentalRateRow: View {
-    let label: String
+    let symbol: String
     let value: String
-    let tint: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(tint)
-                .frame(width: 12, height: 4)
-
-            Text(label)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+        HStack(alignment: .center, spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(palette.secondaryText)
+                .frame(width: 12, alignment: .center)
 
             Spacer(minLength: 0)
 
