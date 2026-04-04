@@ -238,6 +238,7 @@ private struct ExperimentalServerCard: View {
                             tint: palette.cpuAccent,
                             palette: palette
                         )
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         ExperimentalMetricTile(
                             label: "MEM",
@@ -245,7 +246,9 @@ private struct ExperimentalServerCard: View {
                             tint: palette.memoryAccent,
                             palette: palette
                         )
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     ExperimentalDetailPanel(
                         items: detailItems,
@@ -446,7 +449,7 @@ private struct ExperimentalMetricTile: View {
                 tint: tint,
                 palette: palette
             )
-            .frame(width: 42, height: 42)
+            .frame(maxWidth: .infinity)
 
             Text(compactLabelText)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -455,7 +458,7 @@ private struct ExperimentalMetricTile: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
-        .fixedSize()
+        .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
@@ -476,7 +479,7 @@ private struct ExperimentalDotMatrix: View {
     var body: some View {
         GeometryReader { geometry in
             let side = min(geometry.size.width, geometry.size.height)
-            let spacing: CGFloat = side < 46 ? 1.2 : 1.5
+            let spacing: CGFloat = side < 72 ? 1.2 : 1.5
             let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
 
             VStack(spacing: spacing) {
