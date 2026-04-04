@@ -231,24 +231,30 @@ private struct ExperimentalServerCard: View {
                 header
 
                 HStack(alignment: .top, spacing: 10) {
-                    ExperimentalMetricTile(
-                        label: "CPU",
-                        caption: "实时占用",
-                        percentage: percentageValue(stats?.cpuUsage),
-                        tint: palette.cpuAccent,
-                        palette: palette
-                    )
+                    HStack(alignment: .top, spacing: 8) {
+                        ExperimentalMetricTile(
+                            label: "CPU",
+                            percentage: percentageValue(stats?.cpuUsage),
+                            tint: palette.cpuAccent,
+                            palette: palette
+                        )
+                        .frame(width: 82)
 
-                    ExperimentalMetricTile(
-                        label: "MEM",
-                        caption: "内存占用",
-                        percentage: percentageValue(stats?.memUsage),
-                        tint: palette.memoryAccent,
+                        ExperimentalMetricTile(
+                            label: "MEM",
+                            percentage: percentageValue(stats?.memUsage),
+                            tint: palette.memoryAccent,
+                            palette: palette
+                        )
+                        .frame(width: 82)
+                    }
+
+                    ExperimentalDetailPanel(
+                        items: detailItems,
                         palette: palette
                     )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                metaSection
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -303,56 +309,23 @@ private struct ExperimentalServerCard: View {
         }
     }
 
-    private var metaSection: some View {
-        ViewThatFits {
-            HStack(spacing: 10) {
-                ExperimentalMetaPill(
-                    title: "主机",
-                    value: config.host,
-                    tint: palette.metaTint,
-                    palette: palette
-                )
+    private var detailItems: [ExperimentalDetailItem] {
+        var items: [ExperimentalDetailItem] = [
+            ExperimentalDetailItem(label: "CPU 温度", value: temperatureText, tint: palette.online)
+        ]
 
-                ExperimentalMetaPill(
-                    title: "温度",
-                    value: temperatureText,
-                    tint: palette.online,
-                    palette: palette
-                )
-
-                ExperimentalMetaPill(
-                    title: "在线时长",
-                    value: uptimeText,
-                    tint: palette.cpuAccent,
-                    palette: palette
-                )
-            }
-
-            VStack(spacing: 10) {
-                ExperimentalMetaPill(
-                    title: "主机",
-                    value: config.host,
-                    tint: palette.metaTint,
-                    palette: palette
-                )
-
-                HStack(spacing: 10) {
-                    ExperimentalMetaPill(
-                        title: "温度",
-                        value: temperatureText,
-                        tint: palette.online,
-                        palette: palette
-                    )
-
-                    ExperimentalMetaPill(
-                        title: "在线时长",
-                        value: uptimeText,
-                        tint: palette.cpuAccent,
-                        palette: palette
-                    )
-                }
-            }
+        if let wifi24 = wifi24TemperatureText {
+            items.append(ExperimentalDetailItem(label: "WiFi 2.4G", value: wifi24, tint: palette.memoryAccent))
         }
+
+        if let wifi5 = wifi5TemperatureText {
+            items.append(ExperimentalDetailItem(label: "WiFi 5G", value: wifi5, tint: palette.cpuAccent))
+        }
+
+        items.append(ExperimentalDetailItem(label: "在线时长", value: uptimeText, tint: palette.metaTint))
+        items.append(ExperimentalDetailItem(label: "主机", value: config.host, tint: palette.metaTint))
+
+        return Array(items.prefix(4))
     }
 
     private var shortOSName: String {
@@ -380,6 +353,20 @@ private struct ExperimentalServerCard: View {
         return "\(Int(temp.rounded()))°C"
     }
 
+    private var wifi24TemperatureText: String? {
+        guard let temp = stats?.wifi24TemperatureC else {
+            return nil
+        }
+        return "\(Int(temp.rounded()))°C"
+    }
+
+    private var wifi5TemperatureText: String? {
+        guard let temp = stats?.wifi5TemperatureC else {
+            return nil
+        }
+        return "\(Int(temp.rounded()))°C"
+    }
+
     private var uptimeText: String {
         let uptime = (stats?.uptime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return uptime.isEmpty ? "--" : uptime
@@ -391,39 +378,54 @@ private struct ExperimentalServerCard: View {
     }
 }
 
-private struct ExperimentalMetaPill: View {
-    let title: String
+private struct ExperimentalDetailItem: Identifiable {
+    let label: String
     let value: String
     let tint: Color
+
+    var id: String { label }
+}
+
+private struct ExperimentalDetailPanel: View {
+    let items: [ExperimentalDetailItem]
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(palette.secondaryText)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
+                HStack(alignment: .center, spacing: 8) {
+                    Circle()
+                        .fill(item.tint)
+                        .frame(width: 5, height: 5)
 
-            Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundColor(palette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                    Text(item.label)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(palette.secondaryText)
+                        .frame(width: 56, alignment: .leading)
+
+                    Text(item.value)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(palette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Spacer(minLength: 0)
+                }
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(palette.isDark ? 0.08 : 0.10))
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(palette.subcardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(tint.opacity(palette.isDark ? 0.16 : 0.20), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
 private struct ExperimentalMetricTile: View {
     let label: String
-    let caption: String
     let percentage: Int?
     let tint: Color
     let palette: ExperimentalHomePalette
@@ -434,22 +436,15 @@ private struct ExperimentalMetricTile: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundColor(palette.primaryText)
+                Text(label)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(palette.secondaryText)
 
-                    Text(caption)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(palette.secondaryText)
-                }
-
-                Spacer(minLength: 8)
-
+                Spacer(minLength: 4)
                 Text(percentageText)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .monospacedDigit()
             }
@@ -459,16 +454,17 @@ private struct ExperimentalMetricTile: View {
                 tint: tint,
                 palette: palette
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: 42, height: 42, alignment: .leading)
         }
-        .padding(12)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.subcardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(palette.cardBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
@@ -489,8 +485,8 @@ private struct ExperimentalDotMatrix: View {
     var body: some View {
         GeometryReader { geometry in
             let side = min(geometry.size.width, geometry.size.height)
-            let spacing: CGFloat = side < 90 ? 3 : 4
-            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 4)
+            let spacing: CGFloat = side < 46 ? 2 : 2.5
+            let tile = max((side - (spacing * CGFloat(size - 1))) / CGFloat(size), 2.2)
 
             VStack(spacing: spacing) {
                 ForEach(0..<size, id: \.self) { visualRow in
@@ -507,13 +503,13 @@ private struct ExperimentalDotMatrix: View {
                                 .fill(fillColor(isActive: isActive, glow: glow))
                                 .overlay(
                                     Circle()
-                                        .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.6)
+                                        .stroke(borderColor(isActive: isActive, glow: glow), lineWidth: 0.4)
                                 )
                                 .frame(width: tile, height: tile)
-                                .scaleEffect(isActive ? (0.94 + (glow * 0.08)) : 0.82)
+                                .scaleEffect(isActive ? (0.92 + (glow * 0.06)) : 0.78)
                                 .shadow(
-                                    color: isActive ? tint.opacity((palette.isDark ? 0.10 : 0.06) + (glow * 0.10)) : .clear,
-                                    radius: isActive ? (1.5 + (glow * 2.5)) : 0
+                                    color: isActive ? tint.opacity((palette.isDark ? 0.08 : 0.05) + (glow * 0.08)) : .clear,
+                                    radius: isActive ? (1 + (glow * 1.5)) : 0
                                 )
                         }
                     }
