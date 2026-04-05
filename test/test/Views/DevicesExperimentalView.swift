@@ -1274,6 +1274,10 @@ private struct ExperimentalRateParts {
             return fallback
         }
 
+        if abs(amount) < 0.000_1 {
+            return "0"
+        }
+
         if amount >= 10 {
             return String(Int(amount.rounded(.towardZero)))
         }
