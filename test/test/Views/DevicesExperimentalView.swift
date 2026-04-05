@@ -347,12 +347,20 @@ private struct ExperimentalCompactServerCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(headerDisplayName)
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundColor(palette.primaryText)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 5) {
+                Text(headerDisplayName)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                if showsExpandControl {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(palette.secondaryText.opacity(0.9))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 6) {
                 ExperimentalCompactMetricCapsule(
@@ -384,19 +392,15 @@ private struct ExperimentalCompactServerCard: View {
                 )
             }
             .fixedSize(horizontal: true, vertical: false)
-
-            if showsExpandControl {
-                ExperimentalCardActionButton(
-                    title: isCollapsed ? "展开" : "折叠",
-                    systemImage: isCollapsed ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
-                    tint: palette.primaryText,
-                    action: onToggleCollapse
-                )
-                .fixedSize(horizontal: true, vertical: false)
-            }
         }
         .contentShape(Rectangle())
-        .onTapGesture(perform: onOpenDetail)
+        .onTapGesture {
+            if isCollapsed {
+                onToggleCollapse()
+            } else {
+                onOpenDetail()
+            }
+        }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -485,13 +489,22 @@ private struct ExperimentalServerCard: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(headerDisplayName)
-                    .font(.system(size: 19, weight: .light, design: .rounded))
-                    .foregroundColor(palette.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            Button(action: onToggleCollapse) {
+                HStack(spacing: 6) {
+                    Text(headerDisplayName)
+                        .font(.system(size: 19, weight: .light, design: .rounded))
+                        .foregroundColor(palette.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(palette.secondaryText.opacity(0.92))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
             Spacer(minLength: 12)
 
@@ -511,13 +524,6 @@ private struct ExperimentalServerCard: View {
                         palette: palette
                     )
                 }
-
-                ExperimentalCardActionButton(
-                    title: "折叠",
-                    systemImage: "arrow.down.right.and.arrow.up.left",
-                    tint: palette.primaryText,
-                    action: onToggleCollapse
-                )
 
                 terminalButton
             }
@@ -786,31 +792,6 @@ private struct ExperimentalMetricTile: View {
     }
 }
 
-private struct ExperimentalCardActionButton: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 10, weight: .semibold))
-
-                Text(title)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-            }
-            .foregroundColor(tint)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(Color.primary.opacity(0.06))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 private struct ExperimentalCompactMetricCapsule: View {
     let title: String
     let value: String
@@ -905,10 +886,6 @@ private struct ExperimentalUsageRing: View {
         StrokeStyle(lineWidth: 8, lineCap: ringStyle == .memoryGradient ? .round : .butt)
     }
 
-    private var remainderStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 8, lineCap: .round)
-    }
-
     private var activeStroke: AnyShapeStyle {
         switch ringStyle {
         case .standard:
@@ -929,32 +906,23 @@ private struct ExperimentalUsageRing: View {
         }
     }
 
-    private var memoryRemainderColor: Color {
-        palette.isDark
-            ? Color(red: 0.62, green: 0.66, blue: 0.75).opacity(0.72)
-            : Color(red: 0.77, green: 0.79, blue: 0.86)
-    }
-
     var body: some View {
         ZStack {
             if ringStyle == .memoryGradient {
                 Circle()
+                    .stroke(trackColor, lineWidth: 8)
+
+                Circle()
+                    .trim(from: 0, to: normalizedValue)
                     .stroke(activeStroke, style: activeStrokeStyle)
                     .rotationEffect(.degrees(-90))
-                    .overlay {
-                        Circle()
-                            .trim(from: normalizedValue, to: 1)
-                            .stroke(memoryRemainderColor, style: remainderStrokeStyle)
-                            .rotationEffect(.degrees(-90))
-                    }
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
-                                lineWidth: 1
-                            )
-                            .padding(-5)
-                    }
+
+                Circle()
+                    .stroke(
+                        palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
+                        lineWidth: 1
+                    )
+                    .padding(-5)
             } else {
                 Circle()
                     .stroke(trackColor, lineWidth: 8)

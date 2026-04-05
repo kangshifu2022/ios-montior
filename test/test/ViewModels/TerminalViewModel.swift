@@ -115,6 +115,10 @@ final class TerminalViewModel: ObservableObject {
         send(text: "/")
     }
 
+    func sendDash() {
+        send(text: "-")
+    }
+
     func sendPipe() {
         send(text: "|")
     }

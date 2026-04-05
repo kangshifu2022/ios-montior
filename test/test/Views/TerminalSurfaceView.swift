@@ -64,11 +64,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 .init(title: "Esc", action: { viewModel.sendEscape() }),
                 .init(title: "Tab", action: { viewModel.sendTab() }),
                 .init(title: "/", action: { viewModel.sendSlash() }),
+                .init(title: "-", action: { viewModel.sendDash() }),
                 .init(title: "|", action: { viewModel.sendPipe() }),
                 .init(title: "exit", action: { viewModel.sendExit() })
             ],
             [
-                .init(title: "收起", action: { _ = terminalView.resignFirstResponder() }),
+                .init(systemImageName: "keyboard.chevron.compact.down", accessibilityLabel: "收起键盘", action: { _ = terminalView.resignFirstResponder() }),
                 .init(title: "Home", action: { viewModel.sendHome() }),
                 .init(title: "End", action: { viewModel.sendEnd() }),
                 .init(title: "^L", action: { viewModel.sendClearScreen() }),
