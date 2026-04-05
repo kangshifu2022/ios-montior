@@ -59,25 +59,27 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private func makeShortcutAccessory(for terminalView: SwiftTerm.TerminalView) -> UIView {
         TerminalShortcutAccessoryView(rows: [
             [
+                .init(systemImageName: "keyboard.chevron.compact.down", accessibilityLabel: "收起键盘", action: { _ = terminalView.resignFirstResponder() }),
                 .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
                 .init(title: "Esc", action: { viewModel.sendEscape() }),
                 .init(title: "Tab", action: { viewModel.sendTab() }),
-                .init(title: "PgUp", action: { terminalView.pageUp() }),
-                .init(title: "PgDn", action: { terminalView.pageDown() }),
-                .init(title: "tmux ls", action: { viewModel.sendTmuxList() }),
-                .init(title: "/", action: { viewModel.sendSlash() }),
-                .init(title: "-", action: { viewModel.sendDash() }),
-                .init(title: "|", action: { viewModel.sendPipe() })
+                .init(title: "Home", action: { viewModel.sendHome() }),
+                .init(title: "End", action: { viewModel.sendEnd() })
             ],
             [
-                .init(systemImageName: "keyboard.chevron.compact.down", accessibilityLabel: "收起键盘", action: { _ = terminalView.resignFirstResponder() }),
-                .init(title: "Home", action: { viewModel.sendHome() }),
-                .init(title: "End", action: { viewModel.sendEnd() }),
-                .init(title: "^L", action: { viewModel.sendClearScreen() }),
+                .init(title: "PgUp", action: { terminalView.pageUp() }),
+                .init(title: "PgDn", action: { terminalView.pageDown() }),
                 .init(title: "↑", action: { viewModel.sendArrowUp() }),
                 .init(title: "↓", action: { viewModel.sendArrowDown() }),
                 .init(title: "←", action: { viewModel.sendArrowLeft() }),
-                .init(title: "→", action: { viewModel.sendArrowRight() }),
+                .init(title: "→", action: { viewModel.sendArrowRight() })
+            ],
+            [
+                .init(title: "tmux ls", action: { viewModel.sendTmuxList() }),
+                .init(title: "^L", action: { viewModel.sendClearScreen() }),
+                .init(title: "/", action: { viewModel.sendSlash() }),
+                .init(title: "-", action: { viewModel.sendDash() }),
+                .init(title: "|", action: { viewModel.sendPipe() }),
                 .init(title: "exit", action: { viewModel.sendExit() })
             ]
         ])
