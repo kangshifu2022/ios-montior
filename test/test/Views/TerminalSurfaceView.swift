@@ -6,8 +6,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
     @ObservedObject var viewModel: TerminalViewModel
     let colorScheme: ColorScheme
 
-    private typealias ShortcutModifier = TerminalShortcutAccessoryView.Modifier
-
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
     }
@@ -60,113 +58,26 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 
     private func makeShortcutAccessory(for terminalView: SwiftTerm.TerminalView) -> UIView {
-        TerminalShortcutAccessoryView(terminalView: terminalView, rows: [
+        TerminalShortcutAccessoryView(rows: [
             [
-                .init(title: "Esc", action: { _ in viewModel.sendEscape() }),
-                .init(modifier: .alt),
-                .init(title: "Home", action: { modifiers in sendHome(using: modifiers) }),
-                .init(title: "↑", action: { modifiers in sendArrowUp(using: modifiers) }),
-                .init(title: "End", action: { modifiers in sendEnd(using: modifiers) }),
-                .init(title: "exit", action: { _ in viewModel.sendExit() })
+                .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
+                .init(title: "Esc", action: { viewModel.sendEscape() }),
+                .init(title: "Tab", action: { viewModel.sendTab() }),
+                .init(title: "/", action: { viewModel.sendSlash() }),
+                .init(title: "|", action: { viewModel.sendPipe() }),
+                .init(title: "exit", action: { viewModel.sendExit() })
             ],
             [
-                .init(title: "Tab", action: { modifiers in sendTab(using: modifiers) }),
-                .init(modifier: .control),
-                .init(title: "←", action: { modifiers in sendArrowLeft(using: modifiers) }),
-                .init(title: "↓", action: { modifiers in sendArrowDown(using: modifiers) }),
-                .init(title: "→", action: { modifiers in sendArrowRight(using: modifiers) }),
-                .init(systemImageName: "doc.on.clipboard", accessibilityLabel: "粘贴", action: { _ in pasteClipboardContents() }),
-                .init(systemImageName: "keyboard.chevron.compact.down", accessibilityLabel: "收起键盘", action: { _ in terminalView.resignFirstResponder() })
-            ],
-            [
-                .init(modifier: .shift)
+                .init(title: "收起", action: { _ = terminalView.resignFirstResponder() }),
+                .init(title: "Home", action: { viewModel.sendHome() }),
+                .init(title: "End", action: { viewModel.sendEnd() }),
+                .init(title: "^L", action: { viewModel.sendClearScreen() }),
+                .init(title: "↑", action: { viewModel.sendArrowUp() }),
+                .init(title: "↓", action: { viewModel.sendArrowDown() }),
+                .init(title: "←", action: { viewModel.sendArrowLeft() }),
+                .init(title: "→", action: { viewModel.sendArrowRight() })
             ]
         ])
-    }
-
-    private func pasteClipboardContents() {
-        guard let text = UIPasteboard.general.string, !text.isEmpty else {
-            return
-        }
-
-        viewModel.send(text: text)
-    }
-
-    private func sendTab(using modifiers: Set<ShortcutModifier>) {
-        guard let modifierValue = modifierValue(for: modifiers) else {
-            viewModel.sendTab()
-            return
-        }
-
-        if modifiers == Set([ShortcutModifier.shift]) {
-            viewModel.send(text: "\u{1B}[Z")
-            return
-        }
-
-        viewModel.send(text: "\u{1B}[1;\(modifierValue)I")
-    }
-
-    private func sendHome(using modifiers: Set<ShortcutModifier>) {
-        sendCursorKey(final: "H", modifiers: modifiers) {
-            viewModel.sendHome()
-        }
-    }
-
-    private func sendEnd(using modifiers: Set<ShortcutModifier>) {
-        sendCursorKey(final: "F", modifiers: modifiers) {
-            viewModel.sendEnd()
-        }
-    }
-
-    private func sendArrowUp(using modifiers: Set<ShortcutModifier>) {
-        sendCursorKey(final: "A", modifiers: modifiers) {
-            viewModel.sendArrowUp()
-        }
-    }
-
-    private func sendArrowDown(using modifiers: Set<ShortcutModifier>) {
-        sendCursorKey(final: "B", modifiers: modifiers) {
-            viewModel.sendArrowDown()
-        }
-    }
-
-    private func sendArrowRight(using modifiers: Set<ShortcutModifier>) {
-        sendCursorKey(final: "C", modifiers: modifiers) {
-            viewModel.sendArrowRight()
-        }
-    }
-
-    private func sendArrowLeft(using modifiers: Set<ShortcutModifier>) {
-        sendCursorKey(final: "D", modifiers: modifiers) {
-            viewModel.sendArrowLeft()
-        }
-    }
-
-    private func sendCursorKey(final: Character, modifiers: Set<ShortcutModifier>, fallback: () -> Void) {
-        guard let modifierValue = modifierValue(for: modifiers) else {
-            fallback()
-            return
-        }
-
-        viewModel.send(text: "\u{1B}[1;\(modifierValue)\(final)")
-    }
-
-    private func modifierValue(for modifiers: Set<ShortcutModifier>) -> Int? {
-        guard !modifiers.isEmpty else {
-            return nil
-        }
-
-        var value = 1
-        if modifiers.contains(.shift) {
-            value += 1
-        }
-        if modifiers.contains(.alt) {
-            value += 2
-        }
-        if modifiers.contains(.control) {
-            value += 4
-        }
-        return value
     }
 
     private static func palette(for colorScheme: ColorScheme) -> TerminalPalette {
