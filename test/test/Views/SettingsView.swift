@@ -63,6 +63,10 @@ struct SettingsView: View {
                     Text("持久 tmux 模式会在本地记住最近的远端会话和输出预览，适合长时间任务和意外恢复。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
+
+                    NavigationLink("终端诊断日志") {
+                        TerminalDiagnosticsView()
+                    }
                 }
 
                 Section(header: Text("服务器管理")) {

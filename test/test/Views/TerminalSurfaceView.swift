@@ -62,11 +62,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
                 .init(title: "Esc", action: { viewModel.sendEscape() }),
                 .init(title: "Tab", action: { viewModel.sendTab() }),
+                .init(title: "PgUp", action: { terminalView.pageUp() }),
+                .init(title: "PgDn", action: { terminalView.pageDown() }),
                 .init(title: "tmux ls", action: { viewModel.sendTmuxList() }),
                 .init(title: "/", action: { viewModel.sendSlash() }),
                 .init(title: "-", action: { viewModel.sendDash() }),
-                .init(title: "|", action: { viewModel.sendPipe() }),
-                .init(title: "exit", action: { viewModel.sendExit() })
+                .init(title: "|", action: { viewModel.sendPipe() })
             ],
             [
                 .init(systemImageName: "keyboard.chevron.compact.down", accessibilityLabel: "收起键盘", action: { _ = terminalView.resignFirstResponder() }),
@@ -76,7 +77,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 .init(title: "↑", action: { viewModel.sendArrowUp() }),
                 .init(title: "↓", action: { viewModel.sendArrowDown() }),
                 .init(title: "←", action: { viewModel.sendArrowLeft() }),
-                .init(title: "→", action: { viewModel.sendArrowRight() })
+                .init(title: "→", action: { viewModel.sendArrowRight() }),
+                .init(title: "exit", action: { viewModel.sendExit() })
             ]
         ])
     }

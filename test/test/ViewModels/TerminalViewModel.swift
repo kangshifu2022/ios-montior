@@ -37,6 +37,11 @@ final class TerminalViewModel: ObservableObject {
     init(server: ServerConfig) {
         self.server = server
         self.session = TerminalSession(server: server)
+        TerminalDiagnosticsStore.record(
+            "view model initialized",
+            category: "view-model",
+            server: server
+        )
     }
 
     var statusText: String {
@@ -87,6 +92,11 @@ final class TerminalViewModel: ObservableObject {
         let restorePolicy = TerminalPersistenceStore.restorePolicy()
         let defaultMode = TerminalPersistenceStore.defaultConnectionMode()
         let shouldAsk = restorePolicy == .askEveryTime
+        TerminalDiagnosticsStore.record(
+            "prepare launch, restorePolicy=\(restorePolicy.rawValue), defaultMode=\(defaultMode.rawValue), recoverable=\(recoverableSessions.count)",
+            category: "launch",
+            server: server
+        )
 
         if shouldAsk {
             resolveLaunchChoiceAfterRemoteTmuxCheck(defaultMode: defaultMode)
@@ -105,6 +115,12 @@ final class TerminalViewModel: ObservableObject {
         guard sessionTask == nil, let activeSessionRecord else { return }
         lastError = nil
         keepsSessionAlive = true
+        TerminalDiagnosticsStore.record(
+            "connect requested",
+            category: "connection",
+            server: server,
+            session: activeSessionRecord
+        )
         let bootstrapCommand = self.bootstrapCommand(for: activeSessionRecord)
 
         sessionTask = Task { [weak self] in
@@ -120,11 +136,23 @@ final class TerminalViewModel: ObservableObject {
 
     func startDirectSession() {
         let record = TerminalPersistenceStore.beginDirectSession(for: server)
+        TerminalDiagnosticsStore.record(
+            "start direct ssh session",
+            category: "launch",
+            server: server,
+            session: record
+        )
         activate(record)
     }
 
     func startNewPersistentSession() {
         let record = TerminalPersistenceStore.createPersistentSession(for: server)
+        TerminalDiagnosticsStore.record(
+            "start new persistent tmux session",
+            category: "launch",
+            server: server,
+            session: record
+        )
         activate(record)
     }
 
@@ -133,11 +161,23 @@ final class TerminalViewModel: ObservableObject {
             for: server,
             preferredSessionName: requestedSessionName
         )
+        TerminalDiagnosticsStore.record(
+            "start or attach named persistent session",
+            category: "launch",
+            server: server,
+            session: record
+        )
         activate(record)
     }
 
     func resumePersistentSession(_ session: TerminalSavedSession) {
         let record = TerminalPersistenceStore.markAttached(session)
+        TerminalDiagnosticsStore.record(
+            "resume persistent session from saved state",
+            category: "launch",
+            server: server,
+            session: record
+        )
         activate(record)
     }
 
@@ -178,12 +218,24 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func reconnect() {
+        TerminalDiagnosticsStore.record(
+            "manual reconnect requested",
+            category: "connection",
+            server: server,
+            session: activeSessionRecord
+        )
         exitRequestedByUser = false
         disconnect(clearError: true)
         connectIfNeeded()
     }
 
     func disconnect(clearError: Bool = false) {
+        TerminalDiagnosticsStore.record(
+            "disconnect requested, clearError=\(clearError)",
+            category: "connection",
+            server: server,
+            session: activeSessionRecord
+        )
         keepsSessionAlive = false
         exitRequestedByUser = false
         remoteTmuxFetchTask?.cancel()
@@ -227,6 +279,13 @@ final class TerminalViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.lastError = self.describe(error)
+                    TerminalDiagnosticsStore.record(
+                        "send failed: \(self.describe(error))",
+                        level: .warning,
+                        category: "io",
+                        server: self.server,
+                        session: self.activeSessionRecord
+                    )
                 }
             }
         }
@@ -315,6 +374,12 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
+        TerminalDiagnosticsStore.record(
+            "scene phase changed to \(phase.logLabel)",
+            category: "scene",
+            server: server,
+            session: activeSessionRecord
+        )
         switch phase {
         case .active:
             guard keepsSessionAlive, sessionTask == nil, activeSessionRecord != nil else { return }
@@ -359,16 +424,34 @@ final class TerminalViewModel: ObservableObject {
         scrollbackFlushTask?.cancel()
         scrollbackFlushTask = nil
         refreshSessionSummaries()
+        TerminalDiagnosticsStore.record(
+            "activate session",
+            category: "launch",
+            server: server,
+            session: record
+        )
         connectIfNeeded()
     }
 
     private func handle(_ event: TerminalSession.Event) async {
         switch event {
         case .connecting:
+            TerminalDiagnosticsStore.record(
+                "event connecting",
+                category: "event",
+                server: server,
+                session: activeSessionRecord
+            )
             isConnecting = true
             isConnected = false
             lastError = nil
         case .connected:
+            TerminalDiagnosticsStore.record(
+                "event connected",
+                category: "event",
+                server: server,
+                session: activeSessionRecord
+            )
             isConnecting = false
             isConnected = true
             shouldDismissTerminal = false
@@ -383,10 +466,24 @@ final class TerminalViewModel: ObservableObject {
                 pendingOutput.append(bytes)
             }
         case .error(let message):
+            TerminalDiagnosticsStore.record(
+                "event error: \(message)",
+                level: .error,
+                category: "event",
+                server: server,
+                session: activeSessionRecord
+            )
             isConnecting = false
             isConnected = false
             lastError = message
         case .disconnected:
+            TerminalDiagnosticsStore.record(
+                "event disconnected, exitRequested=\(exitRequestedByUser)",
+                level: exitRequestedByUser ? .info : .warning,
+                category: "event",
+                server: server,
+                session: activeSessionRecord
+            )
             flushScrollbackNowIfNeeded()
             isConnecting = false
             isConnected = false
@@ -455,6 +552,11 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask?.cancel()
         isResolvingLaunchChoice = true
         remoteTmuxStatusText = nil
+        TerminalDiagnosticsStore.record(
+            "ask-every-time: probing remote tmux before showing launch sheet",
+            category: "launch",
+            server: server
+        )
 
         let server = self.server
         remoteTmuxFetchTask = Task {
@@ -471,11 +573,27 @@ final class TerminalViewModel: ObservableObject {
                     self.remoteTmuxStatusText = snapshot.notice
 
                     if snapshot.sessions.isEmpty {
+                        TerminalDiagnosticsStore.record(
+                            "tmux probe found no sessions, starting default connection",
+                            category: "launch",
+                            server: self.server
+                        )
                         self.startDefaultConnection(using: defaultMode)
                     } else {
+                        TerminalDiagnosticsStore.record(
+                            "tmux probe found \(snapshot.sessions.count) sessions, showing launch sheet",
+                            category: "launch",
+                            server: self.server
+                        )
                         self.isShowingLaunchSheet = true
                     }
                 case .failure(let error):
+                    TerminalDiagnosticsStore.record(
+                        "tmux probe failed, starting default connection: \(error.message)",
+                        level: .warning,
+                        category: "launch",
+                        server: self.server
+                    )
                     self.remoteTmuxStatusText = error.message
                     self.startDefaultConnection(using: defaultMode)
                 }
@@ -484,6 +602,11 @@ final class TerminalViewModel: ObservableObject {
     }
 
     private func startDefaultConnection(using mode: TerminalDefaultConnectionMode) {
+        TerminalDiagnosticsStore.record(
+            "start default connection using \(mode.rawValue)",
+            category: "launch",
+            server: server
+        )
         switch mode {
         case .persistentTmux:
             startNewPersistentSession()
@@ -528,5 +651,20 @@ final class TerminalViewModel: ObservableObject {
 
     private static func singleQuoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+    }
+}
+
+private extension ScenePhase {
+    var logLabel: String {
+        switch self {
+        case .active:
+            return "active"
+        case .inactive:
+            return "inactive"
+        case .background:
+            return "background"
+        @unknown default:
+            return "unknown"
+        }
     }
 }

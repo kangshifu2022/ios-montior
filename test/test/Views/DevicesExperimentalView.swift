@@ -835,7 +835,7 @@ private struct ExperimentalUsageRing: View {
     let palette: ExperimentalHomePalette
 
     private let gapAngle: Double = 130
-    private let ringLineWidth: CGFloat = 8
+    private let ringLineWidth: CGFloat = 6
 
     private var normalizedValue: Double {
         Double(min(max(percentage ?? 0, 0), 100)) / 100

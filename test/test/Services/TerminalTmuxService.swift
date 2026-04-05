@@ -14,6 +14,11 @@ struct TerminalRemoteTmuxQueryError: Error, Sendable {
 
 enum TerminalTmuxService {
     static func fetchSessions(config: ServerConfig) async -> Result<TerminalRemoteTmuxSnapshot, TerminalRemoteTmuxQueryError> {
+        TerminalDiagnosticsStore.record(
+            "fetch remote tmux sessions",
+            category: "tmux-probe",
+            server: config
+        )
         let algorithms = SSHAlgorithms.all
 
         do {
@@ -39,12 +44,30 @@ enum TerminalTmuxService {
                     mergeStreams: true
                 )
                 try? await client.close()
-                return .success(parse(String(buffer: output)))
+                let snapshot = parse(String(buffer: output))
+                TerminalDiagnosticsStore.record(
+                    "tmux probe completed, sessions=\(snapshot.sessions.count), notice=\(snapshot.notice ?? "none")",
+                    category: "tmux-probe",
+                    server: config
+                )
+                return .success(snapshot)
             } catch {
                 try? await client.close()
+                TerminalDiagnosticsStore.record(
+                    "tmux probe execute failed: \(describe(error))",
+                    level: .warning,
+                    category: "tmux-probe",
+                    server: config
+                )
                 return .failure(TerminalRemoteTmuxQueryError(message: describe(error)))
             }
         } catch {
+            TerminalDiagnosticsStore.record(
+                "tmux probe connect failed: \(describe(error))",
+                level: .warning,
+                category: "tmux-probe",
+                server: config
+            )
             return .failure(TerminalRemoteTmuxQueryError(message: describe(error)))
         }
     }

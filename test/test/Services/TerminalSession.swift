@@ -28,6 +28,11 @@ actor TerminalSession {
         onEvent: @escaping @Sendable (Event) async -> Void
     ) async {
         isStopping = false
+        TerminalDiagnosticsStore.record(
+            "start requested with size \(terminalSize.columns)x\(terminalSize.rows), bootstrap=\(!(bootstrapCommand ?? "").isEmpty)",
+            category: "session",
+            server: server
+        )
         await onEvent(.connecting(server.host))
 
         let algorithms = SSHAlgorithms.all
@@ -46,6 +51,12 @@ actor TerminalSession {
                 protocolOptions: [
                     .maximumPacketSize(1 << 20)
                 ]
+            )
+
+            TerminalDiagnosticsStore.record(
+                "ssh connection established",
+                category: "session",
+                server: server
             )
 
             closeConnection = {
@@ -75,9 +86,19 @@ actor TerminalSession {
                     )
                 }
 
+                TerminalDiagnosticsStore.record(
+                    "pty channel opened",
+                    category: "session",
+                    server: self.server
+                )
                 await onEvent(.connected)
 
                 if let bootstrapCommand, !bootstrapCommand.isEmpty {
+                    TerminalDiagnosticsStore.record(
+                        "sending bootstrap command",
+                        category: "session",
+                        server: self.server
+                    )
                     try await ttyStdinWriter.write(ByteBuffer(bytes: Array(bootstrapCommand.utf8)))
                 }
 
@@ -90,13 +111,36 @@ actor TerminalSession {
                     guard !bytes.isEmpty else { continue }
                     await onEvent(.output(bytes))
                 }
+
+                TerminalDiagnosticsStore.record(
+                    "pty output stream finished",
+                    category: "session",
+                    server: self.server
+                )
             }
         } catch is CancellationError {
+            TerminalDiagnosticsStore.record(
+                "session cancelled",
+                category: "session",
+                server: server
+            )
             await onEvent(.disconnected)
         } catch {
             if !isStopping, !Self.isBenignClosure(error) {
+                TerminalDiagnosticsStore.record(
+                    "session error: \(Self.describe(error))",
+                    level: .error,
+                    category: "session",
+                    server: server
+                )
                 await onEvent(.error(Self.describe(error)))
             }
+            TerminalDiagnosticsStore.record(
+                "session disconnected after error path",
+                level: Self.isBenignClosure(error) ? .info : .warning,
+                category: "session",
+                server: server
+            )
             await onEvent(.disconnected)
         }
 
@@ -119,6 +163,11 @@ actor TerminalSession {
 
     func stop() async {
         isStopping = true
+        TerminalDiagnosticsStore.record(
+            "stop requested",
+            category: "session",
+            server: server
+        )
         stdinWriter = nil
         resizePTY = nil
         if let closeConnection {
