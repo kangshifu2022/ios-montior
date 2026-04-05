@@ -69,19 +69,18 @@ struct DevicesExperimentalView: View {
             .navigationTitle("概览")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                    ExperimentalViewToggleIcon(
+                        mode: homeCardView,
+                        color: palette.primaryText
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
                         experimentalHomeCardViewRawValue = homeCardView == .detailed
                             ? ExperimentalHomeCardView.compact.rawValue
                             : ExperimentalHomeCardView.detailed.rawValue
                     }
-                    label: {
-                        ExperimentalViewToggleIcon(
-                            mode: homeCardView,
-                            color: palette.primaryText
-                        )
-                    }
-                    .buttonStyle(.plain)
                     .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
+                    .accessibilityAddTraits(.isButton)
                 }
             }
             .navigationDestination(item: $selectedServer) { config in
@@ -219,12 +218,12 @@ private struct ExperimentalViewToggleIcon: View {
         Group {
             if mode == .detailed {
                 RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .stroke(color.opacity(0.92), lineWidth: 1.3)
+                    .stroke(color.opacity(0.88), lineWidth: 1.2)
                     .frame(width: 15, height: 11)
-                    .overlay(alignment: .topLeading) {
-                        RoundedRectangle(cornerRadius: 1.3, style: .continuous)
-                            .fill(color.opacity(0.18))
-                            .frame(width: 15, height: 3.2)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                            .stroke(color.opacity(0.35), lineWidth: 0.9)
+                            .frame(width: 9, height: 5.5)
                     }
             } else {
                 VStack(spacing: 2.4) {
@@ -341,7 +340,7 @@ private struct ExperimentalServerCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             header
 
             HStack(alignment: .center, spacing: 18) {
@@ -352,7 +351,7 @@ private struct ExperimentalServerCard: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
         .padding(.horizontal, 20)
-        .padding(.top, 11)
+        .padding(.top, 7)
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
@@ -777,6 +776,10 @@ private struct ExperimentalUsageRing: View {
         StrokeStyle(lineWidth: 8, lineCap: ringStyle == .memoryGradient ? .round : .butt)
     }
 
+    private var remainderStrokeStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 8, lineCap: .round)
+    }
+
     private var activeStroke: AnyShapeStyle {
         switch ringStyle {
         case .standard:
@@ -797,12 +800,23 @@ private struct ExperimentalUsageRing: View {
         }
     }
 
+    private var memoryRemainderColor: Color {
+        palette.isDark ? Color(red: 0.62, green: 0.66, blue: 0.75).opacity(0.72) : Color(red: 0.77, green: 0.79, blue: 0.86)
+    }
+
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(trackColor, lineWidth: 8)
-                .overlay {
-                    if ringStyle == .memoryGradient {
+            if ringStyle == .memoryGradient {
+                Circle()
+                    .stroke(activeStroke, style: activeStrokeStyle)
+                    .rotationEffect(.degrees(-90))
+                    .overlay {
+                        Circle()
+                            .trim(from: normalizedValue, to: 1)
+                            .stroke(memoryRemainderColor, style: remainderStrokeStyle)
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .overlay {
                         Circle()
                             .stroke(
                                 palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
@@ -810,15 +824,18 @@ private struct ExperimentalUsageRing: View {
                             )
                             .padding(-5)
                     }
-                }
+            } else {
+                Circle()
+                    .stroke(trackColor, lineWidth: 8)
 
-            Circle()
-                .trim(from: 0, to: normalizedValue)
-                .stroke(
-                    activeStroke,
-                    style: activeStrokeStyle
-                )
-                .rotationEffect(.degrees(-90))
+                Circle()
+                    .trim(from: 0, to: normalizedValue)
+                    .stroke(
+                        activeStroke,
+                        style: activeStrokeStyle
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
 
             ExperimentalRingPercentageText(
                 label: label,
