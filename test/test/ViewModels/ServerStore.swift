@@ -39,6 +39,9 @@ final class ServerStore: ObservableObject {
     private let offlineTransitionFailureThreshold = 2
     private let offlineTransitionGraceInterval: TimeInterval = 12
     private let autoCollapseFailureThreshold = 3
+    private let maxDerivedMetricSampleAge: TimeInterval = 12
+    private let refreshBatchStaggerInterval: TimeInterval = 0.18
+    private let maxRefreshBatchStaggerSlots = 6
 
     init() {
         load()
@@ -312,11 +315,18 @@ final class ServerStore: ObservableObject {
             }
         }
 
+        let batchStartedAt = Date()
+
         await withTaskGroup(of: RefreshResult?.self) { group in
             for request in deduped {
+                let startDelay = refreshStartDelay(for: request, totalRequestCount: deduped.count)
                 switch request {
                 case .full(let config):
                     group.addTask {
+                        if Task.isCancelled { return nil }
+                        if startDelay > 0 {
+                            try? await Task.sleep(nanoseconds: UInt64(startDelay * 1_000_000_000))
+                        }
                         if Task.isCancelled { return nil }
                         let stats = await SSHMonitorService.fetchStats(config: config)
                         if Task.isCancelled { return nil }
@@ -324,6 +334,10 @@ final class ServerStore: ObservableObject {
                     }
                 case .dynamic(let config):
                     group.addTask {
+                        if Task.isCancelled { return nil }
+                        if startDelay > 0 {
+                            try? await Task.sleep(nanoseconds: UInt64(startDelay * 1_000_000_000))
+                        }
                         if Task.isCancelled { return nil }
                         let dynamic = await SSHMonitorService.fetchDynamicInfo(config: config)
                         if Task.isCancelled { return nil }
@@ -334,7 +348,7 @@ final class ServerStore: ObservableObject {
 
             for await result in group {
                 guard let result else { continue }
-                let now = Date()
+                let receivedAt = Date()
                 switch result {
                 case .full(let id, let stats):
                     let mergedStaticInfo = mergeStaticInfo(
@@ -343,24 +357,24 @@ final class ServerStore: ObservableObject {
                     )
                     if let mergedStaticInfo {
                         staticInfoByServerID[id] = mergedStaticInfo
-                        lastStaticRefreshDates[id] = now
+                        lastStaticRefreshDates[id] = batchStartedAt
                     }
                     let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
                         serverID: id,
                         incoming: ServerDynamicInfo(stats: stats),
-                        now: now
+                        now: receivedAt
                     )
                     dynamicInfoByServerID[id] = resolvedDynamicInfo
-                    lastDynamicRefreshDates[id] = now
+                    lastDynamicRefreshDates[id] = batchStartedAt
                     refreshingServerIDs.remove(id)
                 case .dynamic(let id, let dynamic):
                     let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
                         serverID: id,
                         incoming: dynamic,
-                        now: now
+                        now: receivedAt
                     )
                     dynamicInfoByServerID[id] = resolvedDynamicInfo
-                    lastDynamicRefreshDates[id] = now
+                    lastDynamicRefreshDates[id] = batchStartedAt
                     refreshingServerIDs.remove(id)
                 }
                 switch result {
@@ -541,7 +555,13 @@ final class ServerStore: ObservableObject {
         if incoming.isOnline {
             consecutiveDynamicFailureCounts[serverID] = 0
             lastSuccessfulDynamicRefreshDates[serverID] = now
-            return incoming
+            var resolvedIncoming = incoming
+            applyDerivedMetrics(
+                to: &resolvedIncoming,
+                previous: dynamicInfoByServerID[serverID],
+                capturedAt: now
+            )
+            return resolvedIncoming
         }
 
         let nextFailureCount = (consecutiveDynamicFailureCounts[serverID] ?? 0) + 1
@@ -568,6 +588,170 @@ final class ServerStore: ObservableObject {
             preservedDynamicInfo.rawOutput = incoming.rawOutput
         }
         return preservedDynamicInfo
+    }
+
+    private func applyDerivedMetrics(
+        to dynamicInfo: inout ServerDynamicInfo,
+        previous: ServerDynamicInfo?,
+        capturedAt: Date
+    ) {
+        guard var currentSample = dynamicInfo.liveSample, currentSample.hasCounters else {
+            if let previous, previous.isOnline {
+                dynamicInfo.liveSample = previous.liveSample
+            }
+            preserveDerivedMetrics(from: previous, to: &dynamicInfo)
+            return
+        }
+
+        currentSample.capturedAt = capturedAt
+        dynamicInfo.liveSample = currentSample
+
+        guard let previous,
+              previous.isOnline,
+              let previousSample = previous.liveSample,
+              let previousCapturedAt = previousSample.capturedAt else {
+            resetDerivedMetrics(to: &dynamicInfo)
+            return
+        }
+
+        let elapsed = capturedAt.timeIntervalSince(previousCapturedAt)
+        guard elapsed > 0, elapsed <= maxDerivedMetricSampleAge else {
+            // Instantaneous rates should not survive long gaps such as app relaunches.
+            resetDerivedMetrics(to: &dynamicInfo)
+            return
+        }
+
+        if let cpuUsage = deriveCPUUsage(previous: previousSample, current: currentSample) {
+            dynamicInfo.cpuUsage = cpuUsage
+        } else {
+            dynamicInfo.cpuUsage = previous.cpuUsage
+        }
+
+        if let downloadBytesPerSecond = deriveBytesPerSecond(
+            current: currentSample.networkRxBytes,
+            previous: previousSample.networkRxBytes,
+            elapsed: elapsed
+        ) {
+            dynamicInfo.downloadSpeed = formatRate(downloadBytesPerSecond)
+        } else {
+            dynamicInfo.downloadSpeed = previous.downloadSpeed
+        }
+
+        if let uploadBytesPerSecond = deriveBytesPerSecond(
+            current: currentSample.networkTxBytes,
+            previous: previousSample.networkTxBytes,
+            elapsed: elapsed
+        ) {
+            dynamicInfo.uploadSpeed = formatRate(uploadBytesPerSecond)
+        } else {
+            dynamicInfo.uploadSpeed = previous.uploadSpeed
+        }
+
+        if let diskReadBytesPerSecond = deriveBytesPerSecond(
+            current: currentSample.diskReadSectors,
+            previous: previousSample.diskReadSectors,
+            elapsed: elapsed,
+            multiplier: 512
+        ) {
+            dynamicInfo.diskReadSpeed = formatRate(diskReadBytesPerSecond)
+        } else {
+            dynamicInfo.diskReadSpeed = previous.diskReadSpeed
+        }
+
+        if let diskWriteBytesPerSecond = deriveBytesPerSecond(
+            current: currentSample.diskWriteSectors,
+            previous: previousSample.diskWriteSectors,
+            elapsed: elapsed,
+            multiplier: 512
+        ) {
+            dynamicInfo.diskWriteSpeed = formatRate(diskWriteBytesPerSecond)
+        } else {
+            dynamicInfo.diskWriteSpeed = previous.diskWriteSpeed
+        }
+    }
+
+    private func preserveDerivedMetrics(from previous: ServerDynamicInfo?, to dynamicInfo: inout ServerDynamicInfo) {
+        guard let previous, previous.isOnline else { return }
+        dynamicInfo.cpuUsage = previous.cpuUsage
+        dynamicInfo.downloadSpeed = previous.downloadSpeed
+        dynamicInfo.uploadSpeed = previous.uploadSpeed
+        dynamicInfo.diskReadSpeed = previous.diskReadSpeed
+        dynamicInfo.diskWriteSpeed = previous.diskWriteSpeed
+    }
+
+    private func resetDerivedMetrics(to dynamicInfo: inout ServerDynamicInfo) {
+        dynamicInfo.cpuUsage = 0
+        dynamicInfo.downloadSpeed = "0k/s"
+        dynamicInfo.uploadSpeed = "0k/s"
+        dynamicInfo.diskReadSpeed = "0k/s"
+        dynamicInfo.diskWriteSpeed = "0k/s"
+    }
+
+    private func deriveCPUUsage(previous: ServerLiveSample, current: ServerLiveSample) -> Double? {
+        guard let previousTotal = previous.cpuTotalTicks,
+              let currentTotal = current.cpuTotalTicks,
+              let previousIdle = previous.cpuIdleTicks,
+              let currentIdle = current.cpuIdleTicks else {
+            return nil
+        }
+
+        let totalDelta = currentTotal - previousTotal
+        guard totalDelta > 0 else { return 0 }
+
+        let idleDelta = max(0, currentIdle - previousIdle)
+        let usage = (totalDelta - idleDelta) / totalDelta
+        return min(max(usage, 0), 1)
+    }
+
+    private func deriveBytesPerSecond(
+        current: Double?,
+        previous: Double?,
+        elapsed: TimeInterval,
+        multiplier: Double = 1
+    ) -> Double? {
+        guard let current, let previous, elapsed > 0 else {
+            return nil
+        }
+
+        let delta = max(0, current - previous) * multiplier
+        return delta / elapsed
+    }
+
+    private func formatRate(_ bytesPerSecond: Double) -> String {
+        let kilobytesPerSecond = max(0, bytesPerSecond) / 1024
+        if kilobytesPerSecond < 1024 {
+            return String(format: "%.1fk/s", kilobytesPerSecond)
+        }
+        return String(format: "%.1fMB/s", kilobytesPerSecond / 1024)
+    }
+
+    private func refreshStartDelay(
+        for request: RefreshRequest,
+        totalRequestCount: Int
+    ) -> TimeInterval {
+        guard totalRequestCount >= 4 else { return 0 }
+
+        let slotCount = min(maxRefreshBatchStaggerSlots, totalRequestCount)
+        guard slotCount > 1 else { return 0 }
+
+        let serverID: UUID
+        switch request {
+        case .full(let config), .dynamic(let config):
+            serverID = config.id
+        }
+
+        let slot = staggerSlot(for: serverID, slotCount: slotCount)
+        return Double(slot) * refreshBatchStaggerInterval
+    }
+
+    private func staggerSlot(for serverID: UUID, slotCount: Int) -> Int {
+        guard slotCount > 0 else { return 0 }
+
+        var accumulator = 0
+        for scalar in serverID.uuidString.unicodeScalars {
+            accumulator = (accumulator * 33 + Int(scalar.value)) % slotCount
+        }
+        return accumulator
     }
 
     private func handleRepeatedConnectionFailureIfNeeded(

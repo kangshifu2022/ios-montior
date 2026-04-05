@@ -276,22 +276,6 @@ final class SSHMonitorService {
         echo "0 0"
       fi
     }
-    ccu() {
-      f="$1"
-      g="$2"
-      awk -v first="$f" -v second="$g" 'BEGIN {
-        split(first, a, " ")
-        split(second, b, " ")
-        totald = (b[1] + 0) - (a[1] + 0)
-        idled = (b[2] + 0) - (a[2] + 0)
-        if (idled < 0) idled = 0
-        if (totald <= 0) { print "0"; exit }
-        usage = ((totald - idled) * 100) / totald
-        if (usage < 0) usage = 0
-        if (usage > 100) usage = 100
-        printf "%.1f\\n", usage
-      }'
-    }
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
     echo "=WIFI_PHY_BANDS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then found=""; for p in /sys/class/ieee80211/phy*; do [ -d "$p" ] || continue; phy=$(basename "$p"); band=$(iw phy "$phy" info 2>/dev/null | awk '/Band 1:/{band="24g"} /Band 2:/{band="5g"} /Band 3:/{band="6g"} END{if(band) print band}'); [ -n "$band" ] || band="unknown"; printf "%s,%s;" "$phy" "$band"; found=1; done; if [ -n "$found" ]; then echo; else echo "none"; fi; else echo "none"; fi)
     echo "=TEMP_SENSORS="; (found=""; for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/temp}; label=$(cat "$d/type" 2>/dev/null); [ -n "$label" ] || label=$(basename "$d"); label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/*}; phy=$(printf '%s' "$f" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; d=${f%/*}; resolved=$(readlink -f "$d" 2>/dev/null); v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; phy=$(printf '%s' "$resolved" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; if [ -n "$found" ]; then echo; else echo "unavailable"; fi)
@@ -305,18 +289,13 @@ final class SSHMonitorService {
     echo "=PSI_CPU="; (if [ -r /proc/pressure/cpu ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/cpu 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_MEMORY="; (if [ -r /proc/pressure/memory ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/memory 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_IO="; (if [ -r /proc/pressure/io ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/io 2>/dev/null; echo; else echo "unavailable"; fi)
-    A=$(rct)
     N=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$N" ] || N=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$N" ] || N=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
     D=$(rdd 2>/dev/null)
+    echo "=CPU_STAT="; (rct)
     echo "=NET="; (if [ -n "$N" ]; then awk -F'[: ]+' -v iface="$N" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=DISK_IO="; (rdc "$D")
-    sleep 1
-    B=$(rct)
-    echo "=NET2="; (if [ -n "$N" ]; then awk -F'[: ]+' -v iface="$N" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
-    echo "=DISK_IO2="; (rdc "$D")
-    echo "=CPU_USAGE="; (ccu "$A" "$B")
     echo "=IS_ROUTER="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then echo "yes"; else echo "no"; fi)
     echo "=CONNECTED_DEVICES="; (if [ -f /etc/openwrt_release ] || ip link show br-lan >/dev/null 2>&1; then cat /tmp/dhcp.leases 2>/dev/null | awk '{printf "%s,%s,%s;", $3, $2, $4}'; echo ""; else echo "none"; fi)
     echo "=WIFI_CLIENTS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then for iface in $(iw dev 2>/dev/null | awk '/Interface/{print $2}'); do phy=$(iw dev "$iface" info 2>/dev/null | awk '/wiphy/{print $2}'); band="unknown"; if [ -n "$phy" ]; then band=$(iw phy "phy$phy" info 2>/dev/null | awk '/Band 1:/{b="24g"} /Band 2:/{b="5g"} /Band 3:/{b="6g"} END{if(b) print b}'); fi; [ -z "$band" ] && band="unknown"; iw dev "$iface" station dump 2>/dev/null | awk -v b="$band" 'BEGIN{mac="";sig=""} /^Station /{if(mac!="") printf "%s,%s,%s;",mac,sig,b; mac=$2;sig=""} /signal:/{gsub(/[[][^]]*[]]/,"",$0); for(i=1;i<=NF;i++){if($i ~ /^-?[0-9]+$/){sig=$i;break}}} END{if(mac!="") printf "%s,%s,%s;",mac,sig,b}'; done; echo ""; else echo "none"; fi)
@@ -448,8 +427,7 @@ final class SSHMonitorService {
 
         let lines = output.components(separatedBy: "\n")
         var i = 0
-        var net1: (rx: Double, tx: Double)?
-        var disk1: (readSectors: Double, writeSectors: Double)?
+        var liveSample = ServerLiveSample()
         var wifiPhyBands: [String: String] = [:]
         var seenMarkers = Set<String>()
 
@@ -512,21 +490,15 @@ final class SSHMonitorService {
             } else if line == "=PSI_IO=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyPressureValues(from: lines[i + 1], resource: .io, to: &stats)
-            } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
+            } else if line == "=CPU_STAT=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                stats.cpuUsage = parseCPUUsage(from: lines[i + 1])
+                applyCPUSnapshot(from: lines[i + 1], to: &liveSample)
             } else if line == "=NET=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                net1 = parseNetCounters(from: lines[i + 1])
+                applyNetworkSnapshot(from: lines[i + 1], to: &liveSample)
             } else if line == "=DISK_IO=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                disk1 = parseDiskCounters(from: lines[i + 1])
-            } else if line == "=NET2=" && i + 1 < lines.count {
-                seenMarkers.insert(line)
-                applyNetworkSpeeds(firstSample: net1, secondLine: lines[i + 1], to: &stats)
-            } else if line == "=DISK_IO2=" && i + 1 < lines.count {
-                seenMarkers.insert(line)
-                applyDiskIOSpeeds(firstSample: disk1, secondLine: lines[i + 1], to: &stats)
+                applyDiskSnapshot(from: lines[i + 1], to: &liveSample)
             } else if line == "=IS_ROUTER=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 stats.routerInfo.isRouter = lines[i + 1].trimmingCharacters(in: .whitespaces) == "yes"
@@ -544,6 +516,8 @@ final class SSHMonitorService {
             i += 1
         }
 
+        stats.liveSample = liveSample.hasCounters ? liveSample : nil
+
         let expectedMarkers = [
             "=OS=",
             "=HOSTNAME=",
@@ -560,11 +534,9 @@ final class SSHMonitorService {
             "=PSI_CPU=",
             "=PSI_MEMORY=",
             "=PSI_IO=",
-            "=CPU_USAGE=",
+            "=CPU_STAT=",
             "=NET=",
-            "=DISK_IO=",
-            "=NET2=",
-            "=DISK_IO2="
+            "=DISK_IO="
         ]
         let missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
         if !missingMarkers.isEmpty {
@@ -604,8 +576,7 @@ final class SSHMonitorService {
 
         let lines = output.components(separatedBy: "\n")
         var i = 0
-        var net1: (rx: Double, tx: Double)?
-        var disk1: (readSectors: Double, writeSectors: Double)?
+        var liveSample = ServerLiveSample()
         var wifiPhyBands: [String: String] = [:]
         var seenMarkers = Set<String>()
 
@@ -653,21 +624,15 @@ final class SSHMonitorService {
             } else if line == "=PSI_IO=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyPressureValues(from: lines[i + 1], resource: .io, to: &dynamic)
-            } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
+            } else if line == "=CPU_STAT=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                dynamic.cpuUsage = parseCPUUsage(from: lines[i + 1])
+                applyCPUSnapshot(from: lines[i + 1], to: &liveSample)
             } else if line == "=NET=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                net1 = parseNetCounters(from: lines[i + 1])
+                applyNetworkSnapshot(from: lines[i + 1], to: &liveSample)
             } else if line == "=DISK_IO=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
-                disk1 = parseDiskCounters(from: lines[i + 1])
-            } else if line == "=NET2=" && i + 1 < lines.count {
-                seenMarkers.insert(line)
-                applyNetworkSpeeds(firstSample: net1, secondLine: lines[i + 1], to: &dynamic)
-            } else if line == "=DISK_IO2=" && i + 1 < lines.count {
-                seenMarkers.insert(line)
-                applyDiskIOSpeeds(firstSample: disk1, secondLine: lines[i + 1], to: &dynamic)
+                applyDiskSnapshot(from: lines[i + 1], to: &liveSample)
             } else if line == "=IS_ROUTER=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 dynamic.routerInfo.isRouter = lines[i + 1].trimmingCharacters(in: .whitespaces) == "yes"
@@ -685,6 +650,8 @@ final class SSHMonitorService {
             i += 1
         }
 
+        dynamic.liveSample = liveSample.hasCounters ? liveSample : nil
+
         let expectedMarkers = [
             "=UPTIME=",
             "=MEM=",
@@ -696,11 +663,9 @@ final class SSHMonitorService {
             "=PSI_CPU=",
             "=PSI_MEMORY=",
             "=PSI_IO=",
-            "=CPU_USAGE=",
+            "=CPU_STAT=",
             "=NET=",
-            "=DISK_IO=",
-            "=NET2=",
-            "=DISK_IO2="
+            "=DISK_IO="
         ]
         let missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
         if !missingMarkers.isEmpty {
@@ -1099,8 +1064,10 @@ final class SSHMonitorService {
         return (Double(pct) ?? 0) / 100.0
     }
 
-    private static func parseCPUUsage(from line: String) -> Double {
-        (Double(line.trimmingCharacters(in: .whitespaces)) ?? 0) / 100.0
+    private static func parseCPUCounters(from line: String) -> (total: Double, idle: Double)? {
+        let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ")
+        guard parts.count >= 2 else { return nil }
+        return (total: Double(parts[0]) ?? 0, idle: Double(parts[1]) ?? 0)
     }
 
     private static func parseNetCounters(from line: String) -> (rx: Double, tx: Double)? {
@@ -1118,62 +1085,22 @@ final class SSHMonitorService {
         )
     }
 
-    private static func applyNetworkSpeeds(
-        firstSample: (rx: Double, tx: Double)?,
-        secondLine: String,
-        to stats: inout ServerStats
-    ) {
-        guard let firstSample,
-              let secondSample = parseNetCounters(from: secondLine) else {
-            return
-        }
-        stats.downloadSpeed = formatSpeed(secondSample.rx - firstSample.rx)
-        stats.uploadSpeed = formatSpeed(secondSample.tx - firstSample.tx)
+    private static func applyCPUSnapshot(from line: String, to sample: inout ServerLiveSample) {
+        guard let counters = parseCPUCounters(from: line) else { return }
+        sample.cpuTotalTicks = counters.total
+        sample.cpuIdleTicks = counters.idle
     }
 
-    private static func applyNetworkSpeeds(
-        firstSample: (rx: Double, tx: Double)?,
-        secondLine: String,
-        to dynamic: inout ServerDynamicInfo
-    ) {
-        guard let firstSample,
-              let secondSample = parseNetCounters(from: secondLine) else {
-            return
-        }
-        dynamic.downloadSpeed = formatSpeed(secondSample.rx - firstSample.rx)
-        dynamic.uploadSpeed = formatSpeed(secondSample.tx - firstSample.tx)
+    private static func applyNetworkSnapshot(from line: String, to sample: inout ServerLiveSample) {
+        guard let counters = parseNetCounters(from: line) else { return }
+        sample.networkRxBytes = counters.rx
+        sample.networkTxBytes = counters.tx
     }
 
-    private static func applyDiskIOSpeeds(
-        firstSample: (readSectors: Double, writeSectors: Double)?,
-        secondLine: String,
-        to stats: inout ServerStats
-    ) {
-        guard let firstSample,
-              let secondSample = parseDiskCounters(from: secondLine) else {
-            return
-        }
-
-        let readBytes = max(0, secondSample.readSectors - firstSample.readSectors) * 512
-        let writeBytes = max(0, secondSample.writeSectors - firstSample.writeSectors) * 512
-        stats.diskReadSpeed = formatSpeed(readBytes)
-        stats.diskWriteSpeed = formatSpeed(writeBytes)
-    }
-
-    private static func applyDiskIOSpeeds(
-        firstSample: (readSectors: Double, writeSectors: Double)?,
-        secondLine: String,
-        to dynamic: inout ServerDynamicInfo
-    ) {
-        guard let firstSample,
-              let secondSample = parseDiskCounters(from: secondLine) else {
-            return
-        }
-
-        let readBytes = max(0, secondSample.readSectors - firstSample.readSectors) * 512
-        let writeBytes = max(0, secondSample.writeSectors - firstSample.writeSectors) * 512
-        dynamic.diskReadSpeed = formatSpeed(readBytes)
-        dynamic.diskWriteSpeed = formatSpeed(writeBytes)
+    private static func applyDiskSnapshot(from line: String, to sample: inout ServerLiveSample) {
+        guard let counters = parseDiskCounters(from: line) else { return }
+        sample.diskReadSectors = counters.readSectors
+        sample.diskWriteSectors = counters.writeSectors
     }
 
     private static func parseUptime(_ raw: String) -> String {
@@ -1219,16 +1146,6 @@ final class SSHMonitorService {
             return "up \(days)d 0h 0m"
         }
         return trimmed
-    }
-
-    private static func formatSpeed(_ bytes: Double) -> String {
-        let kb = bytes / 1024
-        if kb < 0 { return "0k/s" }
-        if kb < 1024 {
-            return String(format: "%.1fk/s", kb)
-        } else {
-            return String(format: "%.1fMB/s", kb / 1024)
-        }
     }
 
     private static func describe(errorMessage: String) -> String {

@@ -65,6 +65,25 @@ struct PressureMetrics: Codable, Sendable {
     var ioFullAvg10: Double? = nil
 }
 
+struct ServerLiveSample: Codable, Sendable {
+    var capturedAt: Date? = nil
+    var cpuTotalTicks: Double? = nil
+    var cpuIdleTicks: Double? = nil
+    var networkRxBytes: Double? = nil
+    var networkTxBytes: Double? = nil
+    var diskReadSectors: Double? = nil
+    var diskWriteSectors: Double? = nil
+
+    var hasCounters: Bool {
+        cpuTotalTicks != nil ||
+        cpuIdleTicks != nil ||
+        networkRxBytes != nil ||
+        networkTxBytes != nil ||
+        diskReadSectors != nil ||
+        diskWriteSectors != nil
+    }
+}
+
 struct ServerStaticInfo: Codable, Sendable {
     var osName: String = ""
     var hostname: String = ""
@@ -112,6 +131,7 @@ struct ServerDynamicInfo: Codable, Sendable {
     var loadAverage15m: Double? = nil
     var pressure: PressureMetrics = PressureMetrics()
     var routerInfo: RouterInfo = RouterInfo()
+    var liveSample: ServerLiveSample? = nil
 
     init() {}
 
@@ -142,6 +162,7 @@ struct ServerDynamicInfo: Codable, Sendable {
         loadAverage15m = stats.loadAverage15m
         pressure = stats.pressure
         routerInfo = stats.routerInfo
+        liveSample = stats.liveSample
     }
 }
 
@@ -179,6 +200,7 @@ struct ServerStats: Codable, Sendable {
     var loadAverage15m: Double? = nil
     var pressure: PressureMetrics = PressureMetrics()
     var routerInfo: RouterInfo = RouterInfo()
+    var liveSample: ServerLiveSample? = nil
 
     init(config: ServerConfig) {
         self.config = config
@@ -223,6 +245,7 @@ struct ServerStats: Codable, Sendable {
             loadAverage15m = dynamicInfo.loadAverage15m
             pressure = dynamicInfo.pressure
             routerInfo = dynamicInfo.routerInfo
+            liveSample = dynamicInfo.liveSample
         }
     }
 }
