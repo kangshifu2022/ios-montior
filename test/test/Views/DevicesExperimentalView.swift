@@ -9,6 +9,7 @@ struct DevicesExperimentalView: View {
     @State private var selectedServer: ServerConfig?
     @State private var terminalServer: ServerConfig?
     @State private var draggedServerID: UUID?
+    @State private var expandedServerIDsInCompactMode: Set<UUID> = []
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -123,9 +124,7 @@ struct DevicesExperimentalView: View {
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    experimentalHomeCardViewRawValue = homeCardView == .detailed
-                        ? ExperimentalHomeCardView.compact.rawValue
-                        : ExperimentalHomeCardView.detailed.rawValue
+                    toggleHomeCardView()
                 }
                 .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
                 .accessibilityAddTraits(.isButton)
@@ -145,7 +144,8 @@ struct DevicesExperimentalView: View {
     private func reorderableCard(for server: ServerConfig) -> some View {
         let isDragged = draggedServerID == server.id
         let isCollapsed = store.isCollapsed(server.id)
-        let showsDetailedCard = homeCardView == .detailed && !isCollapsed
+        let isExpandedInCompactMode = expandedServerIDsInCompactMode.contains(server.id)
+        let showsDetailedCard = homeCardView == .detailed ? !isCollapsed : isExpandedInCompactMode
 
         Group {
             if showsDetailedCard {
@@ -156,7 +156,7 @@ struct DevicesExperimentalView: View {
                 ) {
                     selectedServer = server
                 } onToggleCollapse: {
-                    store.toggleCollapsed(server.id)
+                    toggleCardExpansion(for: server.id)
                 } onOpenTerminal: {
                     terminalServer = server
                 }
@@ -165,12 +165,11 @@ struct DevicesExperimentalView: View {
                     config: server,
                     stats: store.stats(for: server),
                     palette: palette,
-                    showsExpandControl: homeCardView == .detailed,
-                    isCollapsed: isCollapsed
+                    showsExpandControl: true
                 ) {
                     selectedServer = server
                 } onToggleCollapse: {
-                    store.toggleCollapsed(server.id)
+                    toggleCardExpansion(for: server.id)
                 }
             }
         }
@@ -187,6 +186,30 @@ struct DevicesExperimentalView: View {
             store: store,
             draggedServerID: $draggedServerID
         ))
+    }
+
+    private func toggleHomeCardView() {
+        let nextMode: ExperimentalHomeCardView = homeCardView == .detailed ? .compact : .detailed
+        experimentalHomeCardViewRawValue = nextMode.rawValue
+        expandedServerIDsInCompactMode.removeAll()
+
+        let shouldCollapseAllCards = nextMode == .compact
+        for server in store.servers {
+            store.setCollapsed(shouldCollapseAllCards, for: server.id)
+        }
+    }
+
+    private func toggleCardExpansion(for serverID: UUID) {
+        if homeCardView == .compact {
+            if expandedServerIDsInCompactMode.contains(serverID) {
+                expandedServerIDsInCompactMode.remove(serverID)
+            } else {
+                expandedServerIDsInCompactMode.insert(serverID)
+            }
+            return
+        }
+
+        store.toggleCollapsed(serverID)
     }
 
     private var emptyState: some View {
@@ -306,7 +329,6 @@ private struct ExperimentalCompactServerCard: View {
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
     let showsExpandControl: Bool
-    let isCollapsed: Bool
     let onOpenDetail: () -> Void
     let onToggleCollapse: () -> Void
 
@@ -395,7 +417,7 @@ private struct ExperimentalCompactServerCard: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if isCollapsed {
+            if showsExpandControl {
                 onToggleCollapse()
             } else {
                 onOpenDetail()
@@ -501,8 +523,6 @@ private struct ExperimentalServerCard: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(palette.secondaryText.opacity(0.92))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
