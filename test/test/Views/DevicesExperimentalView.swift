@@ -8,6 +8,7 @@ struct DevicesExperimentalView: View {
     @AppStorage(ExperimentalHomeCardView.storageKey) private var experimentalHomeCardViewRawValue = ExperimentalHomeCardView.detailed.rawValue
     @State private var selectedServer: ServerConfig?
     @State private var terminalServer: ServerConfig?
+    @State private var editingServer: ServerConfig?
     @State private var draggedServerID: UUID?
     @State private var expandedServerIDsInCompactMode: Set<UUID> = []
 
@@ -77,6 +78,9 @@ struct DevicesExperimentalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $selectedServer) { config in
                 DeviceDetailView(config: config, store: store)
+            }
+            .sheet(item: $editingServer) { server in
+                AddServerView(store: store, editingServer: server)
             }
             .fullScreenCover(item: $terminalServer) { config in
                 TerminalView(server: config)
@@ -155,6 +159,8 @@ struct DevicesExperimentalView: View {
                     palette: palette
                 ) {
                     selectedServer = server
+                } onEdit: {
+                    editingServer = server
                 } onToggleCollapse: {
                     toggleCardExpansion(for: server.id)
                 } onOpenTerminal: {
@@ -168,6 +174,8 @@ struct DevicesExperimentalView: View {
                     showsExpandControl: true
                 ) {
                     selectedServer = server
+                } onEdit: {
+                    editingServer = server
                 } onToggleCollapse: {
                     toggleCardExpansion(for: server.id)
                 }
@@ -330,6 +338,7 @@ private struct ExperimentalCompactServerCard: View {
     let palette: ExperimentalHomePalette
     let showsExpandControl: Bool
     let onOpenDetail: () -> Void
+    let onEdit: () -> Void
     let onToggleCollapse: () -> Void
 
     private var isOnline: Bool {
@@ -412,6 +421,8 @@ private struct ExperimentalCompactServerCard: View {
                     parts: downloadParts,
                     palette: palette
                 )
+
+                compactEditButton
             }
             .fixedSize(horizontal: true, vertical: false)
         }
@@ -433,6 +444,19 @@ private struct ExperimentalCompactServerCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
         .shadow(color: palette.cardShadow, radius: 14, x: 0, y: 8)
+    }
+
+    private var compactEditButton: some View {
+        Button(action: onEdit) {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(palette.secondaryText)
+                .frame(width: 28, height: 28)
+                .background(palette.subcardBackground)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("编辑设备")
     }
 
     private func percentageText(_ value: Double?) -> String {
@@ -467,6 +491,7 @@ private struct ExperimentalServerCard: View {
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
+    let onEdit: () -> Void
     let onToggleCollapse: () -> Void
     let onOpenTerminal: () -> Void
 
@@ -489,7 +514,7 @@ private struct ExperimentalServerCard: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            HStack(alignment: .center, spacing: 18) {
+            HStack(alignment: .center, spacing: 12) {
                 metricRings
                 infoPanel
             }
@@ -545,6 +570,8 @@ private struct ExperimentalServerCard: View {
                     )
                 }
 
+                editButton
+
                 terminalButton
             }
             .fixedSize(horizontal: true, vertical: false)
@@ -553,7 +580,7 @@ private struct ExperimentalServerCard: View {
     }
 
     private var metricRings: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 18) {
             ExperimentalMetricTile(
                 label: "CPU %",
                 percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
@@ -570,32 +597,26 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(width: 150, height: 96, alignment: .leading)
+        .frame(width: 140, height: 88, alignment: .leading)
     }
 
     private var infoPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 10) {
             ExperimentalInfoMetricRow(
-                title: "Net",
+                title: nil,
                 items: networkMetrics,
                 accent: palette.memoryAccent,
                 palette: palette
             )
 
             ExperimentalInfoMetricRow(
-                title: "Disk",
+                title: nil,
                 items: diskMetrics,
                 accent: palette.memoryAccent,
                 palette: palette
             )
-
-            ExperimentalInfoValueRow(
-                title: "Uptime",
-                value: uptimeDisplayText,
-                palette: palette
-            )
         }
-        .frame(maxWidth: .infinity, minHeight: 78, maxHeight: 78, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 62, maxHeight: 62, alignment: .center)
     }
 
     private var terminalButton: some View {
@@ -608,6 +629,17 @@ private struct ExperimentalServerCard: View {
         .buttonStyle(.plain)
         .disabled(!isOnline)
         .opacity(isOnline ? 1 : 0.45)
+    }
+
+    private var editButton: some View {
+        Button(action: onEdit) {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(palette.primaryText)
+                .frame(width: 30, height: 30)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("编辑设备")
     }
 
     private var downloadSpeedText: String {
@@ -628,19 +660,6 @@ private struct ExperimentalServerCard: View {
     private var diskWriteSpeedText: String {
         guard isOnline else { return "--" }
         return stats?.diskWriteSpeed ?? "--"
-    }
-
-    private var uptimeText: String {
-        let uptime = (stats?.uptime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return uptime.isEmpty ? "--" : uptime
-    }
-
-    private var uptimeDisplayText: String {
-        guard uptimeText != "--" else {
-            return "--"
-        }
-
-        return normalizedUptimeDisplay(from: uptimeText)
     }
 
     private var terminalButtonForeground: Color {
@@ -711,80 +730,6 @@ private struct ExperimentalServerCard: View {
     private func percentageValue(_ value: Double?) -> Int? {
         guard let value else { return nil }
         return Int((min(max(value, 0), 1) * 100).rounded())
-    }
-
-    private func normalizedUptimeDisplay(from raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "--"
-        }
-
-        if let seconds = Double(trimmed), seconds >= 0 {
-            return uptimeDisplay(days: Int(seconds) / 86_400,
-                                 hours: (Int(seconds) % 86_400) / 3_600,
-                                 minutes: (Int(seconds) % 3_600) / 60)
-        }
-
-        let lowercased = trimmed.lowercased()
-
-        if let match = lowercased.range(of: #"(\d+)\s*d\s*(\d+)\s*h\s*(\d+)\s*m"#, options: .regularExpression) {
-            return compactUptimeToken(String(lowercased[match]))
-        }
-
-        if let match = lowercased.range(of: #"(\d+)\s*h\s*(\d+)\s*m"#, options: .regularExpression) {
-            return compactUptimeToken(String(lowercased[match]))
-        }
-
-        if let match = lowercased.range(of: #"(\d+)\s*day[s]?,?\s*(\d{1,2}):(\d{2})"#, options: .regularExpression) {
-            let token = String(lowercased[match])
-            let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-            if numbers.count >= 3 {
-                return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
-            }
-        }
-
-        if let match = lowercased.range(of: #"up\s+(\d+)\s+days?,?\s+(\d{1,2}):(\d{2})"#, options: .regularExpression) {
-            let token = String(lowercased[match])
-            let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-            if numbers.count >= 3 {
-                return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
-            }
-        }
-
-        if let match = trimmed.range(of: #"(\d+)\s*天\s*(\d+)\s*小时\s*(\d+)\s*分"#, options: .regularExpression) {
-            let token = String(trimmed[match])
-            let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-            if numbers.count >= 3 {
-                return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
-            }
-        }
-
-        if lowercased.hasPrefix("up ") {
-            return String(trimmed.dropFirst(3))
-        }
-
-        return trimmed
-    }
-
-    private func compactUptimeToken(_ token: String) -> String {
-        let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-
-        if token.contains("d"), numbers.count >= 3 {
-            return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
-        }
-
-        if numbers.count >= 2 {
-            return "\(numbers[0])h \(numbers[1])m"
-        }
-
-        return token
-    }
-
-    private func uptimeDisplay(days: Int, hours: Int, minutes: Int) -> String {
-        if days > 0 {
-            return "\(days)d \(hours)h \(minutes)m"
-        }
-        return "\(hours)h \(minutes)m"
     }
 
     private func temperatureText(for value: Double) -> String {
@@ -1006,20 +951,22 @@ private struct ExperimentalInlineMetricDescriptor: Identifiable {
 }
 
 private struct ExperimentalInfoMetricRow: View {
-    let title: String
+    let title: String?
     let items: [ExperimentalInlineMetricDescriptor]
     let accent: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(palette.secondaryText)
-                .frame(width: 58, alignment: .leading)
-                .offset(x: 11)
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            if let title, !title.isEmpty {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.secondaryText)
+                    .frame(width: 58, alignment: .leading)
+                    .offset(x: 11)
+            }
 
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
                 ForEach(items) { item in
                     ExperimentalInlineMetric(
                         item: item,
@@ -1029,32 +976,6 @@ private struct ExperimentalInfoMetricRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(height: 26, alignment: .center)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct ExperimentalInfoValueRow: View {
-    let title: String
-    let value: String
-    let palette: ExperimentalHomePalette
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(palette.secondaryText)
-                .frame(width: 58, alignment: .leading)
-                .offset(x: 11)
-
-            Text(value)
-                .font(.system(size: 14, weight: .medium, design: .rounded))
-                .foregroundColor(palette.secondaryText.opacity(0.28))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(height: 26, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
