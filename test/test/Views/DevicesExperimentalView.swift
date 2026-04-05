@@ -7,6 +7,7 @@ struct DevicesExperimentalView: View {
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @AppStorage(ExperimentalHomeCardView.storageKey) private var experimentalHomeCardViewRawValue = ExperimentalHomeCardView.detailed.rawValue
     @State private var selectedServer: ServerConfig?
+    @State private var terminalServer: ServerConfig?
     @State private var draggedServerID: UUID?
 
     private var selectedTheme: ExperimentalHomeTheme {
@@ -76,6 +77,9 @@ struct DevicesExperimentalView: View {
             .navigationDestination(item: $selectedServer) { config in
                 DeviceDetailView(config: config, store: store)
             }
+            .fullScreenCover(item: $terminalServer) { config in
+                TerminalView(server: config)
+            }
             .task(id: store.servers.map(\.id)) {
                 await store.refreshAllIfNeeded()
 
@@ -127,6 +131,8 @@ struct DevicesExperimentalView: View {
                     palette: palette
                 ) {
                     selectedServer = server
+                } onOpenTerminal: {
+                    terminalServer = server
                 }
             } else {
                 ExperimentalCompactServerCard(
@@ -275,6 +281,17 @@ private struct ExperimentalCompactServerCard: View {
         stats?.isOnline == true
     }
 
+    private var headerDisplayName: String {
+        let trimmedName = config.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let maximumCharacters = 20
+
+        guard trimmedName.count > maximumCharacters else {
+            return trimmedName
+        }
+
+        return String(trimmedName.prefix(maximumCharacters)) + "…"
+    }
+
     private var cpuText: String {
         percentageText(stats?.cpuUsage)
     }
@@ -297,10 +314,11 @@ private struct ExperimentalCompactServerCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(config.name)
+            Text(headerDisplayName)
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundColor(palette.primaryText)
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 6) {
@@ -380,10 +398,21 @@ private struct ExperimentalServerCard: View {
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
-    @State private var showTerminal = false
+    let onOpenTerminal: () -> Void
 
     private var isOnline: Bool {
         stats?.isOnline == true
+    }
+
+    private var headerDisplayName: String {
+        let trimmedName = config.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let maximumCharacters = 20
+
+        guard trimmedName.count > maximumCharacters else {
+            return trimmedName
+        }
+
+        return String(trimmedName.prefix(maximumCharacters)) + "…"
     }
 
     var body: some View {
@@ -408,18 +437,16 @@ private struct ExperimentalServerCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
-        .fullScreenCover(isPresented: $showTerminal) {
-            TerminalView(server: config)
-        }
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(config.name)
+                Text(headerDisplayName)
                     .font(.system(size: 19, weight: .light, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
 
             Spacer(minLength: 12)
@@ -441,22 +468,15 @@ private struct ExperimentalServerCard: View {
                     )
                 }
 
-                if !isOnline {
-                    ExperimentalHeaderBadge(
-                        symbol: "exclamationmark.triangle",
-                        value: offlineText,
-                        palette: palette,
-                        tint: palette.offline
-                    )
-                }
-
                 terminalButton
             }
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(1)
         }
     }
 
     private var metricRings: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 24) {
             ExperimentalMetricTile(
                 label: "CPU %",
                 percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
@@ -502,7 +522,7 @@ private struct ExperimentalServerCard: View {
     }
 
     private var terminalButton: some View {
-        Button(action: { showTerminal = true }) {
+        Button(action: onOpenTerminal) {
             Image(systemName: "terminal")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(terminalButtonForeground)
@@ -571,10 +591,6 @@ private struct ExperimentalServerCard: View {
         }
 
         return nil
-    }
-
-    private var offlineText: String {
-        "offline"
     }
 
     private var cpuUsageTint: Color {
@@ -813,10 +829,6 @@ private struct ExperimentalUsageRing: View {
         StrokeStyle(lineWidth: 8, lineCap: ringStyle == .memoryGradient ? .round : .butt)
     }
 
-    private var remainderStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 8, lineCap: .round)
-    }
-
     private var activeStroke: AnyShapeStyle {
         switch ringStyle {
         case .standard:
@@ -837,31 +849,9 @@ private struct ExperimentalUsageRing: View {
         }
     }
 
-    private var availableStroke: AnyShapeStyle {
-        AnyShapeStyle(
-            AngularGradient(
-                colors: [
-                    Color(red: 0.76, green: 0.96, blue: 0.58),
-                    Color(red: 0.63, green: 0.92, blue: 0.49),
-                    Color(red: 0.53, green: 0.88, blue: 0.45),
-                    Color(red: 0.64, green: 0.93, blue: 0.56),
-                    Color(red: 0.78, green: 0.97, blue: 0.68)
-                ],
-                center: .center
-            )
-        )
-    }
-
     var body: some View {
         ZStack {
             if ringStyle == .memoryGradient {
-                if normalizedValue < 1 {
-                    Circle()
-                        .trim(from: normalizedValue, to: 1)
-                        .stroke(availableStroke, style: remainderStrokeStyle)
-                        .rotationEffect(.degrees(-90))
-                }
-
                 if normalizedValue > 0 {
                     Circle()
                         .trim(from: 0, to: normalizedValue)
@@ -1039,18 +1029,24 @@ private struct ExperimentalHeaderBadge: View {
     let palette: ExperimentalHomePalette
     var tint: Color? = nil
 
+    private var resolvedColor: Color {
+        (tint ?? palette.secondaryText).opacity(0.68)
+    }
+
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ExperimentalHeaderSymbol(
                 symbol: symbol,
-                color: palette.secondaryText
+                color: resolvedColor
             )
 
             Text(value)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundColor(tint ?? palette.secondaryText)
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .foregroundColor(resolvedColor)
                 .monospacedDigit()
                 .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .allowsTightening(true)
         }
     }
 }
@@ -1065,9 +1061,9 @@ private struct ExperimentalHeaderSymbol: View {
                 ExperimentalCPUChipIcon(color: color)
             } else {
                 Image(systemName: symbol)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(color)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 16, height: 16)
             }
         }
     }
@@ -1081,14 +1077,14 @@ private struct ExperimentalCPUChipIcon: View {
             outerPins
 
             RoundedRectangle(cornerRadius: 3.2, style: .continuous)
-                .stroke(color.opacity(0.92), lineWidth: 1.6)
-                .frame(width: 12.5, height: 12.5)
+                .stroke(color.opacity(0.82), lineWidth: 1.25)
+                .frame(width: 11.5, height: 11.5)
 
             RoundedRectangle(cornerRadius: 1.1, style: .continuous)
-                .stroke(color.opacity(0.92), lineWidth: 1.25)
-                .frame(width: 7.4, height: 7.4)
+                .stroke(color.opacity(0.82), lineWidth: 0.95)
+                .frame(width: 6.8, height: 6.8)
         }
-        .frame(width: 18, height: 18)
+        .frame(width: 16, height: 16)
     }
 
     private var outerPins: some View {
@@ -1096,38 +1092,38 @@ private struct ExperimentalCPUChipIcon: View {
             HStack(spacing: 1.5) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule(style: .continuous)
-                        .fill(color.opacity(0.92))
-                        .frame(width: 1.0, height: 3.0)
+                        .fill(color.opacity(0.82))
+                        .frame(width: 0.9, height: 2.4)
                 }
             }
-            .offset(y: -8.0)
+            .offset(y: -7.0)
 
             HStack(spacing: 1.5) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule(style: .continuous)
-                        .fill(color.opacity(0.92))
-                        .frame(width: 1.0, height: 3.0)
+                        .fill(color.opacity(0.82))
+                        .frame(width: 0.9, height: 2.4)
                 }
             }
-            .offset(y: 8.0)
+            .offset(y: 7.0)
 
             VStack(spacing: 1.5) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule(style: .continuous)
-                        .fill(color.opacity(0.92))
-                        .frame(width: 3.0, height: 1.0)
+                        .fill(color.opacity(0.82))
+                        .frame(width: 2.4, height: 0.9)
                 }
             }
-            .offset(x: -8.0)
+            .offset(x: -7.0)
 
             VStack(spacing: 1.5) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule(style: .continuous)
-                        .fill(color.opacity(0.92))
-                        .frame(width: 3.0, height: 1.0)
+                        .fill(color.opacity(0.82))
+                        .frame(width: 2.4, height: 0.9)
                 }
             }
-            .offset(x: 8.0)
+            .offset(x: 7.0)
         }
     }
 }

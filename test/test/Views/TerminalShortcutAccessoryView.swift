@@ -1,7 +1,7 @@
 import UIKit
 
 final class TerminalShortcutAccessoryView: UIInputView {
-    private static let preferredHeight: CGFloat = 76
+    private static let preferredHeight: CGFloat = 62
 
     struct ShortcutItem {
         let title: String
@@ -51,28 +51,28 @@ final class TerminalShortcutAccessoryView: UIInputView {
         let contentStack = UIStackView()
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
-        contentStack.spacing = 5
+        contentStack.spacing = 3
         contentStack.alignment = .leading
-        contentStack.layoutMargins = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+        contentStack.layoutMargins = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         contentStack.isLayoutMarginsRelativeArrangement = true
         scrollView.addSubview(contentStack)
 
         for rowItems in rows where !rowItems.isEmpty {
             let rowStack = UIStackView()
             rowStack.axis = .horizontal
-            rowStack.spacing = 5
+            rowStack.spacing = 3
             rowStack.alignment = .center
 
             for item in rowItems {
                 let button = UIButton(type: .system)
                 var configuration = UIButton.Configuration.plain()
-                configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
+                configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 7, bottom: 4, trailing: 7)
                 button.configuration = configuration
                 button.setTitle(item.title, for: .normal)
-                button.titleLabel?.font = .systemFont(ofSize: 12, weight: .medium)
+                button.titleLabel?.font = .systemFont(ofSize: 10, weight: .medium)
                 button.setTitleColor(.label, for: .normal)
                 button.backgroundColor = .tertiarySystemFill
-                button.layer.cornerRadius = 10
+                button.layer.cornerRadius = 8
                 button.addAction(UIAction { _ in
                     item.action()
                 }, for: .touchUpInside)
