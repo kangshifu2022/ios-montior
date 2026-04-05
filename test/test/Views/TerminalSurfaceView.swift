@@ -31,6 +31,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             )
             viewModel.connectIfNeeded()
             _ = terminalView.becomeFirstResponder()
+            terminalView.reloadInputViews()
         }
 
         return terminalView
@@ -38,7 +39,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {
         context.coordinator.terminalView = uiView
+        uiView.inputAccessoryView = makeShortcutAccessory()
         applyAppearance(to: uiView)
+        uiView.reloadInputViews()
     }
 
     static func dismantleUIView(_ uiView: SwiftTerm.TerminalView, coordinator: Coordinator) {

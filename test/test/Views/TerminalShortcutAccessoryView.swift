@@ -12,7 +12,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
     init(items: [ShortcutItem]) {
         self.items = items
-        super.init(frame: .zero, inputViewStyle: .keyboard)
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.preferredHeight), inputViewStyle: .keyboard)
         allowsSelfSizing = true
         setupUI()
     }
@@ -24,6 +24,14 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
     override var intrinsicContentSize: CGSize {
         CGSize(width: UIView.noIntrinsicMetric, height: Self.preferredHeight)
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        CGSize(width: size.width, height: Self.preferredHeight)
+    }
+
+    override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
+        CGSize(width: targetSize.width, height: Self.preferredHeight)
     }
 
     override func didMoveToSuperview() {

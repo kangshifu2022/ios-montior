@@ -51,6 +51,8 @@ struct DevicesExperimentalView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
+                    pageHeader
+
                     if store.servers.isEmpty {
                         emptyState
                     } else {
@@ -72,19 +74,6 @@ struct DevicesExperimentalView: View {
             .background(palette.pageBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Text("概览")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .foregroundColor(palette.primaryText)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    ExperimentalBrandTitle(
-                        edition: appEdition,
-                        palette: palette
-                    )
-                }
-
                 ToolbarItem(placement: .topBarTrailing) {
                     ExperimentalViewToggleIcon(
                         mode: homeCardView,
@@ -113,6 +102,42 @@ struct DevicesExperimentalView: View {
             }
         }
         .preferredColorScheme(preferredColorScheme)
+    }
+
+    private var pageHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("概览")
+                .font(.system(size: 38, weight: .black, design: .rounded))
+                .foregroundColor(palette.primaryText)
+                .tracking(-0.6)
+
+            HStack(alignment: .center, spacing: 8) {
+                Text("iMonitor")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(palette.primaryText)
+                    .opacity(0.94)
+
+                if appEdition == .pro {
+                    Text("PRO")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .foregroundColor(palette.memoryAccent)
+                        .tracking(0.6)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(palette.memoryAccent.opacity(palette.isDark ? 0.14 : 0.10))
+                        .clipShape(Capsule())
+                        .offset(y: 1)
+                }
+            }
+
+            Text("一站式 Linux 设备监控平台")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(palette.secondaryText)
+                .opacity(0.92)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
     }
 
     @ViewBuilder
@@ -229,31 +254,6 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         draggedServerID = nil
         return true
-    }
-}
-
-private struct ExperimentalBrandTitle: View {
-    let edition: ExperimentalAppEdition
-    let palette: ExperimentalHomePalette
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text("iMonitor")
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundColor(palette.primaryText)
-
-            if edition == .pro {
-                Text("PRO")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.memoryAccent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(palette.memoryAccent.opacity(palette.isDark ? 0.14 : 0.10))
-                    .clipShape(Capsule())
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(edition == .pro ? "iMonitor Pro" : "iMonitor")
     }
 }
 
