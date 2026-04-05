@@ -20,6 +20,10 @@ struct TerminalView: View {
             TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(terminalBackground)
+
+            if viewModel.isResolvingLaunchChoice {
+                launchProbeOverlay
+            }
         }
         .background(screenBackground)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -125,6 +129,26 @@ struct TerminalView: View {
         .overlay(alignment: .bottom) {
             Divider()
         }
+    }
+
+    private var launchProbeOverlay: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.regular)
+
+            Text("正在检查远端 tmux 会话…")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.08), radius: 18, y: 6)
+        .allowsHitTesting(false)
     }
 
     private func dismissTerminal() {

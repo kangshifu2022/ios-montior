@@ -15,6 +15,7 @@ final class TerminalViewModel: ObservableObject {
     @Published private(set) var remoteTmuxSessions: [TerminalRemoteTmuxSession] = []
     @Published private(set) var isRefreshingRemoteTmuxSessions = false
     @Published private(set) var remoteTmuxStatusText: String?
+    @Published private(set) var isResolvingLaunchChoice = false
 
     let server: ServerConfig
 
@@ -39,6 +40,9 @@ final class TerminalViewModel: ObservableObject {
     }
 
     var statusText: String {
+        if isResolvingLaunchChoice {
+            return "检查中"
+        }
         if isConnecting {
             return "连接中"
         }
@@ -85,7 +89,7 @@ final class TerminalViewModel: ObservableObject {
         let shouldAsk = restorePolicy == .askEveryTime
 
         if shouldAsk {
-            isShowingLaunchSheet = true
+            resolveLaunchChoiceAfterRemoteTmuxCheck(defaultMode: defaultMode)
             return
         }
 
@@ -94,12 +98,7 @@ final class TerminalViewModel: ObservableObject {
             return
         }
 
-        switch defaultMode {
-        case .persistentTmux:
-            startNewPersistentSession()
-        case .directSSH:
-            startDirectSession()
-        }
+        startDefaultConnection(using: defaultMode)
     }
 
     func connectIfNeeded() {
@@ -190,6 +189,7 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask?.cancel()
         remoteTmuxFetchTask = nil
         isRefreshingRemoteTmuxSessions = false
+        isResolvingLaunchChoice = false
         flushScrollbackNowIfNeeded()
         scrollbackFlushTask?.cancel()
         scrollbackFlushTask = nil
@@ -348,6 +348,7 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask?.cancel()
         remoteTmuxFetchTask = nil
         isRefreshingRemoteTmuxSessions = false
+        isResolvingLaunchChoice = false
         lastError = nil
         terminalTitle = nil
         shouldDismissTerminal = false
@@ -448,6 +449,47 @@ final class TerminalViewModel: ObservableObject {
     private func refreshSessionSummaries() {
         recoverableSessions = TerminalPersistenceStore.recoverableSessions(for: server)
         latestSnapshot = TerminalPersistenceStore.latestSnapshot(for: server)
+    }
+
+    private func resolveLaunchChoiceAfterRemoteTmuxCheck(defaultMode: TerminalDefaultConnectionMode) {
+        remoteTmuxFetchTask?.cancel()
+        isResolvingLaunchChoice = true
+        remoteTmuxStatusText = nil
+
+        let server = self.server
+        remoteTmuxFetchTask = Task {
+            let result = await TerminalTmuxService.fetchSessions(config: server)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                self.isResolvingLaunchChoice = false
+                self.remoteTmuxFetchTask = nil
+
+                switch result {
+                case .success(let snapshot):
+                    self.remoteTmuxSessions = snapshot.sessions
+                    self.remoteTmuxStatusText = snapshot.notice
+
+                    if snapshot.sessions.isEmpty {
+                        self.startDefaultConnection(using: defaultMode)
+                    } else {
+                        self.isShowingLaunchSheet = true
+                    }
+                case .failure(let error):
+                    self.remoteTmuxStatusText = error.message
+                    self.startDefaultConnection(using: defaultMode)
+                }
+            }
+        }
+    }
+
+    private func startDefaultConnection(using mode: TerminalDefaultConnectionMode) {
+        switch mode {
+        case .persistentTmux:
+            startNewPersistentSession()
+        case .directSSH:
+            startDirectSession()
+        }
     }
 
     private func flushPendingOutput() {

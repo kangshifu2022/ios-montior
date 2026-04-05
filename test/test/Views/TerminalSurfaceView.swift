@@ -11,7 +11,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> SwiftTerm.TerminalView {
-        let terminalView = SwiftTerm.TerminalView(frame: .zero)
+        let terminalView = ScrollbackTerminalView(frame: .zero)
         terminalView.terminalDelegate = context.coordinator
         context.coordinator.terminalView = terminalView
         terminalView.inputAccessoryView = makeShortcutAccessory(for: terminalView)
