@@ -43,6 +43,10 @@ struct DevicesExperimentalView: View {
         ExperimentalHomeCardView(rawValue: experimentalHomeCardViewRawValue) ?? .detailed
     }
 
+    private var appEdition: ExperimentalAppEdition {
+        .pro
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -66,8 +70,15 @@ struct DevicesExperimentalView: View {
                 await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
             }
             .background(palette.pageBackground.ignoresSafeArea())
-            .navigationTitle("概览")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    ExperimentalBrandTitle(
+                        edition: appEdition,
+                        palette: palette
+                    )
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     ExperimentalViewToggleIcon(
                         mode: homeCardView,
@@ -166,6 +177,11 @@ private enum ExperimentalHomeCardView: String {
     static let storageKey = "experimentalHomeCardView"
 }
 
+private enum ExperimentalAppEdition {
+    case standard
+    case pro
+}
+
 @MainActor
 private struct ExperimentalServerCardDropDelegate: DropDelegate {
     let targetServer: ServerConfig
@@ -207,6 +223,31 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         draggedServerID = nil
         return true
+    }
+}
+
+private struct ExperimentalBrandTitle: View {
+    let edition: ExperimentalAppEdition
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("iMonitor")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundColor(palette.primaryText)
+
+            if edition == .pro {
+                Text("PRO")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.memoryAccent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(palette.memoryAccent.opacity(palette.isDark ? 0.14 : 0.10))
+                    .clipShape(Capsule())
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(edition == .pro ? "iMonitor Pro" : "iMonitor")
     }
 }
 
@@ -800,30 +841,44 @@ private struct ExperimentalUsageRing: View {
         }
     }
 
-    private var memoryRemainderColor: Color {
-        palette.isDark ? Color(red: 0.62, green: 0.66, blue: 0.75).opacity(0.72) : Color(red: 0.77, green: 0.79, blue: 0.86)
+    private var availableStroke: AnyShapeStyle {
+        AnyShapeStyle(
+            AngularGradient(
+                colors: [
+                    Color(red: 0.76, green: 0.96, blue: 0.58),
+                    Color(red: 0.63, green: 0.92, blue: 0.49),
+                    Color(red: 0.53, green: 0.88, blue: 0.45),
+                    Color(red: 0.64, green: 0.93, blue: 0.56),
+                    Color(red: 0.78, green: 0.97, blue: 0.68)
+                ],
+                center: .center
+            )
+        )
     }
 
     var body: some View {
         ZStack {
             if ringStyle == .memoryGradient {
+                if normalizedValue < 1 {
+                    Circle()
+                        .trim(from: normalizedValue, to: 1)
+                        .stroke(availableStroke, style: remainderStrokeStyle)
+                        .rotationEffect(.degrees(-90))
+                }
+
+                if normalizedValue > 0 {
+                    Circle()
+                        .trim(from: 0, to: normalizedValue)
+                        .stroke(activeStroke, style: activeStrokeStyle)
+                        .rotationEffect(.degrees(-90))
+                }
+
                 Circle()
-                    .stroke(activeStroke, style: activeStrokeStyle)
-                    .rotationEffect(.degrees(-90))
-                    .overlay {
-                        Circle()
-                            .trim(from: normalizedValue, to: 1)
-                            .stroke(memoryRemainderColor, style: remainderStrokeStyle)
-                            .rotationEffect(.degrees(-90))
-                    }
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
-                                lineWidth: 1
-                            )
-                            .padding(-5)
-                    }
+                    .stroke(
+                        palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
+                        lineWidth: 1
+                    )
+                    .padding(-5)
             } else {
                 Circle()
                     .stroke(trackColor, lineWidth: 8)
