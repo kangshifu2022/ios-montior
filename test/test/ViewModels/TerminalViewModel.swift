@@ -12,11 +12,15 @@ final class TerminalViewModel: ObservableObject {
     @Published var isShowingLaunchSheet = false
     @Published private(set) var recoverableSessions: [TerminalSavedSession] = []
     @Published private(set) var latestSnapshot: TerminalSavedSession?
+    @Published private(set) var remoteTmuxSessions: [TerminalRemoteTmuxSession] = []
+    @Published private(set) var isRefreshingRemoteTmuxSessions = false
+    @Published private(set) var remoteTmuxStatusText: String?
 
     let server: ServerConfig
 
     private let session: TerminalSession
     private var sessionTask: Task<Void, Never>?
+    private var remoteTmuxFetchTask: Task<Void, Never>?
     private var outputSink: (([UInt8]) -> Void)?
     private var pendingOutput: [[UInt8]] = []
     private var terminalSize = TerminalSize.fallback
@@ -71,10 +75,6 @@ final class TerminalViewModel: ObservableObject {
         activeSessionRecord?.kind == .persistentTmux
     }
 
-    var hasSavedLaunchChoices: Bool {
-        !recoverableSessions.isEmpty || latestSnapshot != nil
-    }
-
     func prepareLaunchIfNeeded() {
         guard !hasPreparedLaunch else { return }
         hasPreparedLaunch = true
@@ -82,7 +82,7 @@ final class TerminalViewModel: ObservableObject {
 
         let restorePolicy = TerminalPersistenceStore.restorePolicy()
         let defaultMode = TerminalPersistenceStore.defaultConnectionMode()
-        let shouldAsk = restorePolicy == .askEveryTime && hasSavedLaunchChoices
+        let shouldAsk = restorePolicy == .askEveryTime
 
         if shouldAsk {
             isShowingLaunchSheet = true
@@ -129,9 +129,53 @@ final class TerminalViewModel: ObservableObject {
         activate(record)
     }
 
+    func startPersistentSession(named requestedSessionName: String?) {
+        let record = TerminalPersistenceStore.createPersistentSession(
+            for: server,
+            preferredSessionName: requestedSessionName
+        )
+        activate(record)
+    }
+
     func resumePersistentSession(_ session: TerminalSavedSession) {
         let record = TerminalPersistenceStore.markAttached(session)
         activate(record)
+    }
+
+    func refreshRemoteTmuxSessionsIfNeeded() {
+        guard remoteTmuxSessions.isEmpty,
+              remoteTmuxStatusText == nil,
+              !isRefreshingRemoteTmuxSessions else {
+            return
+        }
+
+        refreshRemoteTmuxSessions()
+    }
+
+    func refreshRemoteTmuxSessions() {
+        remoteTmuxFetchTask?.cancel()
+        isRefreshingRemoteTmuxSessions = true
+        if remoteTmuxSessions.isEmpty {
+            remoteTmuxStatusText = nil
+        }
+
+        let server = self.server
+        remoteTmuxFetchTask = Task {
+            let result = await TerminalTmuxService.fetchSessions(config: server)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                switch result {
+                case .success(let snapshot):
+                    self.remoteTmuxSessions = snapshot.sessions
+                    self.remoteTmuxStatusText = snapshot.notice
+                case .failure(let error):
+                    self.remoteTmuxStatusText = error.message
+                }
+                self.isRefreshingRemoteTmuxSessions = false
+                self.remoteTmuxFetchTask = nil
+            }
+        }
     }
 
     func reconnect() {
@@ -143,6 +187,9 @@ final class TerminalViewModel: ObservableObject {
     func disconnect(clearError: Bool = false) {
         keepsSessionAlive = false
         exitRequestedByUser = false
+        remoteTmuxFetchTask?.cancel()
+        remoteTmuxFetchTask = nil
+        isRefreshingRemoteTmuxSessions = false
         flushScrollbackNowIfNeeded()
         scrollbackFlushTask?.cancel()
         scrollbackFlushTask = nil
@@ -207,6 +254,10 @@ final class TerminalViewModel: ObservableObject {
 
     func sendPipe() {
         send(text: "|")
+    }
+
+    func sendTmuxList() {
+        send(text: "tmux ls\n")
     }
 
     func sendExit() {
@@ -294,6 +345,9 @@ final class TerminalViewModel: ObservableObject {
     }
 
     private func activate(_ record: TerminalSavedSession) {
+        remoteTmuxFetchTask?.cancel()
+        remoteTmuxFetchTask = nil
+        isRefreshingRemoteTmuxSessions = false
         lastError = nil
         terminalTitle = nil
         shouldDismissTerminal = false

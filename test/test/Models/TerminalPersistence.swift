@@ -64,6 +64,27 @@ enum TerminalSavedSessionKind: String, Codable, Hashable, Sendable {
     case persistentTmux
 }
 
+struct TerminalRemoteTmuxSession: Identifiable, Hashable, Sendable {
+    var name: String
+    var windowCount: Int?
+    var isAttached: Bool
+
+    var id: String { name }
+
+    var detailText: String {
+        var fragments: [String] = []
+
+        if let windowCount {
+            fragments.append("\(windowCount) 个窗口")
+        }
+        if isAttached {
+            fragments.append("当前已附着")
+        }
+
+        return fragments.joined(separator: " · ")
+    }
+}
+
 struct TerminalSavedSession: Identifiable, Codable, Hashable, Sendable {
     var id: String
     var serverID: UUID

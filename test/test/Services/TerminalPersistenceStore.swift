@@ -48,10 +48,31 @@ enum TerminalPersistenceStore {
     }
 
     static func createPersistentSession(for server: ServerConfig) -> TerminalSavedSession {
+        createPersistentSession(for: server, preferredSessionName: nil)
+    }
+
+    static func createPersistentSession(for server: ServerConfig, preferredSessionName: String?) -> TerminalSavedSession {
         let now = Date()
-        let sessionName = makeSessionName(for: server, at: now)
+        let trimmedSessionName = preferredSessionName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sessionName = {
+            if let trimmedSessionName, !trimmedSessionName.isEmpty {
+                return trimmedSessionName
+            }
+            return makeSessionName(for: server, at: now)
+        }()
+        let recordID = persistentRecordID(for: server.id, sessionName: sessionName)
+
+        if let existing = updateRecord(id: recordID) { record in
+            record.serverName = server.name
+            record.sessionName = sessionName
+            record.lastAttachedAt = now
+            record.allowsResume = true
+        } {
+            return existing
+        }
+
         let record = TerminalSavedSession(
-            id: persistentRecordID(for: server.id, sessionName: sessionName),
+            id: recordID,
             serverID: server.id,
             serverName: server.name,
             kind: .persistentTmux,

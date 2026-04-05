@@ -44,8 +44,14 @@ struct TerminalView: View {
                 server: server,
                 recoverableSessions: viewModel.recoverableSessions,
                 latestSnapshot: viewModel.latestSnapshot,
+                remoteTmuxSessions: viewModel.remoteTmuxSessions,
+                isRefreshingRemoteTmuxSessions: viewModel.isRefreshingRemoteTmuxSessions,
+                remoteTmuxStatusText: viewModel.remoteTmuxStatusText,
                 onResume: { session in
                     viewModel.resumePersistentSession(session)
+                },
+                onStartNamedPersistentSession: { sessionName in
+                    viewModel.startPersistentSession(named: sessionName)
                 },
                 onNewPersistentSession: {
                     viewModel.startNewPersistentSession()
@@ -53,8 +59,14 @@ struct TerminalView: View {
                 onDirectSession: {
                     viewModel.startDirectSession()
                 },
+                onRefreshRemoteTmuxSessions: {
+                    viewModel.refreshRemoteTmuxSessions()
+                },
                 onCloseTerminal: dismissTerminal
             )
+            .task {
+                viewModel.refreshRemoteTmuxSessionsIfNeeded()
+            }
         }
         .alert("终端错误", isPresented: errorPresented) {
             Button("知道了", role: .cancel) {

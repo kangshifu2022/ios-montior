@@ -60,6 +60,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
                 .init(title: "Esc", action: { viewModel.sendEscape() }),
                 .init(title: "Tab", action: { viewModel.sendTab() }),
+                .init(title: "tmux ls", action: { viewModel.sendTmuxList() }),
                 .init(title: "/", action: { viewModel.sendSlash() }),
                 .init(title: "-", action: { viewModel.sendDash() }),
                 .init(title: "|", action: { viewModel.sendPipe() }),
