@@ -502,11 +502,7 @@ private struct ExperimentalServerCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-
-            HStack(alignment: .center, spacing: 12) {
-                metricRings
-                infoPanel
-            }
+            balancedMetricRow
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
@@ -570,37 +566,50 @@ private struct ExperimentalServerCard: View {
         }
     }
 
-    private var metricRings: some View {
-        HStack(spacing: 18) {
-            ExperimentalMetricTile(
-                label: "CPU %",
-                percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
-                valueTint: cpuUsageTint,
-                ringStyle: .standard,
-                palette: palette
-            )
+    private var balancedMetricRow: some View {
+        HStack(alignment: .center, spacing: 10) {
+            cpuMetricCell
+            memMetricCell
 
-            ExperimentalMetricTile(
-                label: "MEM %",
-                percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
-                valueTint: palette.memoryAccent,
-                ringStyle: .memoryGradient,
+            ExperimentalRateMetricColumn(
+                topItem: uploadMetric,
+                bottomItem: downloadMetric,
+                accent: palette.memoryAccent,
                 palette: palette
             )
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            ExperimentalRateMetricColumn(
+                topItem: diskReadMetric,
+                bottomItem: diskWriteMetric,
+                accent: palette.memoryAccent,
+                palette: palette
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 140, height: 88, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84, alignment: .leading)
     }
 
-    private var infoPanel: some View {
-        ExperimentalRateMetricGrid(
-            topLeft: uploadMetric,
-            topRight: diskReadMetric,
-            bottomLeft: downloadMetric,
-            bottomRight: diskWriteMetric,
-            accent: palette.memoryAccent,
+    private var cpuMetricCell: some View {
+        ExperimentalMetricTile(
+            label: "CPU %",
+            percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
+            valueTint: cpuUsageTint,
+            ringStyle: .standard,
             palette: palette
         )
-        .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var memMetricCell: some View {
+        ExperimentalMetricTile(
+            label: "MEM %",
+            percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
+            valueTint: palette.memoryAccent,
+            ringStyle: .memoryGradient,
+            palette: palette
+        )
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var terminalButton: some View {
@@ -942,43 +951,25 @@ private struct ExperimentalRateMetricDescriptor: Identifiable {
     let parts: ExperimentalRateParts
 }
 
-private struct ExperimentalRateMetricGrid: View {
-    let topLeft: ExperimentalRateMetricDescriptor
-    let topRight: ExperimentalRateMetricDescriptor
-    let bottomLeft: ExperimentalRateMetricDescriptor
-    let bottomRight: ExperimentalRateMetricDescriptor
+private struct ExperimentalRateMetricColumn: View {
+    let topItem: ExperimentalRateMetricDescriptor
+    let bottomItem: ExperimentalRateMetricDescriptor
     let accent: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        HStack(alignment: .top, spacing: 18) {
-            VStack(alignment: .leading, spacing: 12) {
-                ExperimentalRateMetric(
-                    item: topLeft,
-                    accent: accent,
-                    palette: palette
-                )
+        VStack(alignment: .leading, spacing: 12) {
+            ExperimentalRateMetric(
+                item: topItem,
+                accent: accent,
+                palette: palette
+            )
 
-                ExperimentalRateMetric(
-                    item: bottomLeft,
-                    accent: accent,
-                    palette: palette
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                ExperimentalRateMetric(
-                    item: topRight,
-                    accent: accent,
-                    palette: palette
-                )
-
-                ExperimentalRateMetric(
-                    item: bottomRight,
-                    accent: accent,
-                    palette: palette
-                )
-            }
+            ExperimentalRateMetric(
+                item: bottomItem,
+                accent: accent,
+                palette: palette
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1004,7 +995,7 @@ private struct ExperimentalRateMetric: View {
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             Text(item.parts.displayNumber)
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .font(.system(size: 21, weight: .semibold, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
