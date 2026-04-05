@@ -82,12 +82,12 @@ struct DevicesExperimentalView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("还没有服务器")
                 .font(.system(size: 26, weight: .bold, design: .rounded))
                 .foregroundColor(palette.primaryText)
 
-            Text("实验版首屏已经切到点阵方案。先去设置里添加服务器，我们再继续打磨卡片气质。")
+            Text("实验版首屏已经切到环形指标方案。先去设置里添加服务器，我们再继续打磨卡片气质。")
                 .font(.subheadline)
                 .foregroundColor(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -119,11 +119,11 @@ private struct ExperimentalOverviewHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("10 x 10 Dash Matrix")
+                Text("Device Pulse Board")
                     .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .foregroundColor(palette.primaryText)
 
-                Text("实验版设备卡片已经切到新首屏样式，左侧看 CPU / MEM 点阵，右侧对照 WLAN / DISK 速率，顶部保留温度和终端入口。")
+                Text("实验版设备卡片已经切到新首屏样式，左侧看 CPU / MEM 圆环，右侧对照 NET / I/O 速率，顶部保留温度和终端入口。")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundColor(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -146,8 +146,8 @@ private struct ExperimentalOverviewHero: View {
                     )
 
                     ExperimentalSummaryPill(
-                        title: "矩阵",
-                        value: "10 x 10",
+                        title: "样式",
+                        value: "Ring",
                         tint: palette.memoryAccent,
                         palette: palette
                     )
@@ -169,8 +169,8 @@ private struct ExperimentalOverviewHero: View {
                     )
 
                     ExperimentalSummaryPill(
-                        title: "矩阵",
-                        value: "10 x 10",
+                        title: "样式",
+                        value: "Ring",
                         tint: palette.memoryAccent,
                         palette: palette
                     )
@@ -230,14 +230,13 @@ private struct ExperimentalServerCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 18) {
             header
 
-            HStack(alignment: .bottom, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
                 ExperimentalMetricTile(
                     label: "CPU",
                     percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
-                    matrixTint: palette.matrixAccent,
                     valueTint: palette.memoryAccent,
                     palette: palette
                 )
@@ -245,13 +244,12 @@ private struct ExperimentalServerCard: View {
                 ExperimentalMetricTile(
                     label: "MEM",
                     percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
-                    matrixTint: palette.matrixAccent,
                     valueTint: palette.memoryAccent,
                     palette: palette
                 )
 
                 ExperimentalRateColumn(
-                    title: "WLAN",
+                    title: "NET",
                     primaryValue: uploadSpeedText,
                     primaryCaption: "upload",
                     secondaryValue: downloadSpeedText,
@@ -261,7 +259,7 @@ private struct ExperimentalServerCard: View {
                 )
 
                 ExperimentalRateColumn(
-                    title: "DISK",
+                    title: "I/O",
                     primaryValue: diskReadSpeedText,
                     primaryCaption: "read",
                     secondaryValue: diskWriteSpeedText,
@@ -273,8 +271,8 @@ private struct ExperimentalServerCard: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 20)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
         .overlay(
@@ -289,15 +287,15 @@ private struct ExperimentalServerCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(config.name)
-                    .font(.system(size: 29, weight: .light, design: .rounded))
+                    .font(.system(size: 19, weight: .light, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 12)
 
             HStack(spacing: 14) {
                 if let cpuTemperatureText {
@@ -441,38 +439,92 @@ private struct ExperimentalServerCard: View {
 private struct ExperimentalMetricTile: View {
     let label: String
     let percentage: Int?
-    let matrixTint: Color
     let valueTint: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                ExperimentalDotMatrix(
-                    percentage: percentage,
-                    tint: matrixTint,
-                    palette: palette
-                )
-                .frame(maxWidth: .infinity, alignment: .center)
-                .frame(height: 86)
-
-                ExperimentalRollingPercentageText(
-                    percentage: percentage,
-                    tint: valueTint
-                )
-                .frame(width: 68, alignment: .center)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            }
+        VStack(spacing: 10) {
+            ExperimentalUsageRing(
+                percentage: percentage,
+                tint: valueTint,
+                palette: palette
+            )
             .frame(maxWidth: .infinity, alignment: .center)
+            .frame(height: 78)
 
             Text(label)
-                .font(.system(size: 16, weight: .light, design: .rounded))
+                .font(.system(size: 14, weight: .light, design: .rounded))
                 .foregroundColor(palette.secondaryText)
-                .tracking(0.5)
+                .tracking(0.4)
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .layoutPriority(1)
         .opacity(percentage == nil ? 0.78 : 1)
+    }
+}
+
+private struct ExperimentalUsageRing: View {
+    let percentage: Int?
+    let tint: Color
+    let palette: ExperimentalHomePalette
+
+    private var normalizedValue: Double {
+        Double(min(max(percentage ?? 0, 0), 100)) / 100
+    }
+
+    private var trackColor: Color {
+        palette.isDark ? Color.white.opacity(0.14) : Color(.systemGray5)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(trackColor, lineWidth: 9)
+
+            Circle()
+                .trim(from: 0, to: normalizedValue)
+                .stroke(
+                    tint,
+                    style: StrokeStyle(lineWidth: 9, lineCap: .butt)
+                )
+                .rotationEffect(.degrees(-90))
+
+            ExperimentalRingPercentageText(
+                percentage: percentage,
+                tint: tint
+            )
+        }
+        .frame(width: 68, height: 68)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage ?? -1)
+    }
+}
+
+private struct ExperimentalRingPercentageText: View {
+    let percentage: Int?
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: -2) {
+            Group {
+                if let percentage {
+                    Text("\(percentage)")
+                        .contentTransition(.numericText(value: Double(percentage)))
+                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
+                } else {
+                    Text("--")
+                }
+            }
+            .font(.system(size: 23, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+
+            Text("%")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .opacity(percentage == nil ? 0 : 0.62)
+        }
+        .foregroundColor(tint)
     }
 }
 
@@ -486,7 +538,7 @@ private struct ExperimentalRateColumn: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             ExperimentalRateValue(
                 value: primaryValue,
                 caption: primaryCaption,
@@ -502,9 +554,9 @@ private struct ExperimentalRateColumn: View {
             )
 
             Text(title)
-                .font(.system(size: 16, weight: .light, design: .rounded))
+                .font(.system(size: 14, weight: .light, design: .rounded))
                 .foregroundColor(palette.secondaryText)
-                .tracking(0.5)
+                .tracking(0.4)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .layoutPriority(1)
@@ -539,7 +591,7 @@ private struct ExperimentalRateValue: View {
                     Text(parts.displayNumber)
                 }
             }
-                .font(.system(size: 31, weight: .semibold, design: .rounded))
+                .font(.system(size: 24, weight: .semibold, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -560,38 +612,10 @@ private struct ExperimentalRateValue: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
             }
-            .frame(width: 34, height: 32, alignment: .center)
+            .frame(width: 34, height: 28, alignment: .center)
         }
-        .frame(height: 40, alignment: .center)
+        .frame(height: 34, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct ExperimentalRollingPercentageText: View {
-    let percentage: Int?
-    let tint: Color
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 2) {
-            Group {
-                if let percentage {
-                    Text("\(percentage)")
-                        .contentTransition(.numericText(value: Double(percentage)))
-                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
-                } else {
-                    Text("--")
-                }
-            }
-
-            Text("%")
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .opacity(percentage == nil ? 0 : 0.62)
-        }
-        .font(.system(size: 24, weight: .semibold, design: .rounded))
-        .foregroundColor(tint)
-        .monospacedDigit()
-        .lineLimit(1)
-        .minimumScaleFactor(0.72)
     }
 }
 
@@ -656,105 +680,6 @@ private struct ExperimentalRateParts {
         }
 
         return nil
-    }
-}
-
-private struct ExperimentalDotMatrix: View {
-    let percentage: Int?
-    let tint: Color
-    let palette: ExperimentalHomePalette
-
-    private let size = 10
-
-    private var normalizedLevel: Double {
-        Double(min(max(percentage ?? 0, 0), 100)) / 100
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = max(geometry.size.width, 1)
-            let height = max(geometry.size.height, 1)
-            let horizontalSpacing: CGFloat = width < 120 ? 1.4 : 1.8
-            let verticalSpacing: CGFloat = height < 72 ? 1.2 : 1.5
-            let tileWidth = max((width - (horizontalSpacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
-            let tileHeight = max((height - (verticalSpacing * CGFloat(size - 1))) / CGFloat(size), 1.8)
-            let dashWidth = max(tileWidth * 0.88, 1.8)
-            let dashHeight = max(tileHeight * 0.30, 1.2)
-
-            VStack(spacing: verticalSpacing) {
-                ForEach(0..<size, id: \.self) { visualRow in
-                    HStack(spacing: horizontalSpacing) {
-                        ForEach(0..<size, id: \.self) { column in
-                            let logicalRow = (size - 1) - visualRow
-                            let activation = activationLevel(for: logicalRow, column: column)
-
-                            RoundedRectangle(
-                                cornerRadius: dashHeight / 2,
-                                style: .continuous
-                            )
-                                .fill(fillColor(for: activation))
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: dashHeight / 2,
-                                        style: .continuous
-                                    )
-                                        .stroke(borderColor(for: activation), lineWidth: 0.3)
-                                )
-                                .frame(width: dashWidth, height: dashHeight)
-                                .frame(width: tileWidth, height: tileHeight)
-                                .scaleEffect(scale(for: activation))
-                        }
-                    }
-                }
-            }
-            .frame(width: width, height: height)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage ?? -1)
-    }
-
-    private func activationLevel(for logicalRow: Int, column: Int) -> Double {
-        let threshold = activationThreshold(for: logicalRow, column: column)
-        return normalizedLevel - threshold
-    }
-
-    private func activationThreshold(for logicalRow: Int, column: Int) -> Double {
-        let rowProgress = Double(logicalRow) / Double(max(size - 1, 1))
-        let center = Double(size - 1) / 2
-        let centerDistance = abs(Double(column) - center) / max(center, 1)
-        let columnBias = centerDistance * 0.16
-        let staggerPattern = ((logicalRow * 7) + (column * 11)) % 9
-        let stagger = Double(staggerPattern) / 100
-        let rowBias = rowProgress * 0.74
-
-        return min(max(rowBias + columnBias + stagger, 0), 0.98)
-    }
-
-    private func fillColor(for activation: Double) -> Color {
-        guard activation > 0 else {
-            return palette.matrixInactive
-        }
-
-        let intensity = min(max(activation / 0.22, 0), 1)
-        return tint.opacity(0.42 + (intensity * 0.36))
-    }
-
-    private func borderColor(for activation: Double) -> Color {
-        guard activation > 0 else {
-            return palette.inactiveMatrixBorder
-        }
-
-        let intensity = min(max(activation / 0.22, 0), 1)
-        return tint.opacity(0.16 + (intensity * 0.16))
-    }
-
-    private func scale(for activation: Double) -> CGFloat {
-        guard activation > 0 else {
-            return 0.78
-        }
-
-        let intensity = min(max(activation / 0.22, 0), 1)
-        return 0.82 + (intensity * 0.10)
     }
 }
 
