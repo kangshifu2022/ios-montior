@@ -29,9 +29,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 columns: terminal.cols,
                 rows: terminal.rows
             )
-            viewModel.connectIfNeeded()
-            _ = terminalView.becomeFirstResponder()
-            terminalView.reloadInputViews()
         }
 
         return terminalView

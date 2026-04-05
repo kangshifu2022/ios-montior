@@ -22,7 +22,11 @@ actor TerminalSession {
         self.server = server
     }
 
-    func start(terminalSize: TerminalSize, onEvent: @escaping @Sendable (Event) async -> Void) async {
+    func start(
+        terminalSize: TerminalSize,
+        bootstrapCommand: String? = nil,
+        onEvent: @escaping @Sendable (Event) async -> Void
+    ) async {
         isStopping = false
         await onEvent(.connecting(server.host))
 
@@ -72,6 +76,10 @@ actor TerminalSession {
                 }
 
                 await onEvent(.connected)
+
+                if let bootstrapCommand, !bootstrapCommand.isEmpty {
+                    try await ttyStdinWriter.write(ByteBuffer(bytes: Array(bootstrapCommand.utf8)))
+                }
 
                 for try await event in ttyOutput {
                     let bytes: [UInt8]

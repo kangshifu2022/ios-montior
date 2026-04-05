@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var store: ServerStore
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
+    @AppStorage(TerminalDefaultConnectionMode.storageKey) private var terminalDefaultConnectionModeRawValue = TerminalDefaultConnectionMode.persistentTmux.rawValue
+    @AppStorage(TerminalRestorePolicy.storageKey) private var terminalRestorePolicyRawValue = TerminalRestorePolicy.askEveryTime.rawValue
     @State private var showAddServer = false
     @State private var editingServer: ServerConfig? = nil
     
@@ -25,6 +27,40 @@ struct SettingsView: View {
                     }
 
                     Text(selectedExperimentalHomeTheme.subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+
+                Section(header: Text("终端")) {
+                    Picker("默认连接模式", selection: $terminalDefaultConnectionModeRawValue) {
+                        ForEach(TerminalDefaultConnectionMode.allCases) { mode in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(mode.title)
+                                Text(mode.subtitle)
+                            }
+                            .tag(mode.rawValue)
+                        }
+                    }
+
+                    Text(selectedTerminalDefaultConnectionMode.subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    Picker("恢复策略", selection: $terminalRestorePolicyRawValue) {
+                        ForEach(TerminalRestorePolicy.allCases) { policy in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(policy.title)
+                                Text(policy.subtitle)
+                            }
+                            .tag(policy.rawValue)
+                        }
+                    }
+
+                    Text(selectedTerminalRestorePolicy.subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    Text("持久 tmux 模式会在本地记住最近的远端会话和输出预览，适合长时间任务和意外恢复。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
@@ -71,5 +107,13 @@ struct SettingsView: View {
 
     private var selectedExperimentalHomeTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
+    }
+
+    private var selectedTerminalDefaultConnectionMode: TerminalDefaultConnectionMode {
+        TerminalDefaultConnectionMode(rawValue: terminalDefaultConnectionModeRawValue) ?? .persistentTmux
+    }
+
+    private var selectedTerminalRestorePolicy: TerminalRestorePolicy {
+        TerminalRestorePolicy(rawValue: terminalRestorePolicyRawValue) ?? .askEveryTime
     }
 }

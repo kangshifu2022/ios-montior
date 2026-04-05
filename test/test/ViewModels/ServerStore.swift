@@ -719,10 +719,17 @@ final class ServerStore: ObservableObject {
 
     private func formatRate(_ bytesPerSecond: Double) -> String {
         let kilobytesPerSecond = max(0, bytesPerSecond) / 1024
-        if kilobytesPerSecond < 1024 {
-            return String(format: "%.1fk/s", kilobytesPerSecond)
+        let roundedKilobytesPerSecond = (kilobytesPerSecond * 10).rounded() / 10
+
+        if roundedKilobytesPerSecond <= 0 {
+            return "0k/s"
         }
-        return String(format: "%.1fMB/s", kilobytesPerSecond / 1024)
+
+        if roundedKilobytesPerSecond < 1024 {
+            return String(format: "%.1fk/s", roundedKilobytesPerSecond)
+        }
+
+        return String(format: "%.1fMB/s", roundedKilobytesPerSecond / 1024)
     }
 
     private func refreshStartDelay(
