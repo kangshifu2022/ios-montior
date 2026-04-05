@@ -3,6 +3,8 @@ import SwiftTerm
 
 final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     private var isReviewingScrollback = false
+    private var lastKnownBoundsHeight: CGFloat?
+    private var lastKnownAdjustedInsets: UIEdgeInsets?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -17,17 +19,56 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     override func scrolled(source terminal: Terminal, yDisp: Int) {
         let previousOffset = contentOffset
         let previousContentSize = contentSize
+        let previousBoundsHeight = bounds.height
+        let previousInsets = adjustedContentInset
 
         super.scrolled(source: terminal, yDisp: yDisp)
-        restoreViewportIfNeeded(previousOffset: previousOffset, previousContentSize: previousContentSize)
+        restoreViewportIfNeeded(
+            previousOffset: previousOffset,
+            previousContentSize: previousContentSize,
+            previousBoundsHeight: previousBoundsHeight,
+            previousInsets: previousInsets,
+            keepDistanceFromBottom: isReviewingScrollback
+        )
     }
 
     override func sizeChanged(source: Terminal) {
         let previousOffset = contentOffset
         let previousContentSize = contentSize
+        let previousBoundsHeight = bounds.height
+        let previousInsets = adjustedContentInset
 
         super.sizeChanged(source: source)
-        restoreViewportIfNeeded(previousOffset: previousOffset, previousContentSize: previousContentSize)
+        restoreViewportIfNeeded(
+            previousOffset: previousOffset,
+            previousContentSize: previousContentSize,
+            previousBoundsHeight: previousBoundsHeight,
+            previousInsets: previousInsets,
+            keepDistanceFromBottom: isReviewingScrollback
+        )
+    }
+
+    override func layoutSubviews() {
+        let previousOffset = contentOffset
+        let previousContentSize = contentSize
+        let previousBoundsHeight = lastKnownBoundsHeight ?? bounds.height
+        let previousInsets = lastKnownAdjustedInsets ?? adjustedContentInset
+        let wasReviewingScrollback = isReviewingScrollback
+
+        super.layoutSubviews()
+
+        if updateKeyboardInsetsIfNeeded() {
+            restoreViewportIfNeeded(
+                previousOffset: previousOffset,
+                previousContentSize: previousContentSize,
+                previousBoundsHeight: previousBoundsHeight,
+                previousInsets: previousInsets,
+                keepDistanceFromBottom: wasReviewingScrollback
+            )
+        }
+
+        lastKnownBoundsHeight = bounds.height
+        lastKnownAdjustedInsets = adjustedContentInset
     }
 
     private func configureScrollbackBehavior() {
@@ -47,22 +88,73 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     }
 
     private func updateScrollbackReviewState() {
-        let maxOffsetY = max(0, contentSize.height - bounds.height)
+        let maxOffsetY = maxScrollableOffsetY(
+            contentSize: contentSize,
+            boundsHeight: bounds.height,
+            insets: adjustedContentInset
+        )
         let distanceFromBottom = max(0, maxOffsetY - contentOffset.y)
         isReviewingScrollback = distanceFromBottom > bottomFollowThreshold
     }
 
-    private func restoreViewportIfNeeded(previousOffset: CGPoint, previousContentSize: CGSize) {
-        guard isReviewingScrollback else { return }
-
-        let previousMaxOffsetY = max(0, previousContentSize.height - bounds.height)
-        let newMaxOffsetY = max(0, contentSize.height - bounds.height)
+    private func restoreViewportIfNeeded(
+        previousOffset: CGPoint,
+        previousContentSize: CGSize,
+        previousBoundsHeight: CGFloat,
+        previousInsets: UIEdgeInsets,
+        keepDistanceFromBottom: Bool
+    ) {
+        let previousMaxOffsetY = maxScrollableOffsetY(
+            contentSize: previousContentSize,
+            boundsHeight: previousBoundsHeight,
+            insets: previousInsets
+        )
+        let newMaxOffsetY = maxScrollableOffsetY(
+            contentSize: contentSize,
+            boundsHeight: bounds.height,
+            insets: adjustedContentInset
+        )
         let distanceFromBottom = max(0, previousMaxOffsetY - previousOffset.y)
-        let targetOffsetY = max(0, min(newMaxOffsetY - distanceFromBottom, newMaxOffsetY))
+
+        let targetOffsetY: CGFloat
+        if keepDistanceFromBottom {
+            targetOffsetY = clampOffsetY(newMaxOffsetY - distanceFromBottom, maxOffsetY: newMaxOffsetY)
+        } else if distanceFromBottom <= bottomFollowThreshold {
+            targetOffsetY = newMaxOffsetY
+        } else {
+            return
+        }
 
         if abs(contentOffset.y - targetOffsetY) > 0.5 {
             setContentOffset(CGPoint(x: contentOffset.x, y: targetOffsetY), animated: false)
         }
+    }
+
+    private func updateKeyboardInsetsIfNeeded() -> Bool {
+        let overlap = keyboardOverlapHeight()
+        guard abs(contentInset.bottom - overlap) > 0.5
+                || abs(verticalScrollIndicatorInsets.bottom - overlap) > 0.5 else {
+            return false
+        }
+
+        contentInset.bottom = overlap
+        verticalScrollIndicatorInsets.bottom = overlap
+        return true
+    }
+
+    private func keyboardOverlapHeight() -> CGFloat {
+        guard window != nil else { return 0 }
+        let keyboardFrame = keyboardLayoutGuide.layoutFrame
+        guard !keyboardFrame.isEmpty else { return 0 }
+        return max(0, bounds.maxY - keyboardFrame.minY)
+    }
+
+    private func maxScrollableOffsetY(contentSize: CGSize, boundsHeight: CGFloat, insets: UIEdgeInsets) -> CGFloat {
+        max(-insets.top, contentSize.height - boundsHeight + insets.bottom)
+    }
+
+    private func clampOffsetY(_ value: CGFloat, maxOffsetY: CGFloat) -> CGFloat {
+        max(-adjustedContentInset.top, min(value, maxOffsetY))
     }
 
     private var bottomFollowThreshold: CGFloat {

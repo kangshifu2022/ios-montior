@@ -14,6 +14,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         let terminalView = ScrollbackTerminalView(frame: .zero)
         terminalView.terminalDelegate = context.coordinator
         context.coordinator.terminalView = terminalView
+        terminalView.allowMouseReporting = false
         terminalView.inputAccessoryView = makeShortcutAccessory(for: terminalView)
         applyAppearance(to: terminalView)
 
@@ -36,6 +37,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {
         context.coordinator.terminalView = uiView
+        uiView.allowMouseReporting = false
         uiView.inputAccessoryView = makeShortcutAccessory(for: uiView)
         applyAppearance(to: uiView)
         uiView.reloadInputViews()
