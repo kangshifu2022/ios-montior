@@ -1,17 +1,17 @@
 import UIKit
 
 final class TerminalShortcutAccessoryView: UIInputView {
-    private static let preferredHeight: CGFloat = 92
+    private static let preferredHeight: CGFloat = 76
 
     struct ShortcutItem {
         let title: String
         let action: () -> Void
     }
 
-    private let items: [ShortcutItem]
+    private let rows: [[ShortcutItem]]
 
-    init(items: [ShortcutItem]) {
-        self.items = items
+    init(rows: [[ShortcutItem]]) {
+        self.rows = rows
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.preferredHeight), inputViewStyle: .keyboard)
         allowsSelfSizing = true
         setupUI()
@@ -51,31 +51,28 @@ final class TerminalShortcutAccessoryView: UIInputView {
         let contentStack = UIStackView()
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
-        contentStack.spacing = 8
+        contentStack.spacing = 5
         contentStack.alignment = .leading
-        contentStack.layoutMargins = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        contentStack.layoutMargins = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         contentStack.isLayoutMarginsRelativeArrangement = true
         scrollView.addSubview(contentStack)
-
-        let midpoint = Int(ceil(Double(items.count) / 2.0))
-        let rows = [Array(items.prefix(midpoint)), Array(items.dropFirst(midpoint))]
 
         for rowItems in rows where !rowItems.isEmpty {
             let rowStack = UIStackView()
             rowStack.axis = .horizontal
-            rowStack.spacing = 8
+            rowStack.spacing = 5
             rowStack.alignment = .center
 
             for item in rowItems {
                 let button = UIButton(type: .system)
                 var configuration = UIButton.Configuration.plain()
-                configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+                configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
                 button.configuration = configuration
                 button.setTitle(item.title, for: .normal)
-                button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+                button.titleLabel?.font = .systemFont(ofSize: 12, weight: .medium)
                 button.setTitleColor(.label, for: .normal)
                 button.backgroundColor = .tertiarySystemFill
-                button.layer.cornerRadius = 12
+                button.layer.cornerRadius = 10
                 button.addAction(UIAction { _ in
                     item.action()
                 }, for: .touchUpInside)

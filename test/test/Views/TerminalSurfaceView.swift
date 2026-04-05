@@ -14,7 +14,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         let terminalView = SwiftTerm.TerminalView(frame: .zero)
         terminalView.terminalDelegate = context.coordinator
         context.coordinator.terminalView = terminalView
-        terminalView.inputAccessoryView = makeShortcutAccessory()
+        terminalView.inputAccessoryView = makeShortcutAccessory(for: terminalView)
         applyAppearance(to: terminalView)
 
         viewModel.attachOutputSink { [weak terminalView] bytes in
@@ -39,7 +39,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {
         context.coordinator.terminalView = uiView
-        uiView.inputAccessoryView = makeShortcutAccessory()
+        uiView.inputAccessoryView = makeShortcutAccessory(for: uiView)
         applyAppearance(to: uiView)
         uiView.reloadInputViews()
     }
@@ -57,21 +57,26 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminalView.selectedTextBackgroundColor = palette.selection
     }
 
-    private func makeShortcutAccessory() -> UIView {
-        TerminalShortcutAccessoryView(items: [
-            .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
-            .init(title: "Esc", action: { viewModel.sendEscape() }),
-            .init(title: "Tab", action: { viewModel.sendTab() }),
-            .init(title: "/", action: { viewModel.sendSlash() }),
-            .init(title: "|", action: { viewModel.sendPipe() }),
-            .init(title: "exit", action: { viewModel.sendExit() }),
-            .init(title: "Home", action: { viewModel.sendHome() }),
-            .init(title: "End", action: { viewModel.sendEnd() }),
-            .init(title: "↑", action: { viewModel.sendArrowUp() }),
-            .init(title: "↓", action: { viewModel.sendArrowDown() }),
-            .init(title: "←", action: { viewModel.sendArrowLeft() }),
-            .init(title: "→", action: { viewModel.sendArrowRight() }),
-            .init(title: "^L", action: { viewModel.sendClearScreen() })
+    private func makeShortcutAccessory(for terminalView: SwiftTerm.TerminalView) -> UIView {
+        TerminalShortcutAccessoryView(rows: [
+            [
+                .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
+                .init(title: "Esc", action: { viewModel.sendEscape() }),
+                .init(title: "Tab", action: { viewModel.sendTab() }),
+                .init(title: "/", action: { viewModel.sendSlash() }),
+                .init(title: "|", action: { viewModel.sendPipe() }),
+                .init(title: "exit", action: { viewModel.sendExit() })
+            ],
+            [
+                .init(title: "收起", action: { _ = terminalView.resignFirstResponder() }),
+                .init(title: "Home", action: { viewModel.sendHome() }),
+                .init(title: "End", action: { viewModel.sendEnd() }),
+                .init(title: "^L", action: { viewModel.sendClearScreen() }),
+                .init(title: "↑", action: { viewModel.sendArrowUp() }),
+                .init(title: "↓", action: { viewModel.sendArrowDown() }),
+                .init(title: "←", action: { viewModel.sendArrowLeft() }),
+                .init(title: "→", action: { viewModel.sendArrowRight() })
+            ]
         ])
     }
 

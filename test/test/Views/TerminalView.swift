@@ -17,12 +17,9 @@ struct TerminalView: View {
             terminalBackground
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(terminalBackground)
-                toolBar
-            }
+            TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(terminalBackground)
         }
         .background(screenBackground)
         .onChange(of: scenePhase) { _, newPhase in
@@ -45,87 +42,6 @@ struct TerminalView: View {
         }
     }
 
-    private var toolBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                toolButton(icon: "arrow.clockwise", label: "重连") {
-                    viewModel.reconnect()
-                }
-
-                toolButton(icon: "xmark.circle", label: "Ctrl+C") {
-                    viewModel.sendInterrupt()
-                }
-
-                toolButton(icon: "chevron.backward.circle", label: "Esc") {
-                    viewModel.sendEscape()
-                }
-
-                toolButton(icon: "arrow.right.to.line.compact", label: "Tab") {
-                    viewModel.sendTab()
-                }
-
-                toolButton(icon: "slash.circle", label: "/") {
-                    viewModel.sendSlash()
-                }
-
-                toolButton(icon: "pipe.and.signal.flow", label: "|") {
-                    viewModel.sendPipe()
-                }
-
-                toolButton(icon: "rectangle.portrait.and.arrow.right", label: "exit") {
-                    viewModel.sendExit()
-                }
-
-                toolButton(icon: "arrow.left.to.line", label: "Home") {
-                    viewModel.sendHome()
-                }
-
-                toolButton(icon: "arrow.right.to.line", label: "End") {
-                    viewModel.sendEnd()
-                }
-
-                toolButton(icon: "arrow.up", label: "Up") {
-                    viewModel.sendArrowUp()
-                }
-
-                toolButton(icon: "arrow.down", label: "Down") {
-                    viewModel.sendArrowDown()
-                }
-
-                toolButton(icon: "arrow.left", label: "Left") {
-                    viewModel.sendArrowLeft()
-                }
-
-                toolButton(icon: "arrow.right", label: "Right") {
-                    viewModel.sendArrowRight()
-                }
-
-                toolButton(icon: "clear", label: "^L") {
-                    viewModel.sendClearScreen()
-                }
-            }
-            .padding(.horizontal, 12)
-        }
-        .padding(.vertical, 10)
-        .background(toolbarBackground)
-    }
-
-    private func toolButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                Text(label)
-            }
-            .font(.caption)
-            .foregroundColor(toolButtonForeground)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(toolButtonBackground)
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
     private var screenBackground: Color {
         Color(.systemBackground)
     }
@@ -138,39 +54,6 @@ struct TerminalView: View {
             return Color(red: 0.97, green: 0.98, blue: 0.99)
         @unknown default:
             return Color(.systemBackground)
-        }
-    }
-
-    private var toolbarBackground: Color {
-        switch colorScheme {
-        case .dark:
-            return Color(red: 0.09, green: 0.11, blue: 0.14)
-        case .light:
-            return Color(red: 0.93, green: 0.95, blue: 0.97)
-        @unknown default:
-            return Color(.secondarySystemBackground)
-        }
-    }
-
-    private var toolButtonBackground: Color {
-        switch colorScheme {
-        case .dark:
-            return Color.white.opacity(0.08)
-        case .light:
-            return Color.black.opacity(0.06)
-        @unknown default:
-            return Color.black.opacity(0.06)
-        }
-    }
-
-    private var toolButtonForeground: Color {
-        switch colorScheme {
-        case .dark:
-            return Color.white.opacity(0.88)
-        case .light:
-            return Color.black.opacity(0.78)
-        @unknown default:
-            return Color.primary
         }
     }
 

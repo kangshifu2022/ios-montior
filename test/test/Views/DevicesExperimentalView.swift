@@ -73,22 +73,6 @@ struct DevicesExperimentalView: View {
             }
             .background(palette.pageBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ExperimentalViewToggleIcon(
-                        mode: homeCardView,
-                        color: palette.primaryText
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        experimentalHomeCardViewRawValue = homeCardView == .detailed
-                            ? ExperimentalHomeCardView.compact.rawValue
-                            : ExperimentalHomeCardView.detailed.rawValue
-                    }
-                    .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
-                    .accessibilityAddTraits(.isButton)
-                }
-            }
             .navigationDestination(item: $selectedServer) { config in
                 DeviceDetailView(config: config, store: store)
             }
@@ -105,35 +89,26 @@ struct DevicesExperimentalView: View {
     }
 
     private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: 10) {
             Text("概览")
                 .font(.system(size: 38, weight: .black, design: .rounded))
                 .foregroundColor(palette.primaryText)
                 .tracking(-0.6)
 
-            HStack(alignment: .center, spacing: 8) {
-                Text("iMonitor")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(palette.primaryText)
-                    .opacity(0.94)
-
-                if appEdition == .pro {
-                    Text("PRO")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundColor(palette.memoryAccent)
-                        .tracking(0.6)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(palette.memoryAccent.opacity(palette.isDark ? 0.14 : 0.10))
-                        .clipShape(Capsule())
-                        .offset(y: 1)
-                }
+            ExperimentalViewToggleIcon(
+                mode: homeCardView,
+                color: palette.primaryText
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                experimentalHomeCardViewRawValue = homeCardView == .detailed
+                    ? ExperimentalHomeCardView.compact.rawValue
+                    : ExperimentalHomeCardView.detailed.rawValue
             }
+            .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
+            .accessibilityAddTraits(.isButton)
 
-            Text("一站式 Linux 设备监控平台")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(palette.secondaryText)
-                .opacity(0.92)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
@@ -473,12 +448,6 @@ private struct ExperimentalServerCard: View {
                         palette: palette,
                         tint: palette.offline
                     )
-                } else if cpuTemperatureText == nil && wirelessTemperatureText == nil, headerUptimeText != "--" {
-                    ExperimentalHeaderBadge(
-                        symbol: "clock",
-                        value: headerUptimeText,
-                        palette: palette
-                    )
                 }
 
                 terminalButton
@@ -529,7 +498,7 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 87, maxHeight: 87, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 78, maxHeight: 78, alignment: .leading)
     }
 
     private var terminalButton: some View {
@@ -575,30 +544,6 @@ private struct ExperimentalServerCard: View {
         }
 
         return normalizedUptimeDisplay(from: uptimeText)
-    }
-
-    private var headerUptimeText: String {
-        guard uptimeText != "--" else {
-            return "--"
-        }
-
-        let raw = uptimeText.lowercased()
-
-        if let range = raw.range(of: #"\d+\s*d"#, options: .regularExpression) {
-            return raw[range].replacingOccurrences(of: " ", with: "")
-        }
-
-        if let range = raw.range(of: #"\d+\s*day"#, options: .regularExpression) {
-            let digits = raw[range].filter(\.isNumber)
-            return digits.isEmpty ? "0d" : "\(digits)d"
-        }
-
-        if let range = raw.range(of: #"\d+\s*天"#, options: .regularExpression) {
-            let digits = raw[range].filter(\.isNumber)
-            return digits.isEmpty ? "0d" : "\(digits)d"
-        }
-
-        return "--"
     }
 
     private var terminalButtonForeground: Color {
@@ -1017,7 +962,7 @@ private struct ExperimentalInfoMetricRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 29, alignment: .center)
+        .frame(height: 26, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -1037,13 +982,13 @@ private struct ExperimentalInfoValueRow: View {
 
             Text(value)
                 .font(.system(size: 14, weight: .medium, design: .rounded))
-                .foregroundColor(palette.secondaryText)
+                .foregroundColor(palette.secondaryText.opacity(0.28))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 29, alignment: .center)
+        .frame(height: 26, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -1122,7 +1067,7 @@ private struct ExperimentalHeaderSymbol: View {
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(color)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 18, height: 18)
             }
         }
     }
@@ -1133,37 +1078,57 @@ private struct ExperimentalCPUChipIcon: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 2.2, style: .continuous)
-                .stroke(color.opacity(0.9), lineWidth: 1.2)
-                .frame(width: 12, height: 12)
+            outerPins
 
-            RoundedRectangle(cornerRadius: 1.2, style: .continuous)
-                .stroke(color.opacity(0.55), lineWidth: 0.9)
-                .frame(width: 7, height: 7)
+            RoundedRectangle(cornerRadius: 3.2, style: .continuous)
+                .stroke(color.opacity(0.92), lineWidth: 1.6)
+                .frame(width: 12.5, height: 12.5)
 
-            ForEach([-1, 1], id: \.self) { side in
-                VStack(spacing: 1.8) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        Capsule(style: .continuous)
-                            .fill(color.opacity(0.9))
-                            .frame(width: 1.2, height: 2.4)
-                    }
-                }
-                .offset(x: CGFloat(side) * 7.5)
-            }
-
-            ForEach([-1, 1], id: \.self) { side in
-                HStack(spacing: 1.8) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        Capsule(style: .continuous)
-                            .fill(color.opacity(0.9))
-                            .frame(width: 2.4, height: 1.2)
-                    }
-                }
-                .offset(y: CGFloat(side) * 7.5)
-            }
+            RoundedRectangle(cornerRadius: 1.1, style: .continuous)
+                .stroke(color.opacity(0.92), lineWidth: 1.25)
+                .frame(width: 7.4, height: 7.4)
         }
-        .frame(width: 16, height: 16)
+        .frame(width: 18, height: 18)
+    }
+
+    private var outerPins: some View {
+        ZStack {
+            HStack(spacing: 1.5) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Capsule(style: .continuous)
+                        .fill(color.opacity(0.92))
+                        .frame(width: 1.0, height: 3.0)
+                }
+            }
+            .offset(y: -8.0)
+
+            HStack(spacing: 1.5) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Capsule(style: .continuous)
+                        .fill(color.opacity(0.92))
+                        .frame(width: 1.0, height: 3.0)
+                }
+            }
+            .offset(y: 8.0)
+
+            VStack(spacing: 1.5) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Capsule(style: .continuous)
+                        .fill(color.opacity(0.92))
+                        .frame(width: 3.0, height: 1.0)
+                }
+            }
+            .offset(x: -8.0)
+
+            VStack(spacing: 1.5) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Capsule(style: .continuous)
+                        .fill(color.opacity(0.92))
+                        .frame(width: 3.0, height: 1.0)
+                }
+            }
+            .offset(x: 8.0)
+        }
     }
 }
 
