@@ -2,6 +2,13 @@ import Foundation
 import SwiftUI
 import Combine
 
+struct ServerConnectionFailureNotice: Identifiable, Equatable {
+    let id = UUID()
+    let serverID: UUID
+    let serverName: String
+    let message: String
+}
+
 @MainActor
 final class ServerStore: ObservableObject {
     private enum RefreshRequest: Sendable {
@@ -21,12 +28,15 @@ final class ServerStore: ObservableObject {
     @Published private(set) var remoteAlertStatusByServerID: [UUID: RemoteAlertStatus] = [:]
     @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
     @Published private(set) var alertSettings = AlertSettings()
+    @Published private(set) var collapsedServerIDs: Set<UUID> = []
+    @Published var connectionFailureNotice: ServerConnectionFailureNotice?
 
     private let serversKey = "saved_servers"
     private let alertSettingsKey = "saved_alert_settings"
     private let staticInfoKey = "cached_server_static_info"
     private let dynamicInfoKey = "cached_server_dynamic_info"
     private let remoteAlertStatusKey = "cached_remote_alert_status"
+    private let collapsedServerIDsKey = "collapsed_server_ids"
     private let legacyStatsKey = "cached_server_stats"
     private var lastStaticRefreshDates: [UUID: Date] = [:]
     private var lastDynamicRefreshDates: [UUID: Date] = [:]
@@ -36,6 +46,7 @@ final class ServerStore: ObservableObject {
     private let dynamicRefreshInterval: TimeInterval = 3
     private let offlineTransitionFailureThreshold = 2
     private let offlineTransitionGraceInterval: TimeInterval = 12
+    private let autoCollapseFailureThreshold = 3
 
     init() {
         load()
@@ -60,6 +71,9 @@ final class ServerStore: ObservableObject {
             consecutiveDynamicFailureCounts.removeValue(forKey: server.id)
             refreshingServerIDs.remove(server.id)
             remoteAlertOperationServerIDs.remove(server.id)
+            if connectionFailureNotice?.serverID == server.id {
+                connectionFailureNotice = nil
+            }
             save()
             saveCachedInfo()
         }
@@ -78,8 +92,13 @@ final class ServerStore: ObservableObject {
             consecutiveDynamicFailureCounts.removeValue(forKey: $0)
             refreshingServerIDs.remove($0)
             remoteAlertOperationServerIDs.remove($0)
+            collapsedServerIDs.remove($0)
+            if connectionFailureNotice?.serverID == $0 {
+                connectionFailureNotice = nil
+            }
         }
         save()
+        saveCollapsedServerIDs()
         saveCachedInfo()
     }
 
@@ -118,6 +137,27 @@ final class ServerStore: ObservableObject {
 
     func remoteAlertStatus(for config: ServerConfig) -> RemoteAlertStatus? {
         remoteAlertStatusByServerID[config.id]
+    }
+
+    func isCollapsed(_ id: UUID) -> Bool {
+        collapsedServerIDs.contains(id)
+    }
+
+    func toggleCollapsed(_ id: UUID) {
+        setCollapsed(!collapsedServerIDs.contains(id), for: id)
+    }
+
+    func setCollapsed(_ isCollapsed: Bool, for id: UUID) {
+        if isCollapsed {
+            collapsedServerIDs.insert(id)
+        } else {
+            collapsedServerIDs.remove(id)
+        }
+        saveCollapsedServerIDs()
+    }
+
+    func dismissConnectionFailureNotice() {
+        connectionFailureNotice = nil
     }
 
     func isPerformingRemoteAlertAction(_ id: UUID) -> Bool {
@@ -379,6 +419,12 @@ final class ServerStore: ObservableObject {
         }
     }
 
+    private func saveCollapsedServerIDs() {
+        if let data = try? JSONEncoder().encode(collapsedServerIDs) {
+            UserDefaults.standard.set(data, forKey: collapsedServerIDsKey)
+        }
+    }
+
     private func load() {
         if let data = UserDefaults.standard.data(forKey: serversKey),
            let decoded = try? JSONDecoder().decode([ServerConfig].self, from: data) {
@@ -424,6 +470,11 @@ final class ServerStore: ObservableObject {
         if let alertStatusData = UserDefaults.standard.data(forKey: remoteAlertStatusKey),
            let decodedAlertStatus = try? JSONDecoder().decode([UUID: RemoteAlertStatus].self, from: alertStatusData) {
             remoteAlertStatusByServerID = decodedAlertStatus.filter { validIDs.contains($0.key) }
+        }
+
+        if let collapsedData = UserDefaults.standard.data(forKey: collapsedServerIDsKey),
+           let decodedCollapsedIDs = try? JSONDecoder().decode(Set<UUID>.self, from: collapsedData) {
+            collapsedServerIDs = Set(decodedCollapsedIDs.filter { validIDs.contains($0) })
         }
 
         migrateLegacyStatsIfNeeded(validIDs: validIDs)
@@ -513,6 +564,11 @@ final class ServerStore: ObservableObject {
 
         let nextFailureCount = (consecutiveDynamicFailureCounts[serverID] ?? 0) + 1
         consecutiveDynamicFailureCounts[serverID] = nextFailureCount
+        handleRepeatedConnectionFailureIfNeeded(
+            serverID: serverID,
+            incoming: incoming,
+            failureCount: nextFailureCount
+        )
 
         guard shouldDelayOfflineTransition(
             serverID: serverID,
@@ -531,6 +587,27 @@ final class ServerStore: ObservableObject {
             preservedDynamicInfo.rawOutput = incoming.rawOutput
         }
         return preservedDynamicInfo
+    }
+
+    private func handleRepeatedConnectionFailureIfNeeded(
+        serverID: UUID,
+        incoming: ServerDynamicInfo,
+        failureCount: Int
+    ) {
+        guard failureCount == autoCollapseFailureThreshold,
+              !collapsedServerIDs.contains(serverID),
+              let config = latestConfig(for: serverID) else {
+            return
+        }
+
+        setCollapsed(true, for: serverID)
+
+        let trimmedMessage = incoming.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        connectionFailureNotice = ServerConnectionFailureNotice(
+            serverID: serverID,
+            serverName: config.name,
+            message: trimmedMessage.isEmpty ? "连接失败，已自动折叠该设备。" : "\(trimmedMessage)\n已自动折叠该设备。"
+        )
     }
 
     private func shouldDelayOfflineTransition(

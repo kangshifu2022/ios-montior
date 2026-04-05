@@ -80,6 +80,15 @@ struct DevicesExperimentalView: View {
             .fullScreenCover(item: $terminalServer) { config in
                 TerminalView(server: config)
             }
+            .alert(item: connectionFailureNoticeBinding) { notice in
+                Alert(
+                    title: Text("\(notice.serverName) 连接失败"),
+                    message: Text(notice.message),
+                    dismissButton: .default(Text("知道了")) {
+                        store.dismissConnectionFailureNotice()
+                    }
+                )
+            }
             .task(id: store.servers.map(\.id)) {
                 await store.refreshAllIfNeeded()
 
@@ -92,27 +101,40 @@ struct DevicesExperimentalView: View {
         .preferredColorScheme(preferredColorScheme)
     }
 
+    private var connectionFailureNoticeBinding: Binding<ServerConnectionFailureNotice?> {
+        Binding(
+            get: { store.connectionFailureNotice },
+            set: { newValue in
+                if newValue == nil {
+                    store.dismissConnectionFailureNotice()
+                }
+            }
+        )
+    }
+
     private var pageHeader: some View {
-        HStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+
+                ExperimentalViewToggleIcon(
+                    mode: homeCardView,
+                    color: palette.primaryText
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    experimentalHomeCardViewRawValue = homeCardView == .detailed
+                        ? ExperimentalHomeCardView.compact.rawValue
+                        : ExperimentalHomeCardView.detailed.rawValue
+                }
+                .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
+                .accessibilityAddTraits(.isButton)
+            }
+
             Text("概览")
                 .font(.system(size: 38, weight: .black, design: .rounded))
                 .foregroundColor(palette.primaryText)
                 .tracking(-0.6)
-
-            ExperimentalViewToggleIcon(
-                mode: homeCardView,
-                color: palette.primaryText
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                experimentalHomeCardViewRawValue = homeCardView == .detailed
-                    ? ExperimentalHomeCardView.compact.rawValue
-                    : ExperimentalHomeCardView.detailed.rawValue
-            }
-            .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
-            .accessibilityAddTraits(.isButton)
-
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
@@ -122,15 +144,19 @@ struct DevicesExperimentalView: View {
     @ViewBuilder
     private func reorderableCard(for server: ServerConfig) -> some View {
         let isDragged = draggedServerID == server.id
+        let isCollapsed = store.isCollapsed(server.id)
+        let showsDetailedCard = homeCardView == .detailed && !isCollapsed
 
         Group {
-            if homeCardView == .detailed {
+            if showsDetailedCard {
                 ExperimentalServerCard(
                     config: server,
                     stats: store.stats(for: server),
                     palette: palette
                 ) {
                     selectedServer = server
+                } onToggleCollapse: {
+                    store.toggleCollapsed(server.id)
                 } onOpenTerminal: {
                     terminalServer = server
                 }
@@ -138,9 +164,13 @@ struct DevicesExperimentalView: View {
                 ExperimentalCompactServerCard(
                     config: server,
                     stats: store.stats(for: server),
-                    palette: palette
+                    palette: palette,
+                    showsExpandControl: homeCardView == .detailed,
+                    isCollapsed: isCollapsed
                 ) {
                     selectedServer = server
+                } onToggleCollapse: {
+                    store.toggleCollapsed(server.id)
                 }
             }
         }
@@ -275,7 +305,10 @@ private struct ExperimentalCompactServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
+    let showsExpandControl: Bool
+    let isCollapsed: Bool
     let onOpenDetail: () -> Void
+    let onToggleCollapse: () -> Void
 
     private var isOnline: Bool {
         stats?.isOnline == true
@@ -351,6 +384,16 @@ private struct ExperimentalCompactServerCard: View {
                 )
             }
             .fixedSize(horizontal: true, vertical: false)
+
+            if showsExpandControl {
+                ExperimentalCardActionButton(
+                    title: isCollapsed ? "展开" : "折叠",
+                    systemImage: isCollapsed ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
+                    tint: palette.primaryText,
+                    action: onToggleCollapse
+                )
+                .fixedSize(horizontal: true, vertical: false)
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
@@ -398,6 +441,7 @@ private struct ExperimentalServerCard: View {
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
+    let onToggleCollapse: () -> Void
     let onOpenTerminal: () -> Void
 
     private var isOnline: Bool {
@@ -467,6 +511,13 @@ private struct ExperimentalServerCard: View {
                         palette: palette
                     )
                 }
+
+                ExperimentalCardActionButton(
+                    title: "折叠",
+                    systemImage: "arrow.down.right.and.arrow.up.left",
+                    tint: palette.primaryText,
+                    action: onToggleCollapse
+                )
 
                 terminalButton
             }
@@ -735,6 +786,31 @@ private struct ExperimentalMetricTile: View {
     }
 }
 
+private struct ExperimentalCardActionButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+
+                Text(title)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+            }
+            .foregroundColor(tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct ExperimentalCompactMetricCapsule: View {
     let title: String
     let value: String
@@ -829,6 +905,10 @@ private struct ExperimentalUsageRing: View {
         StrokeStyle(lineWidth: 8, lineCap: ringStyle == .memoryGradient ? .round : .butt)
     }
 
+    private var remainderStrokeStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 8, lineCap: .round)
+    }
+
     private var activeStroke: AnyShapeStyle {
         switch ringStyle {
         case .standard:
@@ -849,22 +929,32 @@ private struct ExperimentalUsageRing: View {
         }
     }
 
+    private var memoryRemainderColor: Color {
+        palette.isDark
+            ? Color(red: 0.62, green: 0.66, blue: 0.75).opacity(0.72)
+            : Color(red: 0.77, green: 0.79, blue: 0.86)
+    }
+
     var body: some View {
         ZStack {
             if ringStyle == .memoryGradient {
-                if normalizedValue > 0 {
-                    Circle()
-                        .trim(from: 0, to: normalizedValue)
-                        .stroke(activeStroke, style: activeStrokeStyle)
-                        .rotationEffect(.degrees(-90))
-                }
-
                 Circle()
-                    .stroke(
-                        palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
-                        lineWidth: 1
-                    )
-                    .padding(-5)
+                    .stroke(activeStroke, style: activeStrokeStyle)
+                    .rotationEffect(.degrees(-90))
+                    .overlay {
+                        Circle()
+                            .trim(from: normalizedValue, to: 1)
+                            .stroke(memoryRemainderColor, style: remainderStrokeStyle)
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
+                                lineWidth: 1
+                            )
+                            .padding(-5)
+                    }
             } else {
                 Circle()
                     .stroke(trackColor, lineWidth: 8)
