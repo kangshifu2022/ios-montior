@@ -1186,7 +1186,7 @@ final class SSHMonitorService {
             let minutes = (total % 3_600) / 60
 
             if days > 0 {
-                return "up \(days)d \(hours)h"
+                return "up \(days)d \(hours)h \(minutes)m"
             }
             if hours > 0 {
                 return "up \(hours)h \(minutes)m"
@@ -1194,11 +1194,29 @@ final class SSHMonitorService {
             return "up \(minutes)m"
         }
 
-        if trimmed.contains("day") {
-            let days = trimmed.components(separatedBy: "up").last?
-                .components(separatedBy: "day").first?
-                .trimmingCharacters(in: .whitespaces) ?? "0"
-            return "up \(days)d"
+        let normalized = trimmed.lowercased()
+
+        if normalized.contains("day"),
+           let dayMatch = normalized.range(of: #"\d+\s+day"#, options: .regularExpression) {
+            let days = normalized[dayMatch].filter(\.isNumber)
+            let timeMatch = normalized.range(of: #"\d{1,2}:\d{2}"#, options: .regularExpression)
+            let minuteMatch = normalized.range(of: #"\d+\s+min"#, options: .regularExpression)
+
+            if let timeMatch {
+                let timeParts = normalized[timeMatch].split(separator: ":")
+                if timeParts.count == 2 {
+                    let hours = Int(timeParts[0]) ?? 0
+                    let minutes = Int(timeParts[1]) ?? 0
+                    return "up \(days)d \(hours)h \(minutes)m"
+                }
+            }
+
+            if let minuteMatch {
+                let minutes = normalized[minuteMatch].filter(\.isNumber)
+                return "up \(days)d 0h \(minutes)m"
+            }
+
+            return "up \(days)d 0h 0m"
         }
         return trimmed
     }

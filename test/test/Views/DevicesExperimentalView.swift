@@ -147,42 +147,31 @@ private struct ExperimentalViewToggleIcon: View {
     let color: Color
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(color.opacity(0.18), lineWidth: 1)
-                .frame(width: 30, height: 30)
-
+        Group {
             if mode == .detailed {
-                HStack(spacing: 3) {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(color.opacity(0.92))
-                        .frame(width: 8, height: 12)
-
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(color.opacity(0.55))
-                        .frame(width: 8, height: 12)
-                }
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                    .stroke(color.opacity(0.92), lineWidth: 1.3)
+                    .frame(width: 15, height: 11)
+                    .overlay(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 1.3, style: .continuous)
+                            .fill(color.opacity(0.18))
+                            .frame(width: 15, height: 3.2)
+                    }
             } else {
-                VStack(spacing: 3) {
-                    HStack(spacing: 3) {
-                        toggleMiniTile
-                        toggleMiniTile.opacity(0.82)
-                    }
-
-                    HStack(spacing: 3) {
-                        toggleMiniTile.opacity(0.68)
-                        toggleMiniTile.opacity(0.50)
-                    }
+                VStack(spacing: 2.4) {
+                    compactLine(width: 15, opacity: 0.96)
+                    compactLine(width: 12.5, opacity: 0.80)
+                    compactLine(width: 14, opacity: 0.64)
                 }
             }
         }
-        .frame(width: 30, height: 30)
+        .frame(width: 20, height: 20)
     }
 
-    private var toggleMiniTile: some View {
-        RoundedRectangle(cornerRadius: 2.2, style: .continuous)
-            .fill(color.opacity(0.92))
-            .frame(width: 5, height: 5)
+    private func compactLine(width: CGFloat, opacity: Double) -> some View {
+        RoundedRectangle(cornerRadius: 999, style: .continuous)
+            .fill(color.opacity(opacity))
+            .frame(width: width, height: 2.1)
     }
 }
 
@@ -397,7 +386,7 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 96, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 87, maxHeight: 87, alignment: .leading)
     }
 
     private var terminalButton: some View {
@@ -715,7 +704,7 @@ private struct ExperimentalInfoMetricRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 32, alignment: .center)
+        .frame(height: 29, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -734,13 +723,13 @@ private struct ExperimentalInfoValueRow: View {
 
             Text(value)
                 .font(.system(size: 14, weight: .medium, design: .rounded))
-                .foregroundColor(palette.primaryText)
+                .foregroundColor(palette.secondaryText)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 32, alignment: .center)
+        .frame(height: 29, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
