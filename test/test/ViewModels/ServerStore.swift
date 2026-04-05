@@ -2,13 +2,6 @@ import Foundation
 import SwiftUI
 import Combine
 
-struct ServerConnectionFailureNotice: Identifiable, Equatable {
-    let id = UUID()
-    let serverID: UUID
-    let serverName: String
-    let message: String
-}
-
 @MainActor
 final class ServerStore: ObservableObject {
     private enum RefreshRequest: Sendable {
@@ -29,7 +22,6 @@ final class ServerStore: ObservableObject {
     @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
     @Published private(set) var alertSettings = AlertSettings()
     @Published private(set) var collapsedServerIDs: Set<UUID> = []
-    @Published var connectionFailureNotice: ServerConnectionFailureNotice?
 
     private let serversKey = "saved_servers"
     private let alertSettingsKey = "saved_alert_settings"
@@ -71,9 +63,6 @@ final class ServerStore: ObservableObject {
             consecutiveDynamicFailureCounts.removeValue(forKey: server.id)
             refreshingServerIDs.remove(server.id)
             remoteAlertOperationServerIDs.remove(server.id)
-            if connectionFailureNotice?.serverID == server.id {
-                connectionFailureNotice = nil
-            }
             save()
             saveCachedInfo()
         }
@@ -93,9 +82,6 @@ final class ServerStore: ObservableObject {
             refreshingServerIDs.remove($0)
             remoteAlertOperationServerIDs.remove($0)
             collapsedServerIDs.remove($0)
-            if connectionFailureNotice?.serverID == $0 {
-                connectionFailureNotice = nil
-            }
         }
         save()
         saveCollapsedServerIDs()
@@ -154,10 +140,6 @@ final class ServerStore: ObservableObject {
             collapsedServerIDs.remove(id)
         }
         saveCollapsedServerIDs()
-    }
-
-    func dismissConnectionFailureNotice() {
-        connectionFailureNotice = nil
     }
 
     func isPerformingRemoteAlertAction(_ id: UUID) -> Bool {
@@ -566,7 +548,6 @@ final class ServerStore: ObservableObject {
         consecutiveDynamicFailureCounts[serverID] = nextFailureCount
         handleRepeatedConnectionFailureIfNeeded(
             serverID: serverID,
-            incoming: incoming,
             failureCount: nextFailureCount
         )
 
@@ -591,23 +572,15 @@ final class ServerStore: ObservableObject {
 
     private func handleRepeatedConnectionFailureIfNeeded(
         serverID: UUID,
-        incoming: ServerDynamicInfo,
         failureCount: Int
     ) {
         guard failureCount == autoCollapseFailureThreshold,
               !collapsedServerIDs.contains(serverID),
-              let config = latestConfig(for: serverID) else {
+              latestConfig(for: serverID) != nil else {
             return
         }
 
         setCollapsed(true, for: serverID)
-
-        let trimmedMessage = incoming.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        connectionFailureNotice = ServerConnectionFailureNotice(
-            serverID: serverID,
-            serverName: config.name,
-            message: trimmedMessage.isEmpty ? "连接失败，已自动折叠该设备。" : "\(trimmedMessage)\n已自动折叠该设备。"
-        )
     }
 
     private func shouldDelayOfflineTransition(

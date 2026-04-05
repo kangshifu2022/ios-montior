@@ -85,15 +85,6 @@ struct DevicesExperimentalView: View {
             .fullScreenCover(item: $terminalServer) { config in
                 TerminalView(server: config)
             }
-            .alert(item: connectionFailureNoticeBinding) { notice in
-                Alert(
-                    title: Text("\(notice.serverName) 连接失败"),
-                    message: Text(notice.message),
-                    dismissButton: .default(Text("知道了")) {
-                        store.dismissConnectionFailureNotice()
-                    }
-                )
-            }
             .task(id: store.servers.map(\.id)) {
                 await store.refreshAllIfNeeded()
 
@@ -104,17 +95,6 @@ struct DevicesExperimentalView: View {
             }
         }
         .preferredColorScheme(preferredColorScheme)
-    }
-
-    private var connectionFailureNoticeBinding: Binding<ServerConnectionFailureNotice?> {
-        Binding(
-            get: { store.connectionFailureNotice },
-            set: { newValue in
-                if newValue == nil {
-                    store.dismissConnectionFailureNotice()
-                }
-            }
-        )
     }
 
     private var pageHeader: some View {
@@ -159,8 +139,6 @@ struct DevicesExperimentalView: View {
                     palette: palette
                 ) {
                     selectedServer = server
-                } onEdit: {
-                    editingServer = server
                 } onToggleCollapse: {
                     toggleCardExpansion(for: server.id)
                 } onOpenTerminal: {
@@ -174,8 +152,6 @@ struct DevicesExperimentalView: View {
                     showsExpandControl: true
                 ) {
                     selectedServer = server
-                } onEdit: {
-                    editingServer = server
                 } onToggleCollapse: {
                     toggleCardExpansion(for: server.id)
                 }
@@ -194,6 +170,13 @@ struct DevicesExperimentalView: View {
             store: store,
             draggedServerID: $draggedServerID
         ))
+        .contextMenu {
+            Button {
+                editingServer = server
+            } label: {
+                Label("编辑设备", systemImage: "square.and.pencil")
+            }
+        }
     }
 
     private func toggleHomeCardView() {
@@ -338,7 +321,6 @@ private struct ExperimentalCompactServerCard: View {
     let palette: ExperimentalHomePalette
     let showsExpandControl: Bool
     let onOpenDetail: () -> Void
-    let onEdit: () -> Void
     let onToggleCollapse: () -> Void
 
     private var isOnline: Bool {
@@ -376,6 +358,10 @@ private struct ExperimentalCompactServerCard: View {
         cpuUsageTint(for: stats?.cpuUsage)
     }
 
+    private var showsFailureState: Bool {
+        stats != nil && !isOnline
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             HStack(spacing: 5) {
@@ -393,38 +379,41 @@ private struct ExperimentalCompactServerCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 6) {
-                ExperimentalCompactMetricCapsule(
-                    title: "CPU",
-                    value: cpuText,
-                    isActive: isOnline,
-                    accent: cpuTint,
-                    palette: palette
-                )
+            if showsFailureState {
+                failurePill
+                .fixedSize(horizontal: true, vertical: false)
+            } else {
+                HStack(spacing: 6) {
+                    ExperimentalCompactMetricCapsule(
+                        title: "CPU",
+                        value: cpuText,
+                        isActive: isOnline,
+                        accent: cpuTint,
+                        palette: palette
+                    )
 
-                ExperimentalCompactMetricCapsule(
-                    title: "MEM",
-                    value: memText,
-                    isActive: isOnline,
-                    accent: palette.memoryAccent,
-                    palette: palette
-                )
+                    ExperimentalCompactMetricCapsule(
+                        title: "MEM",
+                        value: memText,
+                        isActive: isOnline,
+                        accent: palette.memoryAccent,
+                        palette: palette
+                    )
 
-                ExperimentalCompactRateCapsule(
-                    symbol: "↑",
-                    parts: uploadParts,
-                    palette: palette
-                )
+                    ExperimentalCompactRateCapsule(
+                        symbol: "↑",
+                        parts: uploadParts,
+                        palette: palette
+                    )
 
-                ExperimentalCompactRateCapsule(
-                    symbol: "↓",
-                    parts: downloadParts,
-                    palette: palette
-                )
-
-                compactEditButton
+                    ExperimentalCompactRateCapsule(
+                        symbol: "↓",
+                        parts: downloadParts,
+                        palette: palette
+                    )
+                }
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .fixedSize(horizontal: true, vertical: false)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -446,17 +435,14 @@ private struct ExperimentalCompactServerCard: View {
         .shadow(color: palette.cardShadow, radius: 14, x: 0, y: 8)
     }
 
-    private var compactEditButton: some View {
-        Button(action: onEdit) {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(palette.secondaryText)
-                .frame(width: 28, height: 28)
-                .background(palette.subcardBackground)
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("编辑设备")
+    private var failurePill: some View {
+        Text("连接失败")
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundColor(Color(red: 0.82, green: 0.29, blue: 0.23))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color(red: 0.82, green: 0.29, blue: 0.23).opacity(0.10))
+            .clipShape(Capsule())
     }
 
     private func percentageText(_ value: Double?) -> String {
@@ -491,7 +477,6 @@ private struct ExperimentalServerCard: View {
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
-    let onEdit: () -> Void
     let onToggleCollapse: () -> Void
     let onOpenTerminal: () -> Void
 
@@ -508,6 +493,10 @@ private struct ExperimentalServerCard: View {
         }
 
         return String(trimmedName.prefix(maximumCharacters)) + "…"
+    }
+
+    private var showsFailureState: Bool {
+        stats != nil && !isOnline
     }
 
     var body: some View {
@@ -570,7 +559,9 @@ private struct ExperimentalServerCard: View {
                     )
                 }
 
-                editButton
+                if showsFailureState {
+                    connectionFailedBadge
+                }
 
                 terminalButton
             }
@@ -601,22 +592,22 @@ private struct ExperimentalServerCard: View {
     }
 
     private var infoPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ExperimentalInfoMetricRow(
-                title: nil,
-                items: networkMetrics,
+        HStack(alignment: .center, spacing: 12) {
+            ExperimentalStackedMetricColumn(
+                topItem: uploadMetric,
+                bottomItem: diskReadMetric,
                 accent: palette.memoryAccent,
                 palette: palette
             )
 
-            ExperimentalInfoMetricRow(
-                title: nil,
-                items: diskMetrics,
+            ExperimentalStackedMetricColumn(
+                topItem: downloadMetric,
+                bottomItem: diskWriteMetric,
                 accent: palette.memoryAccent,
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 62, maxHeight: 62, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 76, maxHeight: 76, alignment: .leading)
     }
 
     private var terminalButton: some View {
@@ -629,17 +620,6 @@ private struct ExperimentalServerCard: View {
         .buttonStyle(.plain)
         .disabled(!isOnline)
         .opacity(isOnline ? 1 : 0.45)
-    }
-
-    private var editButton: some View {
-        Button(action: onEdit) {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(palette.primaryText)
-                .frame(width: 30, height: 30)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("编辑设备")
     }
 
     private var downloadSpeedText: String {
@@ -664,6 +644,16 @@ private struct ExperimentalServerCard: View {
 
     private var terminalButtonForeground: Color {
         isOnline ? palette.primaryText : palette.secondaryText
+    }
+
+    private var connectionFailedBadge: some View {
+        Text("连接失败")
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundColor(Color(red: 0.82, green: 0.29, blue: 0.23))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(Color(red: 0.82, green: 0.29, blue: 0.23).opacity(0.10))
+            .clipShape(Capsule())
     }
 
     private var cpuTemperatureText: String? {
@@ -708,18 +698,20 @@ private struct ExperimentalServerCard: View {
         }
     }
 
-    private var networkMetrics: [ExperimentalInlineMetricDescriptor] {
-        [
-            inlineMetric(id: "network-upload", value: uploadSpeedText, marker: "↑"),
-            inlineMetric(id: "network-download", value: downloadSpeedText, marker: "↓")
-        ]
+    private var uploadMetric: ExperimentalInlineMetricDescriptor {
+        inlineMetric(id: "network-upload", value: uploadSpeedText, marker: "↑")
     }
 
-    private var diskMetrics: [ExperimentalInlineMetricDescriptor] {
-        [
-            inlineMetric(id: "disk-read", value: diskReadSpeedText, marker: "R"),
-            inlineMetric(id: "disk-write", value: diskWriteSpeedText, marker: "W")
-        ]
+    private var downloadMetric: ExperimentalInlineMetricDescriptor {
+        inlineMetric(id: "network-download", value: downloadSpeedText, marker: "↓")
+    }
+
+    private var diskReadMetric: ExperimentalInlineMetricDescriptor {
+        inlineMetric(id: "disk-read", value: diskReadSpeedText, marker: "R")
+    }
+
+    private var diskWriteMetric: ExperimentalInlineMetricDescriptor {
+        inlineMetric(id: "disk-write", value: diskWriteSpeedText, marker: "W")
     }
 
     private func inlineMetric(id: String, value: String, marker: String) -> ExperimentalInlineMetricDescriptor {
@@ -950,34 +942,26 @@ private struct ExperimentalInlineMetricDescriptor: Identifiable {
     let marker: String
 }
 
-private struct ExperimentalInfoMetricRow: View {
-    let title: String?
-    let items: [ExperimentalInlineMetricDescriptor]
+private struct ExperimentalStackedMetricColumn: View {
+    let topItem: ExperimentalInlineMetricDescriptor
+    let bottomItem: ExperimentalInlineMetricDescriptor
     let accent: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-            if let title, !title.isEmpty {
-                Text(title)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(palette.secondaryText)
-                    .frame(width: 58, alignment: .leading)
-                    .offset(x: 11)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            ExperimentalInlineMetric(
+                item: topItem,
+                accent: accent,
+                palette: palette
+            )
 
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                ForEach(items) { item in
-                    ExperimentalInlineMetric(
-                        item: item,
-                        accent: accent,
-                        palette: palette
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            ExperimentalInlineMetric(
+                item: bottomItem,
+                accent: accent,
+                palette: palette
+            )
         }
-        .frame(height: 26, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -1073,56 +1057,56 @@ private struct ExperimentalCPUChipIcon: View {
 
     var body: some View {
         ZStack {
-            outerPins
+            simplePins
 
-            RoundedRectangle(cornerRadius: 3.2, style: .continuous)
+            RoundedRectangle(cornerRadius: 2.6, style: .continuous)
                 .stroke(color.opacity(0.82), lineWidth: 1.25)
-                .frame(width: 11.5, height: 11.5)
+                .frame(width: 10.4, height: 10.4)
 
-            RoundedRectangle(cornerRadius: 1.1, style: .continuous)
-                .stroke(color.opacity(0.82), lineWidth: 0.95)
-                .frame(width: 6.8, height: 6.8)
+            RoundedRectangle(cornerRadius: 0.9, style: .continuous)
+                .stroke(color.opacity(0.76), lineWidth: 0.9)
+                .frame(width: 4.6, height: 4.6)
         }
         .frame(width: 16, height: 16)
     }
 
-    private var outerPins: some View {
+    private var simplePins: some View {
         ZStack {
-            HStack(spacing: 1.5) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Capsule(style: .continuous)
+            HStack(spacing: 1.9) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 0.4, style: .continuous)
                         .fill(color.opacity(0.82))
-                        .frame(width: 0.9, height: 2.4)
+                        .frame(width: 1.05, height: 2.0)
                 }
             }
-            .offset(y: -7.0)
+            .offset(y: -5.95)
 
-            HStack(spacing: 1.5) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Capsule(style: .continuous)
+            HStack(spacing: 1.9) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 0.4, style: .continuous)
                         .fill(color.opacity(0.82))
-                        .frame(width: 0.9, height: 2.4)
+                        .frame(width: 1.05, height: 2.0)
                 }
             }
-            .offset(y: 7.0)
+            .offset(y: 5.95)
 
-            VStack(spacing: 1.5) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Capsule(style: .continuous)
+            VStack(spacing: 1.9) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 0.4, style: .continuous)
                         .fill(color.opacity(0.82))
-                        .frame(width: 2.4, height: 0.9)
+                        .frame(width: 2.0, height: 1.05)
                 }
             }
-            .offset(x: -7.0)
+            .offset(x: -5.95)
 
-            VStack(spacing: 1.5) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Capsule(style: .continuous)
+            VStack(spacing: 1.9) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 0.4, style: .continuous)
                         .fill(color.opacity(0.82))
-                        .frame(width: 2.4, height: 0.9)
+                        .frame(width: 2.0, height: 1.05)
                 }
             }
-            .offset(x: 7.0)
+            .offset(x: 5.95)
         }
     }
 }
