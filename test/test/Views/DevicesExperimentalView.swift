@@ -4,6 +4,7 @@ struct DevicesExperimentalView: View {
     @ObservedObject var store: ServerStore
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
+    @AppStorage(ExperimentalHomeCardView.storageKey) private var experimentalHomeCardViewRawValue = ExperimentalHomeCardView.detailed.rawValue
     @State private var selectedServer: ServerConfig?
 
     private var selectedTheme: ExperimentalHomeTheme {
@@ -36,23 +37,37 @@ struct DevicesExperimentalView: View {
         ExperimentalHomePalette.palette(for: resolvedColorScheme)
     }
 
+    private var homeCardView: ExperimentalHomeCardView {
+        ExperimentalHomeCardView(rawValue: experimentalHomeCardViewRawValue) ?? .detailed
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    ExperimentalOverviewHero(store: store, palette: palette)
-
                     if store.servers.isEmpty {
                         emptyState
                     } else {
-                        LazyVStack(spacing: 18) {
+                        LazyVStack(spacing: homeCardView == .detailed ? 18 : 10) {
                             ForEach(store.servers) { server in
-                                ExperimentalServerCard(
-                                    config: server,
-                                    stats: store.stats(for: server),
-                                    palette: palette
-                                ) {
-                                    selectedServer = server
+                                Group {
+                                    if homeCardView == .detailed {
+                                        ExperimentalServerCard(
+                                            config: server,
+                                            stats: store.stats(for: server),
+                                            palette: palette
+                                        ) {
+                                            selectedServer = server
+                                        }
+                                    } else {
+                                        ExperimentalCompactServerCard(
+                                            config: server,
+                                            stats: store.stats(for: server),
+                                            palette: palette
+                                        ) {
+                                            selectedServer = server
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -66,6 +81,16 @@ struct DevicesExperimentalView: View {
             }
             .background(palette.pageBackground.ignoresSafeArea())
             .navigationTitle("概览")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(homeCardView == .detailed ? "缩略" : "默认") {
+                        experimentalHomeCardViewRawValue = homeCardView == .detailed
+                            ? ExperimentalHomeCardView.compact.rawValue
+                            : ExperimentalHomeCardView.detailed.rawValue
+                    }
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                }
+            }
             .navigationDestination(item: $selectedServer) { config in
                 DeviceDetailView(config: config, store: store)
             }
@@ -87,7 +112,7 @@ struct DevicesExperimentalView: View {
                 .font(.system(size: 26, weight: .bold, design: .rounded))
                 .foregroundColor(palette.primaryText)
 
-            Text("实验版首屏已经切到环形指标方案。先去设置里添加服务器，我们再继续打磨卡片气质。")
+            Text("先去设置里添加服务器，首屏卡片就会按当前视图模式展示。")
                 .font(.subheadline)
                 .foregroundColor(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -104,117 +129,95 @@ struct DevicesExperimentalView: View {
     }
 }
 
-private struct ExperimentalOverviewHero: View {
-    @ObservedObject var store: ServerStore
-    let palette: ExperimentalHomePalette
+private enum ExperimentalHomeCardView: String {
+    case detailed
+    case compact
 
-    private var totalCount: Int {
-        store.servers.count
-    }
-
-    private var onlineCount: Int {
-        store.servers.filter { store.stats(for: $0)?.isOnline == true }.count
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Device Pulse Board")
-                    .font(.system(size: 30, weight: .heavy, design: .rounded))
-                    .foregroundColor(palette.primaryText)
-
-                Text("实验版设备卡片已经切到新首屏样式，左侧看 CPU / MEM 圆环，右侧对照 NET / I/O 速率，顶部保留温度和终端入口。")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundColor(palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            ViewThatFits {
-                HStack(spacing: 10) {
-                    ExperimentalSummaryPill(
-                        title: "在线",
-                        value: "\(onlineCount)/\(totalCount)",
-                        tint: palette.online,
-                        palette: palette
-                    )
-
-                    ExperimentalSummaryPill(
-                        title: "轮询",
-                        value: "约 3 秒",
-                        tint: palette.cpuAccent,
-                        palette: palette
-                    )
-
-                    ExperimentalSummaryPill(
-                        title: "样式",
-                        value: "Ring",
-                        tint: palette.memoryAccent,
-                        palette: palette
-                    )
-                }
-
-                VStack(spacing: 10) {
-                    ExperimentalSummaryPill(
-                        title: "在线",
-                        value: "\(onlineCount)/\(totalCount)",
-                        tint: palette.online,
-                        palette: palette
-                    )
-
-                    ExperimentalSummaryPill(
-                        title: "轮询",
-                        value: "约 3 秒",
-                        tint: palette.cpuAccent,
-                        palette: palette
-                    )
-
-                    ExperimentalSummaryPill(
-                        title: "样式",
-                        value: "Ring",
-                        tint: palette.memoryAccent,
-                        palette: palette
-                    )
-                }
-            }
-        }
-        .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.heroBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .stroke(palette.cardBorder, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
-    }
+    static let storageKey = "experimentalHomeCardView"
 }
 
-private struct ExperimentalSummaryPill: View {
-    let title: String
-    let value: String
-    let tint: Color
+private struct ExperimentalCompactServerCard: View {
+    let config: ServerConfig
+    let stats: ServerStats?
     let palette: ExperimentalHomePalette
+    let onOpenDetail: () -> Void
+
+    private var isOnline: Bool {
+        stats?.isOnline == true
+    }
+
+    private var cpuText: String {
+        percentageText(stats?.cpuUsage)
+    }
+
+    private var memText: String {
+        percentageText(stats?.memUsage)
+    }
+
+    private var uploadParts: ExperimentalRateParts {
+        ExperimentalRateParts(rawValue: isOnline ? (stats?.uploadSpeed ?? "--") : "--")
+    }
+
+    private var downloadParts: ExperimentalRateParts {
+        ExperimentalRateParts(rawValue: isOnline ? (stats?.downloadSpeed ?? "--") : "--")
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(palette.secondaryText)
-
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+        HStack(spacing: 12) {
+            Text(config.name)
+                .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundColor(palette.primaryText)
-                .monospacedDigit()
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 6) {
+                ExperimentalCompactMetricCapsule(
+                    title: "CPU",
+                    value: cpuText,
+                    isActive: isOnline,
+                    palette: palette
+                )
+
+                ExperimentalCompactMetricCapsule(
+                    title: "MEM",
+                    value: memText,
+                    isActive: isOnline,
+                    palette: palette
+                )
+
+                ExperimentalCompactRateCapsule(
+                    symbol: "↑",
+                    parts: uploadParts,
+                    palette: palette
+                )
+
+                ExperimentalCompactRateCapsule(
+                    symbol: "↓",
+                    parts: downloadParts,
+                    palette: palette
+                )
+            }
+            .fixedSize(horizontal: true, vertical: false)
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpenDetail)
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(palette.isDark ? 0.10 : 0.12))
+        .background(palette.cardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(tint.opacity(palette.isDark ? 0.18 : 0.22), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .stroke(palette.cardBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+        .shadow(color: palette.cardShadow, radius: 14, x: 0, y: 8)
+    }
+
+    private func percentageText(_ value: Double?) -> String {
+        guard let value else {
+            return "--"
+        }
+        return "\(Int((min(max(value, 0), 1) * 100).rounded()))"
     }
 }
 
@@ -233,16 +236,9 @@ private struct ExperimentalServerCard: View {
         VStack(alignment: .leading, spacing: 18) {
             header
 
-            ViewThatFits {
-                HStack(alignment: .center, spacing: 22) {
-                    metricRings
-                    infoPanel
-                }
-
-                VStack(alignment: .leading, spacing: 18) {
-                    metricRings
-                    infoPanel
-                }
+            HStack(alignment: .center, spacing: 14) {
+                metricRings
+                infoPanel
             }
         }
         .contentShape(Rectangle())
@@ -276,7 +272,7 @@ private struct ExperimentalServerCard: View {
             HStack(spacing: 14) {
                 if let cpuTemperatureText {
                     ExperimentalHeaderBadge(
-                        symbol: "microchip",
+                        symbol: "cpuchip",
                         value: cpuTemperatureText,
                         palette: palette
                     )
@@ -311,7 +307,7 @@ private struct ExperimentalServerCard: View {
     }
 
     private var metricRings: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             ExperimentalMetricTile(
                 label: "CPU %",
                 percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
@@ -326,11 +322,11 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .fixedSize(horizontal: true, vertical: false)
+        .frame(width: 154, height: 108, alignment: .leading)
     }
 
     private var infoPanel: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 0) {
             ExperimentalInfoMetricRow(
                 title: "Network",
                 items: networkMetrics,
@@ -351,7 +347,7 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 108, maxHeight: 108, alignment: .leading)
     }
 
     private var terminalButton: some View {
@@ -462,22 +458,18 @@ private struct ExperimentalServerCard: View {
         [
             inlineMetric(id: "network-upload", value: uploadSpeedText, marker: "↑"),
             inlineMetric(id: "network-download", value: downloadSpeedText, marker: "↓")
-        ].compactMap { $0 }
+        ]
     }
 
     private var diskMetrics: [ExperimentalInlineMetricDescriptor] {
         [
             inlineMetric(id: "disk-read", value: diskReadSpeedText, marker: "R"),
             inlineMetric(id: "disk-write", value: diskWriteSpeedText, marker: "W")
-        ].compactMap { $0 }
+        ]
     }
 
-    private func inlineMetric(id: String, value: String, marker: String) -> ExperimentalInlineMetricDescriptor? {
+    private func inlineMetric(id: String, value: String, marker: String) -> ExperimentalInlineMetricDescriptor {
         let parts = ExperimentalRateParts(rawValue: value)
-        guard parts.hasRenderableValue else {
-            return nil
-        }
-
         return ExperimentalInlineMetricDescriptor(id: id, parts: parts, marker: marker)
     }
 
@@ -504,8 +496,72 @@ private struct ExperimentalMetricTile: View {
             tint: valueTint,
             palette: palette
         )
-        .frame(width: 94, height: 94)
+        .frame(width: 76, height: 76)
         .opacity(percentage == nil ? 0.78 : 1)
+    }
+}
+
+private struct ExperimentalCompactMetricCapsule: View {
+    let title: String
+    let value: String
+    let isActive: Bool
+    let palette: ExperimentalHomePalette
+
+    private var valueColor: Color {
+        isActive ? palette.memoryAccent : palette.secondaryText.opacity(0.38)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(palette.secondaryText)
+
+            Text(value)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(valueColor)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(palette.subcardBackground)
+        .clipShape(Capsule())
+    }
+}
+
+private struct ExperimentalCompactRateCapsule: View {
+    let symbol: String
+    let parts: ExperimentalRateParts
+    let palette: ExperimentalHomePalette
+
+    private var valueColor: Color {
+        parts.hasRenderableValue ? palette.memoryAccent : palette.secondaryText.opacity(0.38)
+    }
+
+    private var metaColor: Color {
+        parts.hasRenderableValue ? palette.memoryAccent : palette.secondaryText.opacity(0.28)
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(symbol)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(metaColor)
+
+            Text(parts.displayNumber)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(valueColor)
+                .monospacedDigit()
+
+            Text(parts.compactUnit)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(metaColor)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(palette.subcardBackground)
+        .clipShape(Capsule())
     }
 }
 
@@ -565,13 +621,13 @@ private struct ExperimentalRingPercentageText: View {
                     Text("--")
                 }
             }
-            .font(.system(size: 28, weight: .semibold, design: .rounded))
+            .font(.system(size: 24, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.72)
 
             Text(label)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .tracking(0.2)
         }
@@ -596,7 +652,7 @@ private struct ExperimentalInfoMetricRow: View {
             Text(title)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
-                .frame(width: 66, alignment: .leading)
+                .frame(width: 58, alignment: .leading)
 
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 ForEach(items) { item in
@@ -609,6 +665,7 @@ private struct ExperimentalInfoMetricRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(height: 36, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -623,7 +680,7 @@ private struct ExperimentalInfoValueRow: View {
             Text(title)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
-                .frame(width: 66, alignment: .leading)
+                .frame(width: 58, alignment: .leading)
 
             Text(value)
                 .font(.system(size: 14, weight: .medium, design: .rounded))
@@ -633,6 +690,7 @@ private struct ExperimentalInfoValueRow: View {
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(height: 36, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -642,24 +700,36 @@ private struct ExperimentalInlineMetric: View {
     let accent: Color
     let palette: ExperimentalHomePalette
 
+    private var isActive: Bool {
+        item.parts.hasRenderableValue
+    }
+
+    private var valueColor: Color {
+        isActive ? accent : palette.secondaryText.opacity(0.28)
+    }
+
+    private var metaColor: Color {
+        isActive ? accent : palette.secondaryText.opacity(0.24)
+    }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
             Text(item.parts.displayNumber)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundColor(accent)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
 
             if !item.parts.compactUnit.isEmpty {
                 Text(item.parts.compactUnit)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(palette.secondaryText.opacity(0.82))
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundColor(metaColor)
                     .monospacedDigit()
             }
 
             Text(item.marker)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(accent)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundColor(metaColor)
                 .lineLimit(1)
         }
     }
@@ -673,9 +743,10 @@ private struct ExperimentalHeaderBadge: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(palette.secondaryText)
+            ExperimentalHeaderSymbol(
+                symbol: symbol,
+                color: palette.secondaryText
+            )
 
             Text(value)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -683,6 +754,63 @@ private struct ExperimentalHeaderBadge: View {
                 .monospacedDigit()
                 .lineLimit(1)
         }
+    }
+}
+
+private struct ExperimentalHeaderSymbol: View {
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Group {
+            if symbol == "cpuchip" {
+                ExperimentalCPUChipIcon(color: color)
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(color)
+                    .frame(width: 16, height: 16)
+            }
+        }
+    }
+}
+
+private struct ExperimentalCPUChipIcon: View {
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 2.2, style: .continuous)
+                .stroke(color.opacity(0.9), lineWidth: 1.2)
+                .frame(width: 12, height: 12)
+
+            RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                .stroke(color.opacity(0.55), lineWidth: 0.9)
+                .frame(width: 7, height: 7)
+
+            ForEach([-1, 1], id: \.self) { side in
+                VStack(spacing: 1.8) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Capsule(style: .continuous)
+                            .fill(color.opacity(0.9))
+                            .frame(width: 1.2, height: 2.4)
+                    }
+                }
+                .offset(x: CGFloat(side) * 7.5)
+            }
+
+            ForEach([-1, 1], id: \.self) { side in
+                HStack(spacing: 1.8) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Capsule(style: .continuous)
+                            .fill(color.opacity(0.9))
+                            .frame(width: 2.4, height: 1.2)
+                    }
+                }
+                .offset(y: CGFloat(side) * 7.5)
+            }
+        }
+        .frame(width: 16, height: 16)
     }
 }
 
@@ -700,12 +828,12 @@ private struct ExperimentalRateParts {
         let compact = trimmed.replacingOccurrences(of: " ", with: "")
 
         guard !compact.isEmpty, compact != "--" else {
-            number = "--"
+            number = "0"
             unit = ""
-            displayNumber = "--"
-            numericValue = nil
-            numericAmount = nil
-            compactUnit = ""
+            displayNumber = "0"
+            numericValue = 0
+            numericAmount = 0
+            compactUnit = "K"
             hasRenderableValue = false
             return
         }
