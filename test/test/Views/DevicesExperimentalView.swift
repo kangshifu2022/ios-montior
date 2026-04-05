@@ -834,8 +834,23 @@ private struct ExperimentalUsageRing: View {
     let ringStyle: ExperimentalRingStyle
     let palette: ExperimentalHomePalette
 
+    private let gapAngle: Double = 130
+    private let ringLineWidth: CGFloat = 8
+
     private var normalizedValue: Double {
         Double(min(max(percentage ?? 0, 0), 100)) / 100
+    }
+
+    private var arcSweepAngle: Double {
+        360 - gapAngle
+    }
+
+    private var arcStartAngle: Double {
+        90 + (gapAngle / 2)
+    }
+
+    private var arcEndAngle: Double {
+        arcStartAngle + arcSweepAngle
     }
 
     private var trackColor: Color {
@@ -848,7 +863,7 @@ private struct ExperimentalUsageRing: View {
     }
 
     private var activeStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 8, lineCap: ringStyle == .memoryGradient ? .round : .butt)
+        StrokeStyle(lineWidth: ringLineWidth, lineCap: ringStyle == .memoryGradient ? .round : .butt)
     }
 
     private var activeStroke: AnyShapeStyle {
@@ -874,31 +889,48 @@ private struct ExperimentalUsageRing: View {
     var body: some View {
         ZStack {
             if ringStyle == .memoryGradient {
-                Circle()
-                    .stroke(trackColor, lineWidth: 8)
+                ExperimentalRingArc(
+                    startAngle: arcStartAngle,
+                    endAngle: arcEndAngle,
+                    inset: ringLineWidth / 2
+                )
+                .stroke(trackColor, lineWidth: ringLineWidth)
 
-                Circle()
-                    .trim(from: 0, to: normalizedValue)
+                if normalizedValue > 0 {
+                    ExperimentalRingArc(
+                        startAngle: arcStartAngle,
+                        endAngle: arcStartAngle + (arcSweepAngle * normalizedValue),
+                        inset: ringLineWidth / 2
+                    )
                     .stroke(activeStroke, style: activeStrokeStyle)
-                    .rotationEffect(.degrees(-90))
+                }
 
-                Circle()
-                    .stroke(
-                        palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
-                        lineWidth: 1
-                    )
-                    .padding(-5)
+                ExperimentalRingArc(
+                    startAngle: arcStartAngle,
+                    endAngle: arcEndAngle,
+                    inset: ringLineWidth / 2
+                )
+                .stroke(
+                    palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
+                    lineWidth: 1
+                )
+                .padding(-5)
             } else {
-                Circle()
-                    .stroke(trackColor, lineWidth: 8)
+                ExperimentalRingArc(
+                    startAngle: arcStartAngle,
+                    endAngle: arcEndAngle,
+                    inset: ringLineWidth / 2
+                )
+                .stroke(trackColor, lineWidth: ringLineWidth)
 
-                Circle()
-                    .trim(from: 0, to: normalizedValue)
-                    .stroke(
-                        activeStroke,
-                        style: activeStrokeStyle
+                if normalizedValue > 0 {
+                    ExperimentalRingArc(
+                        startAngle: arcStartAngle,
+                        endAngle: arcStartAngle + (arcSweepAngle * normalizedValue),
+                        inset: ringLineWidth / 2
                     )
-                    .rotationEffect(.degrees(-90))
+                    .stroke(activeStroke, style: activeStrokeStyle)
+                }
             }
 
             ExperimentalRingPercentageText(
@@ -910,6 +942,46 @@ private struct ExperimentalUsageRing: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage ?? -1)
+    }
+}
+
+private struct ExperimentalRingArc: Shape {
+    var startAngle: Double
+    var endAngle: Double
+    let inset: CGFloat
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(startAngle, endAngle) }
+        set {
+            startAngle = newValue.first
+            endAngle = newValue.second
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let radius = max(0, (min(rect.width, rect.height) / 2) - inset)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let segmentCount = max(2, Int(abs(endAngle - startAngle) / 4))
+        let angles = stride(from: 0, through: segmentCount, by: 1).map { index in
+            startAngle + ((endAngle - startAngle) * Double(index) / Double(segmentCount))
+        }
+
+        var path = Path()
+        for (index, angle) in angles.enumerated() {
+            let radians = angle * .pi / 180
+            let point = CGPoint(
+                x: center.x + CGFloat(cos(radians)) * radius,
+                y: center.y + CGFloat(sin(radians)) * radius
+            )
+
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        return path
     }
 }
 

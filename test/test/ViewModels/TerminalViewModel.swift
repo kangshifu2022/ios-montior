@@ -17,7 +17,7 @@ final class TerminalViewModel: ObservableObject {
     private var outputSink: (([UInt8]) -> Void)?
     private var pendingOutput: [[UInt8]] = []
     private var terminalSize = TerminalSize.fallback
-    private var suspendedForBackground = false
+    private var keepsSessionAlive = false
     private var exitRequestedByUser = false
 
     init(server: ServerConfig) {
@@ -42,6 +42,7 @@ final class TerminalViewModel: ObservableObject {
     func connectIfNeeded() {
         guard sessionTask == nil else { return }
         lastError = nil
+        keepsSessionAlive = true
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
@@ -53,12 +54,12 @@ final class TerminalViewModel: ObservableObject {
 
     func reconnect() {
         exitRequestedByUser = false
-        suspendedForBackground = false
         disconnect(clearError: true)
         connectIfNeeded()
     }
 
     func disconnect(clearError: Bool = false) {
+        keepsSessionAlive = false
         exitRequestedByUser = false
         sessionTask?.cancel()
         sessionTask = nil
@@ -124,6 +125,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func sendExit() {
+        keepsSessionAlive = false
         exitRequestedByUser = true
         send(text: "exit\n")
     }
@@ -171,13 +173,10 @@ final class TerminalViewModel: ObservableObject {
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
         case .active:
-            guard suspendedForBackground else { return }
-            suspendedForBackground = false
+            guard keepsSessionAlive, sessionTask == nil else { return }
             connectIfNeeded()
         case .background:
-            guard sessionTask != nil else { return }
-            suspendedForBackground = true
-            disconnect(clearError: true)
+            break
         case .inactive:
             break
         @unknown default:
@@ -226,7 +225,6 @@ final class TerminalViewModel: ObservableObject {
             isConnecting = false
             isConnected = false
             lastError = message
-            suspendedForBackground = false
         case .disconnected:
             isConnecting = false
             isConnected = false
