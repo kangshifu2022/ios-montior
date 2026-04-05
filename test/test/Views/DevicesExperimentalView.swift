@@ -592,22 +592,15 @@ private struct ExperimentalServerCard: View {
     }
 
     private var infoPanel: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ExperimentalStackedMetricColumn(
-                topItem: uploadMetric,
-                bottomItem: diskReadMetric,
-                accent: palette.memoryAccent,
-                palette: palette
-            )
-
-            ExperimentalStackedMetricColumn(
-                topItem: downloadMetric,
-                bottomItem: diskWriteMetric,
-                accent: palette.memoryAccent,
-                palette: palette
-            )
-        }
-        .frame(maxWidth: .infinity, minHeight: 76, maxHeight: 76, alignment: .leading)
+        ExperimentalRateMetricGrid(
+            topLeft: uploadMetric,
+            topRight: diskReadMetric,
+            bottomLeft: downloadMetric,
+            bottomRight: diskWriteMetric,
+            accent: palette.memoryAccent,
+            palette: palette
+        )
+        .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84, alignment: .leading)
     }
 
     private var terminalButton: some View {
@@ -698,25 +691,31 @@ private struct ExperimentalServerCard: View {
         }
     }
 
-    private var uploadMetric: ExperimentalInlineMetricDescriptor {
-        inlineMetric(id: "network-upload", value: uploadSpeedText, marker: "↑")
+    private var uploadMetric: ExperimentalRateMetricDescriptor {
+        rateMetric(id: "network-upload", label: "upload", value: uploadSpeedText)
     }
 
-    private var downloadMetric: ExperimentalInlineMetricDescriptor {
-        inlineMetric(id: "network-download", value: downloadSpeedText, marker: "↓")
+    private var downloadMetric: ExperimentalRateMetricDescriptor {
+        rateMetric(id: "network-download", label: "down", value: downloadSpeedText)
     }
 
-    private var diskReadMetric: ExperimentalInlineMetricDescriptor {
-        inlineMetric(id: "disk-read", value: diskReadSpeedText, marker: "R")
+    private var diskReadMetric: ExperimentalRateMetricDescriptor {
+        rateMetric(id: "disk-read", label: "read", value: diskReadSpeedText)
     }
 
-    private var diskWriteMetric: ExperimentalInlineMetricDescriptor {
-        inlineMetric(id: "disk-write", value: diskWriteSpeedText, marker: "W")
+    private var diskWriteMetric: ExperimentalRateMetricDescriptor {
+        rateMetric(id: "disk-write", label: "write", value: diskWriteSpeedText)
     }
 
-    private func inlineMetric(id: String, value: String, marker: String) -> ExperimentalInlineMetricDescriptor {
+    private func rateMetric(id: String, label: String, value: String) -> ExperimentalRateMetricDescriptor {
         let parts = ExperimentalRateParts(rawValue: value)
-        return ExperimentalInlineMetricDescriptor(id: id, parts: parts, marker: marker)
+        let unitText = parts.unit.isEmpty ? "k/s" : parts.unit.lowercased()
+        return ExperimentalRateMetricDescriptor(
+            id: id,
+            label: label,
+            unitText: unitText,
+            parts: parts
+        )
     }
 
     private func percentageValue(_ value: Double?) -> Int? {
@@ -936,38 +935,57 @@ private struct ExperimentalRingPercentageText: View {
     }
 }
 
-private struct ExperimentalInlineMetricDescriptor: Identifiable {
+private struct ExperimentalRateMetricDescriptor: Identifiable {
     let id: String
+    let label: String
+    let unitText: String
     let parts: ExperimentalRateParts
-    let marker: String
 }
 
-private struct ExperimentalStackedMetricColumn: View {
-    let topItem: ExperimentalInlineMetricDescriptor
-    let bottomItem: ExperimentalInlineMetricDescriptor
+private struct ExperimentalRateMetricGrid: View {
+    let topLeft: ExperimentalRateMetricDescriptor
+    let topRight: ExperimentalRateMetricDescriptor
+    let bottomLeft: ExperimentalRateMetricDescriptor
+    let bottomRight: ExperimentalRateMetricDescriptor
     let accent: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ExperimentalInlineMetric(
-                item: topItem,
-                accent: accent,
-                palette: palette
-            )
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: 12) {
+                ExperimentalRateMetric(
+                    item: topLeft,
+                    accent: accent,
+                    palette: palette
+                )
 
-            ExperimentalInlineMetric(
-                item: bottomItem,
-                accent: accent,
-                palette: palette
-            )
+                ExperimentalRateMetric(
+                    item: bottomLeft,
+                    accent: accent,
+                    palette: palette
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                ExperimentalRateMetric(
+                    item: topRight,
+                    accent: accent,
+                    palette: palette
+                )
+
+                ExperimentalRateMetric(
+                    item: bottomRight,
+                    accent: accent,
+                    palette: palette
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct ExperimentalInlineMetric: View {
-    let item: ExperimentalInlineMetricDescriptor
+private struct ExperimentalRateMetric: View {
+    let item: ExperimentalRateMetricDescriptor
     let accent: Color
     let palette: ExperimentalHomePalette
 
@@ -976,33 +994,38 @@ private struct ExperimentalInlineMetric: View {
     }
 
     private var valueColor: Color {
-        isActive ? accent : palette.secondaryText.opacity(0.28)
+        isActive ? accent : palette.secondaryText.opacity(0.62)
     }
 
     private var metaColor: Color {
-        isActive ? accent : palette.secondaryText.opacity(0.24)
+        palette.secondaryText.opacity(0.88)
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
+        HStack(alignment: .center, spacing: 8) {
             Text(item.parts.displayNumber)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 30, weight: .semibold, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .frame(minWidth: 32, alignment: .trailing)
 
-            if !item.parts.compactUnit.isEmpty {
-                Text(item.parts.compactUnit)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
+            VStack(alignment: .leading, spacing: -1) {
+                Text(item.unitText)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundColor(metaColor)
                     .monospacedDigit()
-            }
+                    .lineLimit(1)
 
-            Text(item.marker)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundColor(metaColor)
-                .lineLimit(1)
+                Text(item.label)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(metaColor)
+                    .lineLimit(1)
+            }
+            .minimumScaleFactor(0.8)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
