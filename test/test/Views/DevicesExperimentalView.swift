@@ -233,40 +233,16 @@ private struct ExperimentalServerCard: View {
         VStack(alignment: .leading, spacing: 18) {
             header
 
-            HStack(alignment: .top, spacing: 12) {
-                ExperimentalMetricTile(
-                    label: "CPU",
-                    percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
-                    valueTint: palette.memoryAccent,
-                    palette: palette
-                )
+            ViewThatFits {
+                HStack(alignment: .center, spacing: 22) {
+                    metricRings
+                    infoPanel
+                }
 
-                ExperimentalMetricTile(
-                    label: "MEM",
-                    percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
-                    valueTint: palette.memoryAccent,
-                    palette: palette
-                )
-
-                ExperimentalRateColumn(
-                    title: "NET",
-                    primaryValue: uploadSpeedText,
-                    primaryCaption: "upload",
-                    secondaryValue: downloadSpeedText,
-                    secondaryCaption: "down",
-                    accent: palette.memoryAccent,
-                    palette: palette
-                )
-
-                ExperimentalRateColumn(
-                    title: "I/O",
-                    primaryValue: diskReadSpeedText,
-                    primaryCaption: "read",
-                    secondaryValue: diskWriteSpeedText,
-                    secondaryCaption: "write",
-                    accent: palette.memoryAccent,
-                    palette: palette
-                )
+                VStack(alignment: .leading, spacing: 18) {
+                    metricRings
+                    infoPanel
+                }
             }
         }
         .contentShape(Rectangle())
@@ -334,6 +310,50 @@ private struct ExperimentalServerCard: View {
         }
     }
 
+    private var metricRings: some View {
+        HStack(spacing: 14) {
+            ExperimentalMetricTile(
+                label: "CPU %",
+                percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
+                valueTint: palette.memoryAccent,
+                palette: palette
+            )
+
+            ExperimentalMetricTile(
+                label: "MEM %",
+                percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
+                valueTint: palette.memoryAccent,
+                palette: palette
+            )
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var infoPanel: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            ExperimentalInfoMetricRow(
+                title: "Network",
+                items: networkMetrics,
+                accent: palette.memoryAccent,
+                palette: palette
+            )
+
+            ExperimentalInfoMetricRow(
+                title: "Disk I/O",
+                items: diskMetrics,
+                accent: palette.memoryAccent,
+                palette: palette
+            )
+
+            ExperimentalInfoValueRow(
+                title: "Uptime",
+                value: uptimeDisplayText,
+                palette: palette
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var terminalButton: some View {
         Button(action: { showTerminal = true }) {
             Image(systemName: "terminal")
@@ -369,6 +389,18 @@ private struct ExperimentalServerCard: View {
     private var uptimeText: String {
         let uptime = (stats?.uptime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return uptime.isEmpty ? "--" : uptime
+    }
+
+    private var uptimeDisplayText: String {
+        guard uptimeText != "--" else {
+            return "--"
+        }
+
+        let trimmed = uptimeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("up ") {
+            return String(trimmed.dropFirst(3))
+        }
+        return trimmed
     }
 
     private var headerUptimeText: String {
@@ -426,6 +458,29 @@ private struct ExperimentalServerCard: View {
         "offline"
     }
 
+    private var networkMetrics: [ExperimentalInlineMetricDescriptor] {
+        [
+            inlineMetric(id: "network-upload", value: uploadSpeedText, marker: "↑"),
+            inlineMetric(id: "network-download", value: downloadSpeedText, marker: "↓")
+        ].compactMap { $0 }
+    }
+
+    private var diskMetrics: [ExperimentalInlineMetricDescriptor] {
+        [
+            inlineMetric(id: "disk-read", value: diskReadSpeedText, marker: "R"),
+            inlineMetric(id: "disk-write", value: diskWriteSpeedText, marker: "W")
+        ].compactMap { $0 }
+    }
+
+    private func inlineMetric(id: String, value: String, marker: String) -> ExperimentalInlineMetricDescriptor? {
+        let parts = ExperimentalRateParts(rawValue: value)
+        guard parts.hasRenderableValue else {
+            return nil
+        }
+
+        return ExperimentalInlineMetricDescriptor(id: id, parts: parts, marker: marker)
+    }
+
     private func percentageValue(_ value: Double?) -> Int? {
         guard let value else { return nil }
         return Int((min(max(value, 0), 1) * 100).rounded())
@@ -443,27 +498,19 @@ private struct ExperimentalMetricTile: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(spacing: 10) {
-            ExperimentalUsageRing(
-                percentage: percentage,
-                tint: valueTint,
-                palette: palette
-            )
-            .frame(maxWidth: .infinity, alignment: .center)
-            .frame(height: 78)
-
-            Text(label)
-                .font(.system(size: 14, weight: .light, design: .rounded))
-                .foregroundColor(palette.secondaryText)
-                .tracking(0.4)
-        }
-        .frame(maxWidth: .infinity, alignment: .top)
-        .layoutPriority(1)
+        ExperimentalUsageRing(
+            label: label,
+            percentage: percentage,
+            tint: valueTint,
+            palette: palette
+        )
+        .frame(width: 94, height: 94)
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
 
 private struct ExperimentalUsageRing: View {
+    let label: String
     let percentage: Int?
     let tint: Color
     let palette: ExperimentalHomePalette
@@ -490,22 +537,25 @@ private struct ExperimentalUsageRing: View {
                 .rotationEffect(.degrees(-90))
 
             ExperimentalRingPercentageText(
+                label: label,
                 percentage: percentage,
-                tint: tint
+                tint: tint,
+                palette: palette
             )
         }
-        .frame(width: 68, height: 68)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage ?? -1)
     }
 }
 
 private struct ExperimentalRingPercentageText: View {
+    let label: String
     let percentage: Int?
     let tint: Color
+    let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(spacing: -2) {
+        VStack(spacing: 1) {
             Group {
                 if let percentage {
                     Text("\(percentage)")
@@ -515,107 +565,103 @@ private struct ExperimentalRingPercentageText: View {
                     Text("--")
                 }
             }
-            .font(.system(size: 23, weight: .semibold, design: .rounded))
+            .font(.system(size: 28, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.72)
 
-            Text("%")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .opacity(percentage == nil ? 0 : 0.62)
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(palette.secondaryText)
+                .tracking(0.2)
         }
         .foregroundColor(tint)
     }
 }
 
-private struct ExperimentalRateColumn: View {
+private struct ExperimentalInlineMetricDescriptor: Identifiable {
+    let id: String
+    let parts: ExperimentalRateParts
+    let marker: String
+}
+
+private struct ExperimentalInfoMetricRow: View {
     let title: String
-    let primaryValue: String
-    let primaryCaption: String
-    let secondaryValue: String
-    let secondaryCaption: String
+    let items: [ExperimentalInlineMetricDescriptor]
     let accent: Color
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ExperimentalRateValue(
-                value: primaryValue,
-                caption: primaryCaption,
-                accent: accent,
-                palette: palette
-            )
-
-            ExperimentalRateValue(
-                value: secondaryValue,
-                caption: secondaryCaption,
-                accent: accent,
-                palette: palette
-            )
-
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
             Text(title)
-                .font(.system(size: 14, weight: .light, design: .rounded))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
-                .tracking(0.4)
+                .frame(width: 66, alignment: .leading)
+
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                ForEach(items) { item in
+                    ExperimentalInlineMetric(
+                        item: item,
+                        accent: accent,
+                        palette: palette
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .layoutPriority(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct ExperimentalRateValue: View {
+private struct ExperimentalInfoValueRow: View {
+    let title: String
     let value: String
-    let caption: String
+    let palette: ExperimentalHomePalette
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(palette.secondaryText)
+                .frame(width: 66, alignment: .leading)
+
+            Text(value)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(palette.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ExperimentalInlineMetric: View {
+    let item: ExperimentalInlineMetricDescriptor
     let accent: Color
     let palette: ExperimentalHomePalette
 
-    private var parts: ExperimentalRateParts {
-        ExperimentalRateParts(rawValue: value)
-    }
-
-    private var valueColor: Color {
-        guard let numericValue = parts.numericValue, numericValue > 0 else {
-            return palette.secondaryText.opacity(palette.isDark ? 0.72 : 0.84)
-        }
-        return accent
-    }
-
     var body: some View {
-        HStack(alignment: .center, spacing: 4) {
-            Group {
-                if let numericValue = parts.numericValue {
-                    Text("\(numericValue)")
-                        .contentTransition(.numericText(value: Double(numericValue)))
-                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: numericValue)
-                } else {
-                    Text(parts.displayNumber)
-                }
-            }
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
-                .foregroundColor(valueColor)
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(item.parts.displayNumber)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(accent)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.62)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: -2) {
-                Text(parts.unit.isEmpty ? "--" : parts.unit)
-                    .font(.system(size: 9, weight: .regular, design: .rounded))
-                    .foregroundColor(palette.secondaryText)
+            if !item.parts.compactUnit.isEmpty {
+                Text(item.parts.compactUnit)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.secondaryText.opacity(0.82))
                     .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-
-                Text(caption)
-                    .font(.system(size: 9, weight: .regular, design: .rounded))
-                    .foregroundColor(palette.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
             }
-            .frame(width: 34, height: 28, alignment: .center)
+
+            Text(item.marker)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(accent)
+                .lineLimit(1)
         }
-        .frame(height: 34, alignment: .center)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -645,6 +691,9 @@ private struct ExperimentalRateParts {
     let unit: String
     let displayNumber: String
     let numericValue: Int?
+    let numericAmount: Double?
+    let compactUnit: String
+    let hasRenderableValue: Bool
 
     init(rawValue: String) {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -655,6 +704,9 @@ private struct ExperimentalRateParts {
             unit = ""
             displayNumber = "--"
             numericValue = nil
+            numericAmount = nil
+            compactUnit = ""
+            hasRenderableValue = false
             return
         }
 
@@ -667,9 +719,13 @@ private struct ExperimentalRateParts {
 
         number = parsedNumber.isEmpty ? compact : parsedNumber
         unit = parsedNumber.isEmpty ? "" : parsedUnit
+        let amount = ExperimentalRateParts.doubleValue(from: number)
         let integerValue = ExperimentalRateParts.integerDisplay(from: number)
-        displayNumber = integerValue.map(String.init) ?? number
+        numericAmount = amount
+        displayNumber = ExperimentalRateParts.displayText(from: amount, fallback: number)
         numericValue = integerValue
+        compactUnit = ExperimentalRateParts.compactUnit(from: unit)
+        hasRenderableValue = (amount ?? 0) > 0.000_1
     }
 
     private static func integerDisplay(from rawNumber: String) -> Int? {
@@ -680,6 +736,42 @@ private struct ExperimentalRateParts {
         }
 
         return nil
+    }
+
+    private static func doubleValue(from rawNumber: String) -> Double? {
+        let normalized = rawNumber.replacingOccurrences(of: ",", with: ".")
+        return Double(normalized)
+    }
+
+    private static func compactUnit(from rawUnit: String) -> String {
+        switch rawUnit.lowercased() {
+        case "k/s":
+            return "K"
+        case "mb/s":
+            return "M"
+        case "gb/s":
+            return "G"
+        case "b/s":
+            return "B"
+        default:
+            return rawUnit.uppercased()
+        }
+    }
+
+    private static func displayText(from amount: Double?, fallback: String) -> String {
+        guard let amount else {
+            return fallback
+        }
+
+        if amount >= 10 {
+            return String(Int(amount.rounded(.towardZero)))
+        }
+
+        if amount >= 1 {
+            return amount == floor(amount) ? String(Int(amount)) : String(format: "%.1f", amount)
+        }
+
+        return String(format: "%.1f", amount)
     }
 }
 
