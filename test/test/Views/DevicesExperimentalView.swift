@@ -83,12 +83,18 @@ struct DevicesExperimentalView: View {
             .navigationTitle("概览")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(homeCardView == .detailed ? "缩略" : "默认") {
+                    Button {
                         experimentalHomeCardViewRawValue = homeCardView == .detailed
                             ? ExperimentalHomeCardView.compact.rawValue
                             : ExperimentalHomeCardView.detailed.rawValue
                     }
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    label: {
+                        ExperimentalViewToggleIcon(
+                            mode: homeCardView,
+                            color: palette.primaryText
+                        )
+                    }
+                    .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
                 }
             }
             .navigationDestination(item: $selectedServer) { config in
@@ -134,6 +140,50 @@ private enum ExperimentalHomeCardView: String {
     case compact
 
     static let storageKey = "experimentalHomeCardView"
+}
+
+private struct ExperimentalViewToggleIcon: View {
+    let mode: ExperimentalHomeCardView
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(color.opacity(0.18), lineWidth: 1)
+                .frame(width: 30, height: 30)
+
+            if mode == .detailed {
+                HStack(spacing: 3) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(color.opacity(0.92))
+                        .frame(width: 8, height: 12)
+
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(color.opacity(0.55))
+                        .frame(width: 8, height: 12)
+                }
+            } else {
+                VStack(spacing: 3) {
+                    HStack(spacing: 3) {
+                        toggleMiniTile
+                        toggleMiniTile.opacity(0.82)
+                    }
+
+                    HStack(spacing: 3) {
+                        toggleMiniTile.opacity(0.68)
+                        toggleMiniTile.opacity(0.50)
+                    }
+                }
+            }
+        }
+        .frame(width: 30, height: 30)
+    }
+
+    private var toggleMiniTile: some View {
+        RoundedRectangle(cornerRadius: 2.2, style: .continuous)
+            .fill(color.opacity(0.92))
+            .frame(width: 5, height: 5)
+    }
 }
 
 private struct ExperimentalCompactServerCard: View {
@@ -236,7 +286,7 @@ private struct ExperimentalServerCard: View {
         VStack(alignment: .leading, spacing: 18) {
             header
 
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 18) {
                 metricRings
                 infoPanel
             }
@@ -307,7 +357,7 @@ private struct ExperimentalServerCard: View {
     }
 
     private var metricRings: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             ExperimentalMetricTile(
                 label: "CPU %",
                 percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
@@ -322,7 +372,7 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(width: 154, height: 108, alignment: .leading)
+        .frame(width: 142, height: 96, alignment: .leading)
     }
 
     private var infoPanel: some View {
@@ -347,7 +397,7 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 108, maxHeight: 108, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 96, alignment: .leading)
     }
 
     private var terminalButton: some View {
@@ -496,7 +546,7 @@ private struct ExperimentalMetricTile: View {
             tint: valueTint,
             palette: palette
         )
-        .frame(width: 76, height: 76)
+        .frame(width: 65, height: 65)
         .opacity(percentage == nil ? 0.78 : 1)
     }
 }
@@ -582,13 +632,13 @@ private struct ExperimentalUsageRing: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(trackColor, lineWidth: 9)
+                .stroke(trackColor, lineWidth: 8)
 
             Circle()
                 .trim(from: 0, to: normalizedValue)
                 .stroke(
                     tint,
-                    style: StrokeStyle(lineWidth: 9, lineCap: .butt)
+                    style: StrokeStyle(lineWidth: 8, lineCap: .butt)
                 )
                 .rotationEffect(.degrees(-90))
 
@@ -621,13 +671,13 @@ private struct ExperimentalRingPercentageText: View {
                     Text("--")
                 }
             }
-            .font(.system(size: 24, weight: .semibold, design: .rounded))
+            .font(.system(size: 21, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.72)
 
             Text(label)
-                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .font(.system(size: 8, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .tracking(0.2)
         }
@@ -665,7 +715,7 @@ private struct ExperimentalInfoMetricRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 36, alignment: .center)
+        .frame(height: 32, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -690,7 +740,7 @@ private struct ExperimentalInfoValueRow: View {
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 36, alignment: .center)
+        .frame(height: 32, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
