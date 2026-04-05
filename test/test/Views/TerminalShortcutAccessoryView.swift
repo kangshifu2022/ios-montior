@@ -1,6 +1,8 @@
 import UIKit
 
 final class TerminalShortcutAccessoryView: UIInputView {
+    private static let preferredHeight: CGFloat = 92
+
     struct ShortcutItem {
         let title: String
         let action: () -> Void
@@ -18,6 +20,15 @@ final class TerminalShortcutAccessoryView: UIInputView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.preferredHeight)
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        invalidateIntrinsicContentSize()
     }
 
     private func setupUI() {
@@ -67,8 +78,6 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 92),
-
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),

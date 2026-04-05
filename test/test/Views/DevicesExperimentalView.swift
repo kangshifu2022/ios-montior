@@ -72,6 +72,12 @@ struct DevicesExperimentalView: View {
             .background(palette.pageBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Text("概览")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundColor(palette.primaryText)
+                }
+
                 ToolbarItem(placement: .principal) {
                     ExperimentalBrandTitle(
                         edition: appEdition,
@@ -310,6 +316,10 @@ private struct ExperimentalCompactServerCard: View {
         ExperimentalRateParts(rawValue: isOnline ? (stats?.downloadSpeed ?? "--") : "--")
     }
 
+    private var cpuTint: Color {
+        cpuUsageTint(for: stats?.cpuUsage)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Text(config.name)
@@ -323,6 +333,7 @@ private struct ExperimentalCompactServerCard: View {
                     title: "CPU",
                     value: cpuText,
                     isActive: isOnline,
+                    accent: cpuTint,
                     palette: palette
                 )
 
@@ -330,6 +341,7 @@ private struct ExperimentalCompactServerCard: View {
                     title: "MEM",
                     value: memText,
                     isActive: isOnline,
+                    accent: palette.memoryAccent,
                     palette: palette
                 )
 
@@ -366,6 +378,25 @@ private struct ExperimentalCompactServerCard: View {
             return "--"
         }
         return "\(Int((min(max(value, 0), 1) * 100).rounded()))"
+    }
+
+    private func cpuUsageTint(for value: Double?) -> Color {
+        guard let value else {
+            return palette.secondaryText
+        }
+
+        switch value {
+        case ..<0.20:
+            return Color(red: 0.20, green: 0.78, blue: 0.36)
+        case ..<0.40:
+            return Color(red: 0.53, green: 0.82, blue: 0.18)
+        case ..<0.60:
+            return Color(red: 0.95, green: 0.78, blue: 0.18)
+        case ..<0.80:
+            return Color(red: 0.96, green: 0.52, blue: 0.20)
+        default:
+            return Color(red: 0.90, green: 0.26, blue: 0.24)
+        }
     }
 }
 
@@ -456,11 +487,11 @@ private struct ExperimentalServerCard: View {
     }
 
     private var metricRings: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             ExperimentalMetricTile(
                 label: "CPU %",
                 percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
-                valueTint: palette.memoryAccent,
+                valueTint: cpuUsageTint,
                 ringStyle: .standard,
                 palette: palette
             )
@@ -473,7 +504,7 @@ private struct ExperimentalServerCard: View {
                 palette: palette
             )
         }
-        .frame(width: 142, height: 96, alignment: .leading)
+        .frame(width: 150, height: 96, alignment: .leading)
     }
 
     private var infoPanel: some View {
@@ -599,6 +630,25 @@ private struct ExperimentalServerCard: View {
 
     private var offlineText: String {
         "offline"
+    }
+
+    private var cpuUsageTint: Color {
+        guard let usage = stats?.cpuUsage, isOnline else {
+            return palette.secondaryText
+        }
+
+        switch usage {
+        case ..<0.20:
+            return Color(red: 0.20, green: 0.78, blue: 0.36)
+        case ..<0.40:
+            return Color(red: 0.53, green: 0.82, blue: 0.18)
+        case ..<0.60:
+            return Color(red: 0.95, green: 0.78, blue: 0.18)
+        case ..<0.80:
+            return Color(red: 0.96, green: 0.52, blue: 0.20)
+        default:
+            return Color(red: 0.90, green: 0.26, blue: 0.24)
+        }
     }
 
     private var networkMetrics: [ExperimentalInlineMetricDescriptor] {
@@ -728,10 +778,11 @@ private struct ExperimentalCompactMetricCapsule: View {
     let title: String
     let value: String
     let isActive: Bool
+    let accent: Color
     let palette: ExperimentalHomePalette
 
     private var valueColor: Color {
-        isActive ? palette.memoryAccent : palette.secondaryText.opacity(0.38)
+        isActive ? accent : palette.secondaryText.opacity(0.38)
     }
 
     var body: some View {
@@ -953,7 +1004,7 @@ private struct ExperimentalInfoMetricRow: View {
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .frame(width: 58, alignment: .leading)
-                .offset(x: 7)
+                .offset(x: 11)
 
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 ForEach(items) { item in
@@ -982,7 +1033,7 @@ private struct ExperimentalInfoValueRow: View {
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .frame(width: 58, alignment: .leading)
-                .offset(x: 7)
+                .offset(x: 11)
 
             Text(value)
                 .font(.system(size: 14, weight: .medium, design: .rounded))
