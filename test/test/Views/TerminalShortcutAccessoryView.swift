@@ -56,28 +56,23 @@ final class TerminalShortcutAccessoryView: UIInputView {
     }
 
     private func setupUI() {
-        backgroundColor = .secondarySystemBackground
-
-        let scrollView = UIScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.showsVerticalScrollIndicator = false
-        addSubview(scrollView)
+        backgroundColor = .clear
 
         let contentStack = UIStackView()
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.spacing = 2
-        contentStack.alignment = .leading
+        contentStack.alignment = .fill
         contentStack.layoutMargins = UIEdgeInsets(top: 4, left: 5, bottom: 4, right: 5)
         contentStack.isLayoutMarginsRelativeArrangement = true
-        scrollView.addSubview(contentStack)
+        addSubview(contentStack)
 
         for rowItems in rows where !rowItems.isEmpty {
             let rowStack = UIStackView()
             rowStack.axis = .horizontal
             rowStack.spacing = 2
             rowStack.alignment = .center
+            rowStack.distribution = .fillProportionally
 
             for item in rowItems {
                 let button = UIButton(type: .system)
@@ -92,10 +87,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 }
                 button.configuration = configuration
                 button.accessibilityLabel = item.accessibilityLabel
-                button.titleLabel?.font = .systemFont(ofSize: 9, weight: .medium)
+                button.titleLabel?.font = .systemFont(ofSize: 8, weight: .medium)
+                button.titleLabel?.adjustsFontSizeToFitWidth = true
+                button.titleLabel?.minimumScaleFactor = 0.75
                 button.setTitleColor(.label, for: .normal)
                 button.backgroundColor = .tertiarySystemFill
                 button.layer.cornerRadius = 7
+                button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                 button.addAction(UIAction { _ in
                     item.action()
                 }, for: .touchUpInside)
@@ -106,16 +104,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
 
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            contentStack.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor)
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            contentStack.topAnchor.constraint(equalTo: topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
 }
