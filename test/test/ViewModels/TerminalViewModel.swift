@@ -19,9 +19,6 @@ final class TerminalViewModel: ObservableObject {
     private var terminalSize = TerminalSize.fallback
     private var suspendedForBackground = false
     private var exitRequestedByUser = false
-    private let transientPromptCommand = """
-    if [ -n "$BASH_VERSION" ]; then export PS1='\\[\\033[32m\\]\\u\\[\\033[0m\\]@\\h:\\w\\$ '; elif [ -n "$ZSH_VERSION" ]; then export PS1='%F{green}%n%f@%m:%~ %# '; else USER_NAME="$(id -un 2>/dev/null || printf '%s' "${USER:-user}")"; HOST_NAME="$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf '%s' 'host')"; PROMPT_SYMBOL='$'; [ "$(id -u 2>/dev/null)" = "0" ] && PROMPT_SYMBOL='#'; export PS1="$(printf '\\033[32m')${USER_NAME}$(printf '\\033[0m')@${HOST_NAME}${PROMPT_SYMBOL} "; fi; printf '\\033[2J\\033[H'
-    """
 
     init(server: ServerConfig) {
         self.server = server
@@ -118,6 +115,10 @@ final class TerminalViewModel: ObservableObject {
         send(text: "/")
     }
 
+    func sendPipe() {
+        send(text: "|")
+    }
+
     func sendExit() {
         exitRequestedByUser = true
         send(text: "exit\n")
@@ -129,6 +130,26 @@ final class TerminalViewModel: ObservableObject {
 
     func sendEnd() {
         send(bytes: [27, 91, 70])
+    }
+
+    func sendArrowUp() {
+        send(bytes: [27, 91, 65])
+    }
+
+    func sendArrowDown() {
+        send(bytes: [27, 91, 66])
+    }
+
+    func sendArrowRight() {
+        send(bytes: [27, 91, 67])
+    }
+
+    func sendArrowLeft() {
+        send(bytes: [27, 91, 68])
+    }
+
+    func sendClearScreen() {
+        send(bytes: [12])
     }
 
     func clearError() {
@@ -191,7 +212,6 @@ final class TerminalViewModel: ObservableObject {
             Task {
                 try? await session.resize(to: terminalSize)
             }
-            applyTransientPromptStyle()
         case .output(let bytes):
             if let outputSink {
                 outputSink(bytes)
@@ -228,9 +248,5 @@ final class TerminalViewModel: ObservableObject {
             }
         }
         return String(describing: error)
-    }
-
-    private func applyTransientPromptStyle() {
-        send(text: transientPromptCommand + "\n")
     }
 }

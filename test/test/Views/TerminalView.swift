@@ -68,6 +68,10 @@ struct TerminalView: View {
                     viewModel.sendSlash()
                 }
 
+                toolButton(icon: "pipe.and.signal.flow", label: "|") {
+                    viewModel.sendPipe()
+                }
+
                 toolButton(icon: "rectangle.portrait.and.arrow.right", label: "exit") {
                     viewModel.sendExit()
                 }
@@ -78,6 +82,26 @@ struct TerminalView: View {
 
                 toolButton(icon: "arrow.right.to.line", label: "End") {
                     viewModel.sendEnd()
+                }
+
+                toolButton(icon: "arrow.up", label: "Up") {
+                    viewModel.sendArrowUp()
+                }
+
+                toolButton(icon: "arrow.down", label: "Down") {
+                    viewModel.sendArrowDown()
+                }
+
+                toolButton(icon: "arrow.left", label: "Left") {
+                    viewModel.sendArrowLeft()
+                }
+
+                toolButton(icon: "arrow.right", label: "Right") {
+                    viewModel.sendArrowRight()
+                }
+
+                toolButton(icon: "clear", label: "^L") {
+                    viewModel.sendClearScreen()
                 }
             }
             .padding(.horizontal, 12)

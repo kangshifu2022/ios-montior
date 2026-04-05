@@ -88,6 +88,21 @@ final class ServerStore: ObservableObject {
         save()
     }
 
+    func moveServer(id: UUID, to targetIndex: Int) {
+        guard let sourceIndex = servers.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let boundedTarget = min(max(targetIndex, 0), servers.count - 1)
+        guard sourceIndex != boundedTarget else {
+            return
+        }
+
+        let destination = boundedTarget > sourceIndex ? boundedTarget + 1 : boundedTarget
+        servers.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destination)
+        save()
+    }
+
     func stats(for config: ServerConfig) -> ServerStats? {
         let staticInfo = staticInfoByServerID[config.id]
         let dynamicInfo = dynamicInfoByServerID[config.id]

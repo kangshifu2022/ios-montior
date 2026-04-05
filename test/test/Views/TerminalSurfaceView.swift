@@ -56,14 +56,19 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     private func makeShortcutAccessory() -> UIView {
         TerminalShortcutAccessoryView(items: [
-            .init(title: "重连", action: { viewModel.reconnect() }),
             .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
             .init(title: "Esc", action: { viewModel.sendEscape() }),
             .init(title: "Tab", action: { viewModel.sendTab() }),
             .init(title: "/", action: { viewModel.sendSlash() }),
+            .init(title: "|", action: { viewModel.sendPipe() }),
             .init(title: "exit", action: { viewModel.sendExit() }),
             .init(title: "Home", action: { viewModel.sendHome() }),
-            .init(title: "End", action: { viewModel.sendEnd() })
+            .init(title: "End", action: { viewModel.sendEnd() }),
+            .init(title: "↑", action: { viewModel.sendArrowUp() }),
+            .init(title: "↓", action: { viewModel.sendArrowDown() }),
+            .init(title: "←", action: { viewModel.sendArrowLeft() }),
+            .init(title: "→", action: { viewModel.sendArrowRight() }),
+            .init(title: "^L", action: { viewModel.sendClearScreen() })
         ])
     }
 

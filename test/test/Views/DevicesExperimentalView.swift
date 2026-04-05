@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DevicesExperimentalView: View {
     @ObservedObject var store: ServerStore
@@ -6,6 +7,7 @@ struct DevicesExperimentalView: View {
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @AppStorage(ExperimentalHomeCardView.storageKey) private var experimentalHomeCardViewRawValue = ExperimentalHomeCardView.detailed.rawValue
     @State private var selectedServer: ServerConfig?
+    @State private var draggedServerID: UUID?
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -50,27 +52,11 @@ struct DevicesExperimentalView: View {
                     } else {
                         LazyVStack(spacing: homeCardView == .detailed ? 18 : 10) {
                             ForEach(store.servers) { server in
-                                Group {
-                                    if homeCardView == .detailed {
-                                        ExperimentalServerCard(
-                                            config: server,
-                                            stats: store.stats(for: server),
-                                            palette: palette
-                                        ) {
-                                            selectedServer = server
-                                        }
-                                    } else {
-                                        ExperimentalCompactServerCard(
-                                            config: server,
-                                            stats: store.stats(for: server),
-                                            palette: palette
-                                        ) {
-                                            selectedServer = server
-                                        }
-                                    }
-                                }
+                                reorderableCard(for: server)
                             }
                         }
+                        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.servers)
+                        .onDrop(of: [UTType.text], delegate: ExperimentalServerListDropDelegate(draggedServerID: $draggedServerID))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -94,6 +80,7 @@ struct DevicesExperimentalView: View {
                             color: palette.primaryText
                         )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
                 }
             }
@@ -110,6 +97,44 @@ struct DevicesExperimentalView: View {
             }
         }
         .preferredColorScheme(preferredColorScheme)
+    }
+
+    @ViewBuilder
+    private func reorderableCard(for server: ServerConfig) -> some View {
+        let isDragged = draggedServerID == server.id
+
+        Group {
+            if homeCardView == .detailed {
+                ExperimentalServerCard(
+                    config: server,
+                    stats: store.stats(for: server),
+                    palette: palette
+                ) {
+                    selectedServer = server
+                }
+            } else {
+                ExperimentalCompactServerCard(
+                    config: server,
+                    stats: store.stats(for: server),
+                    palette: palette
+                ) {
+                    selectedServer = server
+                }
+            }
+        }
+        .scaleEffect(isDragged ? 1.02 : 1)
+        .opacity(isDragged ? 0.72 : 1)
+        .shadow(color: isDragged ? palette.cardShadow.opacity(1.2) : .clear, radius: 16, x: 0, y: 10)
+        .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isDragged)
+        .onDrag {
+            draggedServerID = server.id
+            return NSItemProvider(object: server.id.uuidString as NSString)
+        }
+        .onDrop(of: [UTType.text], delegate: ExperimentalServerCardDropDelegate(
+            targetServer: server,
+            store: store,
+            draggedServerID: $draggedServerID
+        ))
     }
 
     private var emptyState: some View {
@@ -140,6 +165,50 @@ private enum ExperimentalHomeCardView: String {
     case compact
 
     static let storageKey = "experimentalHomeCardView"
+}
+
+@MainActor
+private struct ExperimentalServerCardDropDelegate: DropDelegate {
+    let targetServer: ServerConfig
+    let store: ServerStore
+    @Binding var draggedServerID: UUID?
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedServerID,
+              draggedServerID != targetServer.id,
+              let targetIndex = store.servers.firstIndex(where: { $0.id == targetServer.id }) else {
+            return
+        }
+
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+            store.moveServer(id: draggedServerID, to: targetIndex)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedServerID = nil
+        return true
+    }
+
+    func dropExited(info: DropInfo) {}
+}
+
+@MainActor
+private struct ExperimentalServerListDropDelegate: DropDelegate {
+    @Binding var draggedServerID: UUID?
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedServerID = nil
+        return true
+    }
 }
 
 private struct ExperimentalViewToggleIcon: View {
@@ -272,7 +341,7 @@ private struct ExperimentalServerCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             header
 
             HStack(alignment: .center, spacing: 18) {
@@ -283,7 +352,8 @@ private struct ExperimentalServerCard: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.top, 11)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
         .overlay(
@@ -351,6 +421,7 @@ private struct ExperimentalServerCard: View {
                 label: "CPU %",
                 percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
                 valueTint: palette.memoryAccent,
+                ringStyle: .standard,
                 palette: palette
             )
 
@@ -358,6 +429,7 @@ private struct ExperimentalServerCard: View {
                 label: "MEM %",
                 percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
                 valueTint: palette.memoryAccent,
+                ringStyle: .memoryGradient,
                 palette: palette
             )
         }
@@ -367,14 +439,14 @@ private struct ExperimentalServerCard: View {
     private var infoPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             ExperimentalInfoMetricRow(
-                title: "Network",
+                title: "Net",
                 items: networkMetrics,
                 accent: palette.memoryAccent,
                 palette: palette
             )
 
             ExperimentalInfoMetricRow(
-                title: "Disk I/O",
+                title: "Disk",
                 items: diskMetrics,
                 accent: palette.memoryAccent,
                 palette: palette
@@ -431,11 +503,7 @@ private struct ExperimentalServerCard: View {
             return "--"
         }
 
-        let trimmed = uptimeText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("up ") {
-            return String(trimmed.dropFirst(3))
-        }
-        return trimmed
+        return normalizedUptimeDisplay(from: uptimeText)
     }
 
     private var headerUptimeText: String {
@@ -517,6 +585,80 @@ private struct ExperimentalServerCard: View {
         return Int((min(max(value, 0), 1) * 100).rounded())
     }
 
+    private func normalizedUptimeDisplay(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "--"
+        }
+
+        if let seconds = Double(trimmed), seconds >= 0 {
+            return uptimeDisplay(days: Int(seconds) / 86_400,
+                                 hours: (Int(seconds) % 86_400) / 3_600,
+                                 minutes: (Int(seconds) % 3_600) / 60)
+        }
+
+        let lowercased = trimmed.lowercased()
+
+        if let match = lowercased.range(of: #"(\d+)\s*d\s*(\d+)\s*h\s*(\d+)\s*m"#, options: .regularExpression) {
+            return compactUptimeToken(String(lowercased[match]))
+        }
+
+        if let match = lowercased.range(of: #"(\d+)\s*h\s*(\d+)\s*m"#, options: .regularExpression) {
+            return compactUptimeToken(String(lowercased[match]))
+        }
+
+        if let match = lowercased.range(of: #"(\d+)\s*day[s]?,?\s*(\d{1,2}):(\d{2})"#, options: .regularExpression) {
+            let token = String(lowercased[match])
+            let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+            if numbers.count >= 3 {
+                return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
+            }
+        }
+
+        if let match = lowercased.range(of: #"up\s+(\d+)\s+days?,?\s+(\d{1,2}):(\d{2})"#, options: .regularExpression) {
+            let token = String(lowercased[match])
+            let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+            if numbers.count >= 3 {
+                return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
+            }
+        }
+
+        if let match = trimmed.range(of: #"(\d+)\s*天\s*(\d+)\s*小时\s*(\d+)\s*分"#, options: .regularExpression) {
+            let token = String(trimmed[match])
+            let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+            if numbers.count >= 3 {
+                return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
+            }
+        }
+
+        if lowercased.hasPrefix("up ") {
+            return String(trimmed.dropFirst(3))
+        }
+
+        return trimmed
+    }
+
+    private func compactUptimeToken(_ token: String) -> String {
+        let numbers = token.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+
+        if token.contains("d"), numbers.count >= 3 {
+            return uptimeDisplay(days: numbers[0], hours: numbers[1], minutes: numbers[2])
+        }
+
+        if numbers.count >= 2 {
+            return "\(numbers[0])h \(numbers[1])m"
+        }
+
+        return token
+    }
+
+    private func uptimeDisplay(days: Int, hours: Int, minutes: Int) -> String {
+        if days > 0 {
+            return "\(days)d \(hours)h \(minutes)m"
+        }
+        return "\(hours)h \(minutes)m"
+    }
+
     private func temperatureText(for value: Double) -> String {
         "\(Int(value.rounded()))°C"
     }
@@ -526,6 +668,7 @@ private struct ExperimentalMetricTile: View {
     let label: String
     let percentage: Int?
     let valueTint: Color
+    var ringStyle: ExperimentalRingStyle = .standard
     let palette: ExperimentalHomePalette
 
     var body: some View {
@@ -533,6 +676,7 @@ private struct ExperimentalMetricTile: View {
             label: label,
             percentage: percentage,
             tint: valueTint,
+            ringStyle: ringStyle,
             palette: palette
         )
         .frame(width: 65, height: 65)
@@ -604,10 +748,16 @@ private struct ExperimentalCompactRateCapsule: View {
     }
 }
 
+private enum ExperimentalRingStyle {
+    case standard
+    case memoryGradient
+}
+
 private struct ExperimentalUsageRing: View {
     let label: String
     let percentage: Int?
     let tint: Color
+    let ringStyle: ExperimentalRingStyle
     let palette: ExperimentalHomePalette
 
     private var normalizedValue: Double {
@@ -615,19 +765,58 @@ private struct ExperimentalUsageRing: View {
     }
 
     private var trackColor: Color {
-        palette.isDark ? Color.white.opacity(0.14) : Color(.systemGray5)
+        switch ringStyle {
+        case .standard:
+            return palette.isDark ? Color.white.opacity(0.14) : Color(.systemGray5)
+        case .memoryGradient:
+            return palette.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
+        }
+    }
+
+    private var activeStrokeStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 8, lineCap: ringStyle == .memoryGradient ? .round : .butt)
+    }
+
+    private var activeStroke: AnyShapeStyle {
+        switch ringStyle {
+        case .standard:
+            return AnyShapeStyle(tint)
+        case .memoryGradient:
+            return AnyShapeStyle(
+                AngularGradient(
+                    colors: [
+                        Color(red: 0.52, green: 0.92, blue: 0.31),
+                        Color(red: 0.23, green: 0.80, blue: 0.14),
+                        Color(red: 0.05, green: 0.62, blue: 0.43),
+                        Color(red: 0.11, green: 0.72, blue: 0.48),
+                        Color(red: 0.44, green: 0.88, blue: 0.24)
+                    ],
+                    center: .center
+                )
+            )
+        }
     }
 
     var body: some View {
         ZStack {
             Circle()
                 .stroke(trackColor, lineWidth: 8)
+                .overlay {
+                    if ringStyle == .memoryGradient {
+                        Circle()
+                            .stroke(
+                                palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
+                                lineWidth: 1
+                            )
+                            .padding(-5)
+                    }
+                }
 
             Circle()
                 .trim(from: 0, to: normalizedValue)
                 .stroke(
-                    tint,
-                    style: StrokeStyle(lineWidth: 8, lineCap: .butt)
+                    activeStroke,
+                    style: activeStrokeStyle
                 )
                 .rotationEffect(.degrees(-90))
 
@@ -692,6 +881,7 @@ private struct ExperimentalInfoMetricRow: View {
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .frame(width: 58, alignment: .leading)
+                .offset(x: 7)
 
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 ForEach(items) { item in
@@ -720,6 +910,7 @@ private struct ExperimentalInfoValueRow: View {
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText)
                 .frame(width: 58, alignment: .leading)
+                .offset(x: 7)
 
             Text(value)
                 .font(.system(size: 14, weight: .medium, design: .rounded))
