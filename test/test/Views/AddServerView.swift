@@ -5,11 +5,13 @@ struct AddServerView: View {
     @ObservedObject var store: ServerStore
     
     @State private var name: String = ""
+    @State private var groupName: String = ServerConfig.allGroupName
     @State private var host: String = ""
     @State private var port: String = "22"
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var showPassword = false
+    @State private var showsDeleteConfirmation = false
     
     var isEditing: Bool = false
     var editingServer: ServerConfig? = nil
@@ -20,6 +22,7 @@ struct AddServerView: View {
         self.isEditing = editingServer != nil
         if let s = editingServer {
             _name = State(initialValue: s.name)
+            _groupName = State(initialValue: s.resolvedGroupName)
             _host = State(initialValue: s.host)
             _port = State(initialValue: String(s.port))
             _username = State(initialValue: s.username)
@@ -29,6 +32,20 @@ struct AddServerView: View {
     
     var canSave: Bool {
         !host.isEmpty && !username.isEmpty && !password.isEmpty
+    }
+
+    private var availableGroupNames: [String] {
+        var groups = [ServerConfig.allGroupName]
+        var seenGroups = Set(groups)
+
+        for server in store.servers {
+            let group = server.resolvedGroupName
+            if seenGroups.insert(group).inserted {
+                groups.append(group)
+            }
+        }
+
+        return groups
     }
     
     var body: some View {
@@ -41,6 +58,47 @@ struct AddServerView: View {
                         TextField("默认使用主机名", text: $name)
                             .multilineTextAlignment(.trailing)
                             .foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Text("分组")
+                        Spacer()
+                        TextField(ServerConfig.allGroupName, text: $groupName)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.secondary)
+                    }
+                    Text("留空时归入 “\(ServerConfig.allGroupName)”；在概览页的 All 里始终可以看到所有设备。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    if !availableGroupNames.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("已有分组")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(availableGroupNames, id: \.self) { existingGroupName in
+                                        let isSelected = ServerConfig.normalizedGroupName(groupName) == existingGroupName
+
+                                        Button {
+                                            groupName = existingGroupName
+                                        } label: {
+                                            Text(existingGroupName)
+                                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                                .foregroundColor(isSelected ? .white : .primary)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 7)
+                                                .background(
+                                                    Capsule()
+                                                        .fill(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
                     }
                     HStack {
                         Text("主机")
@@ -88,9 +146,32 @@ struct AddServerView: View {
                         }
                     }
                 }
+
+                if isEditing {
+                    Section {
+                        Button("删除设备", role: .destructive) {
+                            showsDeleteConfirmation = true
+                        }
+                    } footer: {
+                        Text("删除后会移除这台设备的配置和缓存数据。")
+                    }
+                }
             }
             .navigationTitle(isEditing ? "编辑服务器" : "添加服务器")
             .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog(
+                "删除设备",
+                isPresented: $showsDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("删除", role: .destructive) {
+                    handleDelete()
+                }
+
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("确认删除这台设备？")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -100,6 +181,7 @@ struct AddServerView: View {
                         let config = ServerConfig(
                             id: editingServer?.id ?? UUID(),
                             name: name.isEmpty ? host : name,
+                            groupName: ServerConfig.normalizedGroupName(groupName),
                             host: host,
                             port: Int(port) ?? 22,
                             username: username,
@@ -118,5 +200,14 @@ struct AddServerView: View {
                 }
             }
         }
+    }
+
+    private func handleDelete() {
+        guard let id = editingServer?.id else {
+            return
+        }
+
+        store.deleteServer(id: id)
+        dismiss()
     }
 }

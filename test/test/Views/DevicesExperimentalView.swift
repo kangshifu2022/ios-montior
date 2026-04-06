@@ -9,6 +9,7 @@ struct DevicesExperimentalView: View {
     @State private var selectedServer: ServerConfig?
     @State private var terminalServer: ServerConfig?
     @State private var editingServer: ServerConfig?
+    @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var draggedServerID: UUID?
     @State private var expandedServerIDsInCompactMode: Set<UUID> = []
 
@@ -50,6 +51,32 @@ struct DevicesExperimentalView: View {
         .pro
     }
 
+    private var availableGroupNames: [String] {
+        var groups = [ServerConfig.allGroupName]
+        var seenGroups = Set(groups)
+
+        for server in store.servers {
+            let group = server.resolvedGroupName
+            if seenGroups.insert(group).inserted {
+                groups.append(group)
+            }
+        }
+
+        return groups
+    }
+
+    private var activeGroupName: String {
+        availableGroupNames.contains(selectedGroupName) ? selectedGroupName : ServerConfig.allGroupName
+    }
+
+    private var filteredServers: [ServerConfig] {
+        guard activeGroupName != ServerConfig.allGroupName else {
+            return store.servers
+        }
+
+        return store.servers.filter { $0.resolvedGroupName == activeGroupName }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -60,11 +87,11 @@ struct DevicesExperimentalView: View {
                         emptyState
                     } else {
                         LazyVStack(spacing: homeCardView == .detailed ? 18 : 10) {
-                            ForEach(store.servers) { server in
+                            ForEach(filteredServers) { server in
                                 reorderableCard(for: server)
                             }
                         }
-                        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.servers)
+                        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: filteredServers)
                         .onDrop(of: [UTType.text], delegate: ExperimentalServerListDropDelegate(draggedServerID: $draggedServerID))
                     }
                 }
@@ -130,10 +157,63 @@ struct DevicesExperimentalView: View {
                 .font(.system(size: 38, weight: .black, design: .rounded))
                 .foregroundColor(palette.primaryText)
                 .tracking(-0.6)
+
+            if !availableGroupNames.isEmpty {
+                groupTabs
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
         .padding(.bottom, 2)
+    }
+
+    private var groupTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(availableGroupNames, id: \.self) { groupName in
+                    let isSelected = groupName == activeGroupName
+
+                    Button {
+                        guard selectedGroupName != groupName else { return }
+                        selectedGroupName = groupName
+                    } label: {
+                        Text(groupName)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var selectedGroupTabBackground: Color {
+        palette.isDark
+            ? Color.white.opacity(0.16)
+            : Color.black.opacity(0.82)
+    }
+
+    private var selectedGroupTabTextColor: Color {
+        .white
+    }
+
+    private var selectedGroupTabBorderColor: Color {
+        palette.isDark ? Color.white.opacity(0.26) : Color.black.opacity(0.12)
+    }
+
+    private var groupTabBackground: Color {
+        palette.isDark ? Color.white.opacity(0.06) : Color.white.opacity(0.82)
     }
 
     @ViewBuilder

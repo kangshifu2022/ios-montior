@@ -1,8 +1,11 @@
 import Foundation
 
 struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
+    static let allGroupName = "All"
+
     var id = UUID()
     var name: String
+    var groupName: String
     var host: String
     var port: Int = 22
     var username: String
@@ -10,12 +13,13 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
     var barkURL: String = ""
     var alertConfiguration: AlertConfiguration = AlertConfiguration()
 
-    init(id: UUID = UUID(), name: String = "", host: String = "",
+    init(id: UUID = UUID(), name: String = "", groupName: String = ServerConfig.allGroupName, host: String = "",
          port: Int = 22, username: String = "", password: String = "",
          barkURL: String = "",
          alertConfiguration: AlertConfiguration = AlertConfiguration()) {
         self.id = id
         self.name = name.isEmpty ? host : name
+        self.groupName = Self.normalizedGroupName(groupName)
         self.host = host
         self.port = port
         self.username = username
@@ -24,9 +28,23 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
         self.alertConfiguration = alertConfiguration
     }
 
+    var resolvedGroupName: String {
+        Self.normalizedGroupName(groupName)
+    }
+
+    static func normalizedGroupName(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return allGroupName
+        }
+
+        return trimmed.caseInsensitiveCompare(allGroupName) == .orderedSame ? allGroupName : trimmed
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case name
+        case groupName
         case host
         case port
         case username
@@ -50,6 +68,9 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
         if name.isEmpty {
             name = host
         }
+        groupName = Self.normalizedGroupName(
+            try container.decodeIfPresent(String.self, forKey: .groupName) ?? Self.allGroupName
+        )
         port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 22
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
@@ -72,6 +93,7 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
+        try container.encode(Self.normalizedGroupName(groupName), forKey: .groupName)
         try container.encode(host, forKey: .host)
         try container.encode(port, forKey: .port)
         try container.encode(username, forKey: .username)

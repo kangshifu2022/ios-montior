@@ -91,6 +91,14 @@ final class ServerStore: ObservableObject {
         saveCachedInfo()
     }
 
+    func deleteServer(id: UUID) {
+        guard let index = servers.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        delete(at: IndexSet(integer: index))
+    }
+
     func move(fromOffsets: IndexSet, toOffset: Int) {
         servers.move(fromOffsets: fromOffsets, toOffset: toOffset)
         save()
