@@ -1226,7 +1226,7 @@ private struct ExperimentalRateMetric: View {
     var body: some View {
         VStack(alignment: .center, spacing: -2) {
             Text(item.parts.displayNumber)
-                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .font(.system(size: 20, weight: .medium, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
