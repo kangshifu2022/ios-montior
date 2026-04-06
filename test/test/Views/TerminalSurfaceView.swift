@@ -191,7 +191,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 }),
                 .init(title: "Esc", action: {
                     let modifiers = consumeAccessoryModifiers()
-                    let payload = modifiers.alt ? [27, 27] : [27]
+                    let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
                     sendShortcutBytes(payload)
                 }),
                 .init(title: "Tab", action: {

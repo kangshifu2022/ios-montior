@@ -112,13 +112,13 @@ struct DevicesExperimentalView: View {
             .fullScreenCover(item: $terminalServer) { config in
                 TerminalView(server: config)
             }
-            .onChange(of: selectedServer?.id) { _ in
+            .onChange(of: selectedServer?.id) { _, _ in
                 draggedServerID = nil
             }
-            .onChange(of: editingServer?.id) { _ in
+            .onChange(of: editingServer?.id) { _, _ in
                 draggedServerID = nil
             }
-            .onChange(of: terminalServer?.id) { _ in
+            .onChange(of: terminalServer?.id) { _, _ in
                 draggedServerID = nil
             }
             .task(id: store.servers.map(\.id)) {

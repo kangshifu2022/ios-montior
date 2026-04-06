@@ -25,22 +25,20 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
         override init(frame: CGRect) {
             super.init(frame: frame)
-            adjustsImageWhenHighlighted = false
             clipsToBounds = true
             layer.cornerRadius = 6
             layer.cornerCurve = .continuous
             layer.borderWidth = 1
+            registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) {
+                (self: Self, _: UITraitCollection) in
+                self.updateAppearance(animated: false)
+            }
             updateAppearance(animated: false)
         }
 
         @available(*, unavailable)
         required init?(coder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
-        }
-
-        override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-            super.traitCollectionDidChange(previousTraitCollection)
-            updateAppearance(animated: false)
         }
 
         func flashActivation() {

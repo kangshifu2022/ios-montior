@@ -67,7 +67,7 @@ struct AddServerView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundColor(.secondary)
                             .focused($isGroupNameFieldFocused)
-                            .onChange(of: isGroupNameFieldFocused) { isFocused in
+                            .onChange(of: isGroupNameFieldFocused) { _, isFocused in
                                 guard isFocused else { return }
                                 guard ServerConfig.normalizedGroupName(groupName) == ServerConfig.allGroupName else { return }
                                 groupName = ""
