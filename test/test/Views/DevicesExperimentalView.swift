@@ -1080,6 +1080,7 @@ private struct ExperimentalRingPercentageText: View {
                         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
                 } else {
                     Text("--")
+                        .hidden()
                 }
             }
             .font(.system(size: 21, weight: .semibold, design: .rounded))

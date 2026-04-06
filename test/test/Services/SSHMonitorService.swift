@@ -1067,7 +1067,14 @@ final class SSHMonitorService {
     private static func parseCPUCounters(from line: String) -> (total: Double, idle: Double)? {
         let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ")
         guard parts.count >= 2 else { return nil }
-        return (total: Double(parts[0]) ?? 0, idle: Double(parts[1]) ?? 0)
+        guard let total = Double(parts[0]),
+              let idle = Double(parts[1]),
+              total > 0,
+              idle >= 0,
+              total >= idle else {
+            return nil
+        }
+        return (total: total, idle: idle)
     }
 
     private static func parseNetCounters(from line: String) -> (rx: Double, tx: Double)? {

@@ -618,14 +618,16 @@ final class ServerStore: ObservableObject {
               previous.isOnline,
               let previousSample = previous.liveSample,
               let previousCapturedAt = previousSample.capturedAt else {
-            resetDerivedMetrics(to: &dynamicInfo)
+            preserveCPUUsage(from: previous, to: &dynamicInfo)
+            resetTransferRates(to: &dynamicInfo)
             return
         }
 
         let elapsed = capturedAt.timeIntervalSince(previousCapturedAt)
         guard elapsed > 0, elapsed <= maxDerivedMetricSampleAge else {
-            // Instantaneous rates should not survive long gaps such as app relaunches.
-            resetDerivedMetrics(to: &dynamicInfo)
+            // Transfer rates should not survive long gaps such as app relaunches.
+            preserveCPUUsage(from: previous, to: &dynamicInfo)
+            resetTransferRates(to: &dynamicInfo)
             return
         }
 
@@ -687,8 +689,15 @@ final class ServerStore: ObservableObject {
         dynamicInfo.diskWriteSpeed = previous.diskWriteSpeed
     }
 
-    private func resetDerivedMetrics(to dynamicInfo: inout ServerDynamicInfo) {
-        dynamicInfo.cpuUsage = 0
+    private func preserveCPUUsage(from previous: ServerDynamicInfo?, to dynamicInfo: inout ServerDynamicInfo) {
+        guard let previous, previous.isOnline else {
+            dynamicInfo.cpuUsage = 0
+            return
+        }
+        dynamicInfo.cpuUsage = previous.cpuUsage
+    }
+
+    private func resetTransferRates(to dynamicInfo: inout ServerDynamicInfo) {
         dynamicInfo.downloadSpeed = "0k/s"
         dynamicInfo.uploadSpeed = "0k/s"
         dynamicInfo.diskReadSpeed = "0k/s"
@@ -703,10 +712,20 @@ final class ServerStore: ObservableObject {
             return nil
         }
 
-        let totalDelta = currentTotal - previousTotal
-        guard totalDelta > 0 else { return 0 }
+        guard previousTotal > 0,
+              currentTotal > 0,
+              previousIdle >= 0,
+              currentIdle >= 0,
+              currentTotal >= currentIdle,
+              previousTotal >= previousIdle else {
+            return nil
+        }
 
-        let idleDelta = max(0, currentIdle - previousIdle)
+        let totalDelta = currentTotal - previousTotal
+        guard totalDelta > 0 else { return nil }
+
+        let idleDelta = currentIdle - previousIdle
+        guard idleDelta >= 0 else { return nil }
         let usage = (totalDelta - idleDelta) / totalDelta
         return min(max(usage, 0), 1)
     }
