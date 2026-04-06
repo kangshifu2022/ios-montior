@@ -6,7 +6,7 @@ struct AddServerView: View {
     @FocusState private var isGroupNameFieldFocused: Bool
     
     @State private var name: String = ""
-    @State private var groupName: String = ServerConfig.allGroupName
+    @State private var groupName: String = ""
     @State private var host: String = ""
     @State private var port: String = "22"
     @State private var username: String = ""
@@ -23,7 +23,7 @@ struct AddServerView: View {
         self.isEditing = editingServer != nil
         if let s = editingServer {
             _name = State(initialValue: s.name)
-            _groupName = State(initialValue: s.resolvedGroupName)
+            _groupName = State(initialValue: Self.editableGroupName(from: s.resolvedGroupName))
             _host = State(initialValue: s.host)
             _port = State(initialValue: String(s.port))
             _username = State(initialValue: s.username)
@@ -63,7 +63,7 @@ struct AddServerView: View {
                     HStack {
                         Text("分组")
                         Spacer()
-                        TextField(ServerConfig.allGroupName, text: $groupName)
+                        TextField(isGroupNameFieldFocused ? "" : ServerConfig.allGroupName, text: $groupName)
                             .multilineTextAlignment(.trailing)
                             .foregroundColor(.secondary)
                             .focused($isGroupNameFieldFocused)
@@ -86,7 +86,7 @@ struct AddServerView: View {
                                         let isSelected = ServerConfig.normalizedGroupName(groupName) == existingGroupName
 
                                         Button {
-                                            groupName = existingGroupName
+                                            groupName = Self.editableGroupName(from: existingGroupName)
                                         } label: {
                                             Text(existingGroupName)
                                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -213,5 +213,9 @@ struct AddServerView: View {
 
         store.deleteServer(id: id)
         dismiss()
+    }
+
+    private static func editableGroupName(from value: String) -> String {
+        ServerConfig.normalizedGroupName(value) == ServerConfig.allGroupName ? "" : value
     }
 }

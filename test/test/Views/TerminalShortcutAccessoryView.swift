@@ -89,6 +89,8 @@ final class TerminalShortcutAccessoryView: UIInputView {
     private static let verticalSpacing: CGFloat = 3
     private static let horizontalSpacing: CGFloat = 3
     private static let contentInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+    private static let buttonFont = UIFont.systemFont(ofSize: 10, weight: .semibold)
+    private static let buttonSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
 
     struct ObservedNotification {
         let name: Notification.Name
@@ -204,17 +206,24 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 let button = ShortcutButton(frame: .zero)
                 button.translatesAutoresizingMaskIntoConstraints = false
                 var configuration = UIButton.Configuration.plain()
+                configuration.buttonSize = .mini
                 configuration.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 3, bottom: 2, trailing: 3)
                 configuration.baseForegroundColor = .label
                 if let title = item.title {
                     configuration.title = title
+                    configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                        var outgoing = incoming
+                        outgoing.font = Self.buttonFont
+                        return outgoing
+                    }
                 } else if let systemImageName = item.systemImageName {
                     configuration.image = UIImage(systemName: systemImageName)
-                    configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+                    configuration.preferredSymbolConfigurationForImage = Self.buttonSymbolConfiguration
                 }
                 button.configuration = configuration
                 button.accessibilityLabel = item.accessibilityLabel
-                button.titleLabel?.font = .systemFont(ofSize: 7, weight: .semibold)
+                button.titleLabel?.font = Self.buttonFont
+                button.titleLabel?.adjustsFontForContentSizeCategory = false
                 button.titleLabel?.adjustsFontSizeToFitWidth = true
                 button.titleLabel?.minimumScaleFactor = 0.6
                 button.titleLabel?.lineBreakMode = .byClipping
