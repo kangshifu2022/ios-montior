@@ -726,25 +726,13 @@ private struct ExperimentalServerCard: View {
     }
 
     private var balancedMetricRow: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 0) {
             cpuMetricCell
             memMetricCell
 
-            ExperimentalRateMetricColumn(
-                topItem: downloadMetric,
-                bottomItem: uploadMetric,
-                accent: palette.memoryAccent,
-                palette: palette
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
+            networkMetricCell
 
-            ExperimentalRateMetricColumn(
-                topItem: diskReadMetric,
-                bottomItem: diskWriteMetric,
-                accent: palette.memoryAccent,
-                palette: palette
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
+            diskMetricCell
         }
         .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92, alignment: .leading)
     }
@@ -769,6 +757,26 @@ private struct ExperimentalServerCard: View {
             palette: palette
         )
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var networkMetricCell: some View {
+        ExperimentalRateMetricColumn(
+            topItem: downloadMetric,
+            bottomItem: uploadMetric,
+            accent: palette.memoryAccent,
+            palette: palette
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var diskMetricCell: some View {
+        ExperimentalRateMetricColumn(
+            topItem: diskReadMetric,
+            bottomItem: diskWriteMetric,
+            accent: palette.memoryAccent,
+            palette: palette
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var terminalButton: some View {
@@ -1181,7 +1189,7 @@ private struct ExperimentalRateMetricColumn: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .center, spacing: 10) {
             ExperimentalRateMetric(
                 item: topItem,
                 accent: accent,
@@ -1194,7 +1202,7 @@ private struct ExperimentalRateMetricColumn: View {
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -1216,13 +1224,14 @@ private struct ExperimentalRateMetric: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: -2) {
+        VStack(alignment: .center, spacing: -2) {
             Text(item.parts.displayNumber)
                 .font(.system(size: 24, weight: .medium, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             Text("\(item.label) \(item.unitText)")
                 .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -1230,8 +1239,9 @@ private struct ExperimentalRateMetric: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
