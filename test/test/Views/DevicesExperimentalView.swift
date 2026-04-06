@@ -12,6 +12,7 @@ struct DevicesExperimentalView: View {
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var draggedServerID: UUID?
     @State private var expandedServerIDsInCompactMode: Set<UUID> = []
+    @State private var failedCardShakeCounts: [UUID: Int] = [:]
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -77,6 +78,17 @@ struct DevicesExperimentalView: View {
         return store.servers.filter { $0.resolvedGroupName == activeGroupName }
     }
 
+    private var failureLockedServerIDs: Set<UUID> {
+        Set(
+            store.servers.compactMap { server in
+                guard let stats = store.stats(for: server), !stats.isOnline else {
+                    return nil
+                }
+                return server.id
+            }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -132,6 +144,12 @@ struct DevicesExperimentalView: View {
             }
             .onDisappear {
                 draggedServerID = nil
+            }
+            .onAppear {
+                syncFailureCollapsedState(for: failureLockedServerIDs)
+            }
+            .onChange(of: failureLockedServerIDs) { _, newValue in
+                syncFailureCollapsedState(for: newValue)
             }
         }
         .preferredColorScheme(preferredColorScheme)
@@ -235,7 +253,10 @@ struct DevicesExperimentalView: View {
         let isDragged = draggedServerID == serverID
         let isCollapsed = store.isCollapsed(server.id)
         let isExpandedInCompactMode = expandedServerIDsInCompactMode.contains(server.id)
-        let showsDetailedCard = homeCardView == .detailed ? !isCollapsed : isExpandedInCompactMode
+        let expansionLocked = failureLockedServerIDs.contains(serverID)
+        let showsDetailedCard = expansionLocked
+            ? false
+            : (homeCardView == .detailed ? !isCollapsed : isExpandedInCompactMode)
 
         Group {
             if showsDetailedCard {
@@ -265,6 +286,7 @@ struct DevicesExperimentalView: View {
         }
         .scaleEffect(isDragged ? 1.02 : 1)
         .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isDragged)
+        .modifier(ExperimentalCardShake(animatableData: CGFloat(failedCardShakeCounts[serverID] ?? 0)))
         .onDrag {
             draggedServerID = serverID
             return NSItemProvider(object: serverID.uuidString as NSString)
@@ -288,13 +310,18 @@ struct DevicesExperimentalView: View {
         experimentalHomeCardViewRawValue = nextMode.rawValue
         expandedServerIDsInCompactMode.removeAll()
 
-        let shouldCollapseAllCards = nextMode == .compact
         for server in store.servers {
-            store.setCollapsed(shouldCollapseAllCards, for: server.id)
+            let shouldCollapseCard = nextMode == .compact || failureLockedServerIDs.contains(server.id)
+            store.setCollapsed(shouldCollapseCard, for: server.id)
         }
     }
 
     private func toggleCardExpansion(for serverID: UUID) {
+        if failureLockedServerIDs.contains(serverID) {
+            triggerFailedCardShake(for: serverID)
+            return
+        }
+
         if homeCardView == .compact {
             if expandedServerIDsInCompactMode.contains(serverID) {
                 expandedServerIDsInCompactMode.remove(serverID)
@@ -305,6 +332,21 @@ struct DevicesExperimentalView: View {
         }
 
         store.toggleCollapsed(serverID)
+    }
+
+    private func syncFailureCollapsedState(for failedServerIDs: Set<UUID>) {
+        for serverID in failedServerIDs {
+            expandedServerIDsInCompactMode.remove(serverID)
+            if !store.isCollapsed(serverID) {
+                store.setCollapsed(true, for: serverID)
+            }
+        }
+    }
+
+    private func triggerFailedCardShake(for serverID: UUID) {
+        withAnimation(.easeInOut(duration: 0.42)) {
+            failedCardShakeCounts[serverID, default: 0] += 1
+        }
     }
 
     private var emptyState: some View {
@@ -416,6 +458,21 @@ private struct ExperimentalViewToggleIcon: View {
         RoundedRectangle(cornerRadius: 999, style: .continuous)
             .fill(color.opacity(opacity))
             .frame(width: width, height: 2.1)
+    }
+}
+
+private struct ExperimentalCardShake: GeometryEffect {
+    var amount: CGFloat = 9
+    var shakesPerUnit: CGFloat = 3
+    var animatableData: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(
+            CGAffineTransform(
+                translationX: amount * sin(animatableData * .pi * shakesPerUnit),
+                y: 0
+            )
+        )
     }
 }
 
@@ -674,8 +731,8 @@ private struct ExperimentalServerCard: View {
             memMetricCell
 
             ExperimentalRateMetricColumn(
-                topItem: uploadMetric,
-                bottomItem: downloadMetric,
+                topItem: downloadMetric,
+                bottomItem: uploadMetric,
                 accent: palette.memoryAccent,
                 palette: palette
             )
@@ -689,7 +746,7 @@ private struct ExperimentalServerCard: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 84, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92, alignment: .leading)
     }
 
     private var cpuMetricCell: some View {
@@ -803,19 +860,19 @@ private struct ExperimentalServerCard: View {
     }
 
     private var uploadMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "network-upload", label: "upload", value: uploadSpeedText)
+        rateMetric(id: "network-upload", label: "TX", value: uploadSpeedText)
     }
 
     private var downloadMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "network-download", label: "down", value: downloadSpeedText)
+        rateMetric(id: "network-download", label: "RX", value: downloadSpeedText)
     }
 
     private var diskReadMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "disk-read", label: "read", value: diskReadSpeedText)
+        rateMetric(id: "disk-read", label: "RD", value: diskReadSpeedText)
     }
 
     private var diskWriteMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "disk-write", label: "write", value: diskWriteSpeedText)
+        rateMetric(id: "disk-write", label: "WR", value: diskWriteSpeedText)
     }
 
     private func rateMetric(id: String, label: String, value: String) -> ExperimentalRateMetricDescriptor {
@@ -1124,7 +1181,7 @@ private struct ExperimentalRateMetricColumn: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             ExperimentalRateMetric(
                 item: topItem,
                 accent: accent,
@@ -1155,32 +1212,24 @@ private struct ExperimentalRateMetric: View {
     }
 
     private var metaColor: Color {
-        palette.secondaryText.opacity(0.88)
+        palette.secondaryText.opacity(0.86)
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        VStack(alignment: .leading, spacing: -2) {
             Text(item.parts.displayNumber)
-                .font(.system(size: 21, weight: .semibold, design: .rounded))
+                .font(.system(size: 24, weight: .medium, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .frame(minWidth: 32, alignment: .trailing)
+                .minimumScaleFactor(0.7)
 
-            VStack(alignment: .leading, spacing: -1) {
-                Text(item.unitText)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(metaColor)
-                    .monospacedDigit()
-                    .lineLimit(1)
-
-                Text(item.label)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundColor(metaColor)
-                    .lineLimit(1)
-            }
-            .minimumScaleFactor(0.8)
+            Text("\(item.label) \(item.unitText)")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(metaColor)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

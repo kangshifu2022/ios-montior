@@ -26,7 +26,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
         override init(frame: CGRect) {
             super.init(frame: frame)
             clipsToBounds = true
-            layer.cornerRadius = 6
+            layer.cornerRadius = 8
             layer.cornerCurve = .continuous
             layer.borderWidth = 1
             registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) {
@@ -85,8 +85,8 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
     }
 
-    private static let rowHeight: CGFloat = 24
-    private static let verticalSpacing: CGFloat = 3
+    private static let rowHeight: CGFloat = 32
+    private static let verticalSpacing: CGFloat = 4
     private static let horizontalSpacing: CGFloat = 3
     private static let contentInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
     private static let buttonFont = UIFont.systemFont(ofSize: 10, weight: .semibold)
@@ -200,14 +200,14 @@ final class TerminalShortcutAccessoryView: UIInputView {
             rowStack.axis = .horizontal
             rowStack.spacing = Self.horizontalSpacing
             rowStack.alignment = .fill
-            rowStack.distribution = .fillEqually
+            rowStack.distribution = .fillProportionally
 
             for item in rowItems {
                 let button = ShortcutButton(frame: .zero)
                 button.translatesAutoresizingMaskIntoConstraints = false
                 var configuration = UIButton.Configuration.plain()
                 configuration.buttonSize = .mini
-                configuration.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 3, bottom: 2, trailing: 3)
+                configuration.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 2, bottom: 5, trailing: 2)
                 configuration.baseForegroundColor = .label
                 if let title = item.title {
                     configuration.title = title
@@ -229,8 +229,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 button.titleLabel?.lineBreakMode = .byClipping
                 button.setTitleColor(.label, for: .normal)
                 button.isSelected = item.isSelected?() ?? false
-                button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                button.setContentCompressionResistancePriority(.required, for: .horizontal)
+                button.setContentHuggingPriority(.required, for: .horizontal)
                 button.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
+                button.widthAnchor.constraint(equalToConstant: Self.preferredButtonWidth(for: item)).isActive = true
                 button.addAction(UIAction { [weak button] _ in
                     button?.flashActivation()
                     item.action()
@@ -267,5 +269,23 @@ final class TerminalShortcutAccessoryView: UIInputView {
         let totalVerticalInsets = contentInsets.top + contentInsets.bottom
         let totalRowSpacing = CGFloat(max(clampedRowCount - 1, 0)) * verticalSpacing
         return totalVerticalInsets + totalRowSpacing + (CGFloat(clampedRowCount) * rowHeight)
+    }
+
+    private static func preferredButtonWidth(for item: ShortcutItem) -> CGFloat {
+        if item.systemImageName != nil {
+            return 34
+        }
+
+        let titleLength = (item.title ?? "").count
+        switch titleLength {
+        case 0...1:
+            return 34
+        case 2...3:
+            return 40
+        case 4...5:
+            return 48
+        default:
+            return 56
+        }
     }
 }
