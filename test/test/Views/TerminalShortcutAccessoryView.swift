@@ -27,7 +27,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
             super.init(frame: frame)
             adjustsImageWhenHighlighted = false
             clipsToBounds = true
-            layer.cornerRadius = 8
+            layer.cornerRadius = 6
             layer.cornerCurve = .continuous
             layer.borderWidth = 1
             updateAppearance(animated: false)
@@ -87,10 +87,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
     }
 
-    private static let rowHeight: CGFloat = 36
-    private static let verticalSpacing: CGFloat = 4
-    private static let horizontalSpacing: CGFloat = 4
-    private static let contentInsets = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
+    private static let rowHeight: CGFloat = 24
+    private static let verticalSpacing: CGFloat = 3
+    private static let horizontalSpacing: CGFloat = 3
+    private static let contentInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
 
     struct ObservedNotification {
         let name: Notification.Name
@@ -206,19 +206,19 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 let button = ShortcutButton(frame: .zero)
                 button.translatesAutoresizingMaskIntoConstraints = false
                 var configuration = UIButton.Configuration.plain()
-                configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
+                configuration.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 3, bottom: 2, trailing: 3)
                 configuration.baseForegroundColor = .label
                 if let title = item.title {
                     configuration.title = title
                 } else if let systemImageName = item.systemImageName {
                     configuration.image = UIImage(systemName: systemImageName)
-                    configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+                    configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)
                 }
                 button.configuration = configuration
                 button.accessibilityLabel = item.accessibilityLabel
-                button.titleLabel?.font = .systemFont(ofSize: 10, weight: .semibold)
+                button.titleLabel?.font = .systemFont(ofSize: 7, weight: .semibold)
                 button.titleLabel?.adjustsFontSizeToFitWidth = true
-                button.titleLabel?.minimumScaleFactor = 0.7
+                button.titleLabel?.minimumScaleFactor = 0.6
                 button.titleLabel?.lineBreakMode = .byClipping
                 button.setTitleColor(.label, for: .normal)
                 button.isSelected = item.isSelected?() ?? false

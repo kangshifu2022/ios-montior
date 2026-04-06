@@ -1,6 +1,11 @@
 import UIKit
 import SwiftTerm
 
+extension Notification.Name {
+    static let terminalAccessoryAltModifierChanged = Notification.Name("terminalAccessoryAltModifierChanged")
+    static let terminalAccessoryShiftModifierChanged = Notification.Name("terminalAccessoryShiftModifierChanged")
+}
+
 final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     private final class HiddenKeyboardInputView: UIInputView {
         override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
@@ -33,6 +38,20 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     private var lastKnownBoundsHeight: CGFloat?
     private var lastKnownAdjustedInsets: UIEdgeInsets?
     private lazy var hiddenKeyboardInputView = HiddenKeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
+
+    var accessoryAltModifier = false {
+        didSet {
+            guard oldValue != accessoryAltModifier else { return }
+            NotificationCenter.default.post(name: .terminalAccessoryAltModifierChanged, object: self)
+        }
+    }
+
+    var accessoryShiftModifier = false {
+        didSet {
+            guard oldValue != accessoryShiftModifier else { return }
+            NotificationCenter.default.post(name: .terminalAccessoryShiftModifierChanged, object: self)
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

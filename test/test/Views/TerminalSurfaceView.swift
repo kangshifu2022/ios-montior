@@ -57,6 +57,74 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 
     private func makeShortcutAccessory(for terminalView: SwiftTerm.TerminalView) -> UIView {
+        let scrollbackView = terminalView as? ScrollbackTerminalView
+
+        func consumeAccessoryModifiers() -> (alt: Bool, shift: Bool) {
+            let modifiers = (
+                alt: scrollbackView?.accessoryAltModifier ?? false,
+                shift: scrollbackView?.accessoryShiftModifier ?? false
+            )
+
+            if modifiers.alt {
+                scrollbackView?.accessoryAltModifier = false
+            }
+            if modifiers.shift {
+                scrollbackView?.accessoryShiftModifier = false
+            }
+
+            return modifiers
+        }
+
+        func sendShortcutBytes(_ bytes: [UInt8]) {
+            viewModel.send(bytes: bytes)
+        }
+
+        func sendShortcutText(_ text: String, shiftedText: String? = nil, supportsShift: Bool = true) {
+            let modifiers = consumeAccessoryModifiers()
+            let resolvedText: String
+            if supportsShift, modifiers.shift {
+                resolvedText = shiftedText ?? text
+            } else {
+                resolvedText = text
+            }
+
+            var payload = Array(resolvedText.utf8)
+            if modifiers.alt {
+                payload.insert(27, at: 0)
+            }
+            sendShortcutBytes(payload)
+        }
+
+        func sendModifiedCSI(finalByte: UInt8, baseBytes: [UInt8], supportsShift: Bool = true) {
+            let modifiers = consumeAccessoryModifiers()
+            let alt = modifiers.alt
+            let shift = supportsShift ? modifiers.shift : false
+
+            guard alt || shift else {
+                sendShortcutBytes(baseBytes)
+                return
+            }
+
+            let modifierValue = 1 + (shift ? 1 : 0) + (alt ? 2 : 0)
+            let payload: [UInt8] = [27, 91, 49, 59] + Array(String(modifierValue).utf8) + [finalByte]
+            sendShortcutBytes(payload)
+        }
+
+        func sendTabShortcut() {
+            let modifiers = consumeAccessoryModifiers()
+
+            switch (modifiers.alt, modifiers.shift) {
+            case (false, false):
+                sendShortcutBytes([9])
+            case (false, true):
+                sendShortcutBytes([27, 91, 90])
+            case (true, false):
+                sendShortcutBytes([27, 9])
+            case (true, true):
+                sendShortcutBytes([27, 27, 91, 90])
+            }
+        }
+
         TerminalShortcutAccessoryView(rows: [
             [
                 .init(systemImageName: "keyboard", accessibilityLabel: "显示或隐藏系统键盘", action: { [weak terminalView] in
@@ -83,26 +151,101 @@ struct TerminalSurfaceView: UIViewRepresentable {
                         terminalView.controlModifier.toggle()
                     }
                 ),
-                .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
-                .init(title: "Esc", action: { viewModel.sendEscape() }),
-                .init(title: "Tab", action: { viewModel.sendTab() }),
-                .init(title: "Home", action: { viewModel.sendHome() }),
-                .init(title: "End", action: { viewModel.sendEnd() })
+                .init(
+                    title: "Alt",
+                    accessibilityLabel: "切换 Alt 修饰键",
+                    isSelected: { [weak scrollbackView] in
+                        scrollbackView?.accessoryAltModifier ?? false
+                    },
+                    observedNotifications: [
+                        .init(name: .terminalAccessoryAltModifierChanged, objectProvider: { [weak scrollbackView] in
+                            scrollbackView
+                        })
+                    ],
+                    action: { [weak scrollbackView] in
+                        scrollbackView?.accessoryAltModifier.toggle()
+                    }
+                ),
+                .init(
+                    title: "Shift",
+                    accessibilityLabel: "切换 Shift 修饰键",
+                    isSelected: { [weak scrollbackView] in
+                        scrollbackView?.accessoryShiftModifier ?? false
+                    },
+                    observedNotifications: [
+                        .init(name: .terminalAccessoryShiftModifierChanged, objectProvider: { [weak scrollbackView] in
+                            scrollbackView
+                        })
+                    ],
+                    action: { [weak scrollbackView] in
+                        scrollbackView?.accessoryShiftModifier.toggle()
+                    }
+                ),
+                .init(title: "Ctrl+C", action: {
+                    let modifiers = consumeAccessoryModifiers()
+                    var payload = [UInt8(3)]
+                    if modifiers.alt {
+                        payload.insert(27, at: 0)
+                    }
+                    sendShortcutBytes(payload)
+                }),
+                .init(title: "Esc", action: {
+                    let modifiers = consumeAccessoryModifiers()
+                    let payload = modifiers.alt ? [27, 27] : [27]
+                    sendShortcutBytes(payload)
+                }),
+                .init(title: "Tab", action: {
+                    sendTabShortcut()
+                }),
+                .init(title: "Home", action: {
+                    sendModifiedCSI(finalByte: 72, baseBytes: [27, 91, 72])
+                }),
+                .init(title: "End", action: {
+                    sendModifiedCSI(finalByte: 70, baseBytes: [27, 91, 70])
+                })
             ],
             [
                 .init(title: "PgUp", action: { [weak terminalView] in terminalView?.pageUp() }),
                 .init(title: "PgDn", action: { [weak terminalView] in terminalView?.pageDown() }),
-                .init(title: "↑", action: { viewModel.sendArrowUp() }),
-                .init(title: "↓", action: { viewModel.sendArrowDown() }),
-                .init(title: "←", action: { viewModel.sendArrowLeft() }),
-                .init(title: "→", action: { viewModel.sendArrowRight() })
+                .init(title: "↑", action: {
+                    sendModifiedCSI(finalByte: 65, baseBytes: [27, 91, 65])
+                }),
+                .init(title: "↓", action: {
+                    sendModifiedCSI(finalByte: 66, baseBytes: [27, 91, 66])
+                }),
+                .init(title: "←", action: {
+                    sendModifiedCSI(finalByte: 68, baseBytes: [27, 91, 68])
+                }),
+                .init(title: "→", action: {
+                    sendModifiedCSI(finalByte: 67, baseBytes: [27, 91, 67])
+                })
             ],
             [
-                .init(title: "^L", action: { viewModel.sendClearScreen() }),
-                .init(title: "/", action: { viewModel.sendSlash() }),
-                .init(title: "-", action: { viewModel.sendDash() }),
-                .init(title: "|", action: { viewModel.sendPipe() }),
-                .init(title: "exit", action: { viewModel.sendExit() })
+                .init(title: "^L", action: {
+                    let modifiers = consumeAccessoryModifiers()
+                    var payload = [UInt8(12)]
+                    if modifiers.alt {
+                        payload.insert(27, at: 0)
+                    }
+                    sendShortcutBytes(payload)
+                }),
+                .init(title: "/", action: {
+                    sendShortcutText("/", shiftedText: "?")
+                }),
+                .init(title: "-", action: {
+                    sendShortcutText("-", shiftedText: "_")
+                }),
+                .init(title: "|", action: {
+                    sendShortcutText("|")
+                }),
+                .init(title: "exit", action: {
+                    let modifiers = consumeAccessoryModifiers()
+                    viewModel.sendExit()
+                    if modifiers.alt || modifiers.shift {
+                        scrollbackView?.accessoryAltModifier = false
+                        scrollbackView?.accessoryShiftModifier = false
+                    }
+                })
             ]
         ])
     }

@@ -3,6 +3,7 @@ import SwiftUI
 struct AddServerView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var store: ServerStore
+    @FocusState private var isGroupNameFieldFocused: Bool
     
     @State private var name: String = ""
     @State private var groupName: String = ServerConfig.allGroupName
@@ -65,10 +66,13 @@ struct AddServerView: View {
                         TextField(ServerConfig.allGroupName, text: $groupName)
                             .multilineTextAlignment(.trailing)
                             .foregroundColor(.secondary)
+                            .focused($isGroupNameFieldFocused)
+                            .onChange(of: isGroupNameFieldFocused) { isFocused in
+                                guard isFocused else { return }
+                                guard ServerConfig.normalizedGroupName(groupName) == ServerConfig.allGroupName else { return }
+                                groupName = ""
+                            }
                     }
-                    Text("留空时归入 “\(ServerConfig.allGroupName)”；在概览页的 All 里始终可以看到所有设备。")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
 
                     if !availableGroupNames.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
