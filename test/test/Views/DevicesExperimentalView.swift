@@ -160,16 +160,12 @@ struct DevicesExperimentalView: View {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
 
-                ExperimentalViewToggleIcon(
-                    mode: homeCardView,
-                    color: palette.primaryText
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    toggleHomeCardView()
+                Picker("视图模式", selection: homeCardViewSelection) {
+                    Text("详细").tag(ExperimentalHomeCardView.detailed)
+                    Text("缩略").tag(ExperimentalHomeCardView.compact)
                 }
-                .accessibilityLabel(homeCardView == .detailed ? "切换到缩略视图" : "切换到详细视图")
-                .accessibilityAddTraits(.isButton)
+                .pickerStyle(.segmented)
+                .frame(width: 132)
             }
 
             Text("概览")
@@ -197,29 +193,29 @@ struct DevicesExperimentalView: View {
                         guard selectedGroupName != groupName else { return }
                         selectedGroupName = groupName
                     } label: {
-                        Text(groupName)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule()
-                                    .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
-                            )
-                            .overlay(alignment: .bottom) {
-                                if let groupAccentColor {
-                                    ExperimentalGroupIndicatorLine(
-                                        color: groupAccentColor,
-                                        width: 28,
-                                        height: 3
-                                    )
-                                    .padding(.bottom, 4)
-                                }
+                        HStack(spacing: 8) {
+                            if let groupAccentColor {
+                                ExperimentalGroupIndicatorLine(
+                                    color: groupAccentColor,
+                                    width: 3,
+                                    height: 14
+                                )
                             }
+
+                            Text(groupName)
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -244,6 +240,16 @@ struct DevicesExperimentalView: View {
 
     private var groupTabBackground: Color {
         palette.isDark ? Color.white.opacity(0.06) : Color.white.opacity(0.82)
+    }
+
+    private var homeCardViewSelection: Binding<ExperimentalHomeCardView> {
+        Binding(
+            get: { homeCardView },
+            set: { newValue in
+                guard newValue != homeCardView else { return }
+                setHomeCardView(newValue)
+            }
+        )
     }
 
     private func triggerHomeRefresh(
@@ -321,8 +327,7 @@ struct DevicesExperimentalView: View {
         }
     }
 
-    private func toggleHomeCardView() {
-        let nextMode: ExperimentalHomeCardView = homeCardView == .detailed ? .compact : .detailed
+    private func setHomeCardView(_ nextMode: ExperimentalHomeCardView) {
         experimentalHomeCardViewRawValue = nextMode.rawValue
         expandedServerIDsInCompactMode.removeAll()
 
@@ -444,39 +449,6 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     }
 }
 
-private struct ExperimentalViewToggleIcon: View {
-    let mode: ExperimentalHomeCardView
-    let color: Color
-
-    var body: some View {
-        Group {
-            if mode == .detailed {
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .stroke(color.opacity(0.88), lineWidth: 1.2)
-                    .frame(width: 15, height: 11)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 1.2, style: .continuous)
-                            .stroke(color.opacity(0.35), lineWidth: 0.9)
-                            .frame(width: 9, height: 5.5)
-                    }
-            } else {
-                VStack(spacing: 2.4) {
-                    compactLine(width: 15, opacity: 0.96)
-                    compactLine(width: 12.5, opacity: 0.80)
-                    compactLine(width: 14, opacity: 0.64)
-                }
-            }
-        }
-        .frame(width: 20, height: 20)
-    }
-
-    private func compactLine(width: CGFloat, opacity: Double) -> some View {
-        RoundedRectangle(cornerRadius: 999, style: .continuous)
-            .fill(color.opacity(opacity))
-            .frame(width: width, height: 2.1)
-    }
-}
-
 private struct ExperimentalCardShake: GeometryEffect {
     var amount: CGFloat = 9
     var shakesPerUnit: CGFloat = 3
@@ -584,28 +556,27 @@ private struct ExperimentalCompactServerCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            HStack(alignment: .top, spacing: 5) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 6) {
+                if let groupAccentColor {
+                    ExperimentalGroupIndicatorLine(
+                        color: groupAccentColor,
+                        width: 3,
+                        height: 14
+                    )
+                }
+
+                HStack(spacing: 5) {
                     Text(headerDisplayName)
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundColor(palette.primaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
-                    if let groupAccentColor {
-                        ExperimentalGroupIndicatorLine(
-                            color: groupAccentColor,
-                            width: 24,
-                            height: 2.5
-                        )
+                    if showsExpandControl {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(palette.secondaryText.opacity(0.9))
                     }
-                }
-
-                if showsExpandControl {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(palette.secondaryText.opacity(0.9))
-                        .padding(.top, 2)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -765,27 +736,26 @@ private struct ExperimentalServerCard: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Button(action: onToggleCollapse) {
-                HStack(alignment: .top, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 8) {
+                    if let groupAccentColor {
+                        ExperimentalGroupIndicatorLine(
+                            color: groupAccentColor,
+                            width: 3,
+                            height: 14
+                        )
+                    }
+
+                    HStack(spacing: 6) {
                         Text(headerDisplayName)
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
                             .foregroundColor(palette.primaryText)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
-                        if let groupAccentColor {
-                            ExperimentalGroupIndicatorLine(
-                                color: groupAccentColor,
-                                width: 28,
-                                height: 2.5
-                            )
-                        }
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(palette.secondaryText.opacity(0.92))
                     }
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(palette.secondaryText.opacity(0.92))
-                        .padding(.top, 2)
                 }
             }
             .buttonStyle(.plain)
@@ -1047,7 +1017,7 @@ private struct ExperimentalMetricTile: View {
                     Text("--")
                 }
             }
-            .font(.system(size: 34, weight: .medium, design: .rounded))
+            .font(.system(size: 20, weight: .medium, design: .rounded))
             .foregroundColor(displayColor)
             .monospacedDigit()
             .lineLimit(1)
