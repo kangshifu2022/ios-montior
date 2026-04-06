@@ -122,11 +122,12 @@ struct DevicesExperimentalView: View {
                 draggedServerID = nil
             }
             .task(id: store.servers.map(\.id)) {
-                await store.refreshAllIfNeeded()
+                triggerHomeRefresh()
 
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    await store.refreshAllIfNeeded(forceDynamic: true)
+                    guard !Task.isCancelled else { break }
+                    triggerHomeRefresh(forceDynamic: true)
                 }
             }
             .onDisappear {
@@ -214,6 +215,18 @@ struct DevicesExperimentalView: View {
 
     private var groupTabBackground: Color {
         palette.isDark ? Color.white.opacity(0.06) : Color.white.opacity(0.82)
+    }
+
+    private func triggerHomeRefresh(
+        forceDynamic: Bool = false,
+        forceStatic: Bool = false
+    ) {
+        Task {
+            await store.refreshAllIfNeeded(
+                forceDynamic: forceDynamic,
+                forceStatic: forceStatic
+            )
+        }
     }
 
     @ViewBuilder
