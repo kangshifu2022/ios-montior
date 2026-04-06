@@ -619,7 +619,7 @@ private struct ExperimentalCompactServerCard: View {
 
         switch value {
         case ..<0.20:
-            return Color(red: 0.20, green: 0.78, blue: 0.36)
+            return Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0)
         case ..<0.40:
             return Color(red: 0.53, green: 0.82, blue: 0.18)
         case ..<0.60:
@@ -763,7 +763,7 @@ private struct ExperimentalServerCard: View {
         ExperimentalRateMetricColumn(
             topItem: downloadMetric,
             bottomItem: uploadMetric,
-            accent: palette.memoryAccent,
+            accent: palette.rateAccent,
             palette: palette
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -773,7 +773,7 @@ private struct ExperimentalServerCard: View {
         ExperimentalRateMetricColumn(
             topItem: diskReadMetric,
             bottomItem: diskWriteMetric,
-            accent: palette.memoryAccent,
+            accent: palette.rateAccent,
             palette: palette
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -855,7 +855,7 @@ private struct ExperimentalServerCard: View {
 
         switch usage {
         case ..<0.20:
-            return Color(red: 0.20, green: 0.78, blue: 0.36)
+            return Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0)
         case ..<0.40:
             return Color(red: 0.53, green: 0.82, blue: 0.18)
         case ..<0.60:
@@ -1041,7 +1041,7 @@ private struct ExperimentalUsageRing: View {
             return AnyShapeStyle(
                 AngularGradient(
                     gradient: Gradient(colors: [
-                        Color(red: 0.52, green: 0.92, blue: 0.31),
+                        Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0),
                         Color(red: 0.44, green: 0.88, blue: 0.24),
                         Color(red: 0.23, green: 0.80, blue: 0.14),
                         Color(red: 0.11, green: 0.72, blue: 0.48),
@@ -1461,6 +1461,7 @@ private struct ExperimentalHomePalette {
     let offline: Color
     let cpuAccent: Color
     let memoryAccent: Color
+    let rateAccent: Color
     let metaTint: Color
     let cardShadow: Color
 
@@ -1522,7 +1523,8 @@ private struct ExperimentalHomePalette {
                 online: Color(red: 0.22, green: 0.86, blue: 0.53),
                 offline: Color(red: 0.98, green: 0.73, blue: 0.24),
                 cpuAccent: Color(red: 0.98, green: 0.36, blue: 0.39),
-                memoryAccent: Color(red: 16.0 / 255.0, green: 192.0 / 255.0, blue: 7.0 / 255.0),
+                memoryAccent: Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0),
+                rateAccent: Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0),
                 metaTint: Color(red: 0.35, green: 0.53, blue: 0.93),
                 cardShadow: Color.black.opacity(0.16)
             )
@@ -1544,7 +1546,8 @@ private struct ExperimentalHomePalette {
                 online: Color(red: 0.12, green: 0.68, blue: 0.40),
                 offline: Color(red: 0.92, green: 0.63, blue: 0.15),
                 cpuAccent: Color(red: 0.93, green: 0.33, blue: 0.36),
-                memoryAccent: Color(red: 16.0 / 255.0, green: 192.0 / 255.0, blue: 7.0 / 255.0),
+                memoryAccent: Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0),
+                rateAccent: Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0),
                 metaTint: Color(red: 0.29, green: 0.47, blue: 0.88),
                 cardShadow: Color.black.opacity(0.16)
             )
