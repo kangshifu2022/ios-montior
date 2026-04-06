@@ -126,7 +126,9 @@ struct DevicesExperimentalView: View {
 
     @ViewBuilder
     private func reorderableCard(for server: ServerConfig) -> some View {
-        let isDragged = draggedServerID == server.id
+        let serverID = server.id
+        let draggedServerIDBinding = $draggedServerID
+        let isDragged = draggedServerID == serverID
         let isCollapsed = store.isCollapsed(server.id)
         let isExpandedInCompactMode = expandedServerIDsInCompactMode.contains(server.id)
         let showsDetailedCard = homeCardView == .detailed ? !isCollapsed : isExpandedInCompactMode
@@ -158,12 +160,16 @@ struct DevicesExperimentalView: View {
             }
         }
         .scaleEffect(isDragged ? 1.02 : 1)
-        .opacity(isDragged ? 0.72 : 1)
         .shadow(color: isDragged ? palette.cardShadow.opacity(1.2) : .clear, radius: 16, x: 0, y: 10)
         .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isDragged)
         .onDrag {
-            draggedServerID = server.id
-            return NSItemProvider(object: server.id.uuidString as NSString)
+            draggedServerID = serverID
+            return ExperimentalServerDragItemProvider(serverID: serverID) {
+                guard draggedServerIDBinding.wrappedValue == serverID else {
+                    return
+                }
+                draggedServerIDBinding.wrappedValue = nil
+            }
         }
         .onDrop(of: [UTType.text], delegate: ExperimentalServerCardDropDelegate(
             targetServer: server,
@@ -236,6 +242,21 @@ private enum ExperimentalHomeCardView: String {
 private enum ExperimentalAppEdition {
     case standard
     case pro
+}
+
+private final class ExperimentalServerDragItemProvider: NSItemProvider {
+    private let onDragEnded: () -> Void
+
+    init(serverID: UUID, onDragEnded: @escaping () -> Void) {
+        self.onDragEnded = onDragEnded
+        super.init(object: serverID.uuidString as NSString)
+    }
+
+    deinit {
+        DispatchQueue.main.async { [onDragEnded] in
+            onDragEnded()
+        }
+    }
 }
 
 @MainActor
