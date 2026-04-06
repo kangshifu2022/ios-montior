@@ -98,7 +98,7 @@ struct DevicesExperimentalView: View {
                     if store.servers.isEmpty {
                         emptyState
                     } else {
-                        LazyVStack(spacing: homeCardView == .detailed ? 18 : 10) {
+                        LazyVStack(spacing: homeCardView == .detailed ? 20 : 10) {
                             ForEach(filteredServers) { server in
                                 reorderableCard(for: server)
                             }
@@ -161,11 +161,16 @@ struct DevicesExperimentalView: View {
                 Spacer(minLength: 0)
 
                 Picker("视图模式", selection: homeCardViewSelection) {
-                    Text("详细").tag(ExperimentalHomeCardView.detailed)
-                    Text("缩略").tag(ExperimentalHomeCardView.compact)
+                    Image(systemName: "list.bullet")
+                        .accessibilityLabel("详细")
+                        .tag(ExperimentalHomeCardView.detailed)
+
+                    Image(systemName: "square.grid.2x2")
+                        .accessibilityLabel("缩略")
+                        .tag(ExperimentalHomeCardView.compact)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 132)
+                .frame(width: 92)
             }
 
             Text("概览")
@@ -554,6 +559,10 @@ private struct ExperimentalCompactServerCard: View {
         ExperimentalGroupAccentPalette.color(for: config.resolvedGroupName)
     }
 
+    private var deviceNameColor: Color {
+        palette.secondaryText.opacity(palette.isDark ? 0.92 : 0.96)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             HStack(alignment: .center, spacing: 6) {
@@ -568,15 +577,9 @@ private struct ExperimentalCompactServerCard: View {
                 HStack(spacing: 5) {
                     Text(headerDisplayName)
                         .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundColor(palette.primaryText)
+                        .foregroundColor(deviceNameColor)
                         .lineLimit(1)
                         .truncationMode(.tail)
-
-                    if showsExpandControl {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(palette.secondaryText.opacity(0.9))
-                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -706,6 +709,10 @@ private struct ExperimentalServerCard: View {
         ExperimentalGroupAccentPalette.color(for: config.resolvedGroupName)
     }
 
+    private var deviceNameColor: Color {
+        palette.secondaryText.opacity(palette.isDark ? 0.92 : 0.96)
+    }
+
     private var cpuTrendSeries: [Double] {
         metricTrendValues(history: cpuTrendValues, fallback: stats?.cpuUsage)
     }
@@ -748,7 +755,7 @@ private struct ExperimentalServerCard: View {
                     HStack(spacing: 6) {
                         Text(headerDisplayName)
                             .font(.system(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundColor(palette.primaryText)
+                            .foregroundColor(deviceNameColor)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
@@ -1144,7 +1151,7 @@ private struct ExperimentalUsageTrendSparkline: View {
 
     private var lineColor: Color {
         isActive
-            ? Color(red: 0.93, green: 0.72, blue: 0.07)
+            ? palette.secondaryText.opacity(0.88)
             : palette.secondaryText.opacity(0.24)
     }
 
