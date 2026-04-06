@@ -85,6 +85,15 @@ struct DevicesExperimentalView: View {
             .fullScreenCover(item: $terminalServer) { config in
                 TerminalView(server: config)
             }
+            .onChange(of: selectedServer?.id) { _ in
+                draggedServerID = nil
+            }
+            .onChange(of: editingServer?.id) { _ in
+                draggedServerID = nil
+            }
+            .onChange(of: terminalServer?.id) { _ in
+                draggedServerID = nil
+            }
             .task(id: store.servers.map(\.id)) {
                 await store.refreshAllIfNeeded()
 
@@ -92,6 +101,9 @@ struct DevicesExperimentalView: View {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     await store.refreshAllIfNeeded(forceDynamic: true)
                 }
+            }
+            .onDisappear {
+                draggedServerID = nil
             }
         }
         .preferredColorScheme(preferredColorScheme)
@@ -127,7 +139,6 @@ struct DevicesExperimentalView: View {
     @ViewBuilder
     private func reorderableCard(for server: ServerConfig) -> some View {
         let serverID = server.id
-        let draggedServerIDBinding = $draggedServerID
         let isDragged = draggedServerID == serverID
         let isCollapsed = store.isCollapsed(server.id)
         let isExpandedInCompactMode = expandedServerIDsInCompactMode.contains(server.id)
@@ -164,12 +175,7 @@ struct DevicesExperimentalView: View {
         .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isDragged)
         .onDrag {
             draggedServerID = serverID
-            return ExperimentalServerDragItemProvider(serverID: serverID) {
-                guard draggedServerIDBinding.wrappedValue == serverID else {
-                    return
-                }
-                draggedServerIDBinding.wrappedValue = nil
-            }
+            return NSItemProvider(object: serverID.uuidString as NSString)
         }
         .onDrop(of: [UTType.text], delegate: ExperimentalServerCardDropDelegate(
             targetServer: server,
@@ -242,21 +248,6 @@ private enum ExperimentalHomeCardView: String {
 private enum ExperimentalAppEdition {
     case standard
     case pro
-}
-
-private final class ExperimentalServerDragItemProvider: NSItemProvider {
-    private let onDragEnded: () -> Void
-
-    init(serverID: UUID, onDragEnded: @escaping () -> Void) {
-        self.onDragEnded = onDragEnded
-        super.init(object: serverID.uuidString as NSString)
-    }
-
-    deinit {
-        DispatchQueue.main.async { [onDragEnded] in
-            onDragEnded()
-        }
-    }
 }
 
 @MainActor
