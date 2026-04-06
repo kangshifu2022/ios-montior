@@ -182,8 +182,8 @@ struct DevicesExperimentalView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
-        .padding(.bottom, 2)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
     }
 
     private var groupTabs: some View {
@@ -191,6 +191,7 @@ struct DevicesExperimentalView: View {
             HStack(spacing: 10) {
                 ForEach(availableGroupNames, id: \.self) { groupName in
                     let isSelected = groupName == activeGroupName
+                    let groupAccentColor = ExperimentalGroupAccentPalette.color(for: groupName)
 
                     Button {
                         guard selectedGroupName != groupName else { return }
@@ -209,6 +210,16 @@ struct DevicesExperimentalView: View {
                                 Capsule()
                                     .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
                             )
+                            .overlay(alignment: .bottom) {
+                                if let groupAccentColor {
+                                    ExperimentalGroupIndicatorLine(
+                                        color: groupAccentColor,
+                                        width: 28,
+                                        height: 3
+                                    )
+                                    .padding(.bottom, 4)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -481,6 +492,45 @@ private struct ExperimentalCardShake: GeometryEffect {
     }
 }
 
+private enum ExperimentalGroupAccentPalette {
+    private static let colors: [Color] = [
+        Color(red: 0.98, green: 0.49, blue: 0.25),
+        Color(red: 0.14, green: 0.76, blue: 0.61),
+        Color(red: 0.95, green: 0.73, blue: 0.15),
+        Color(red: 0.25, green: 0.68, blue: 0.96),
+        Color(red: 0.48, green: 0.83, blue: 0.29),
+        Color(red: 0.96, green: 0.38, blue: 0.36),
+        Color(red: 0.17, green: 0.82, blue: 0.82),
+        Color(red: 0.86, green: 0.59, blue: 0.17)
+    ]
+
+    static func color(for groupName: String) -> Color? {
+        let normalizedGroupName = ServerConfig.normalizedGroupName(groupName)
+        guard normalizedGroupName != ServerConfig.allGroupName else {
+            return nil
+        }
+
+        var accumulator: UInt64 = 5381
+        for scalar in normalizedGroupName.unicodeScalars {
+            accumulator = ((accumulator << 5) &+ accumulator) &+ UInt64(scalar.value)
+        }
+
+        return colors[Int(accumulator % UInt64(colors.count))]
+    }
+}
+
+private struct ExperimentalGroupIndicatorLine: View {
+    let color: Color
+    var width: CGFloat = 24
+    var height: CGFloat = 2.5
+
+    var body: some View {
+        Capsule()
+            .fill(color)
+            .frame(width: width, height: height)
+    }
+}
+
 private struct ExperimentalCompactServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
@@ -528,19 +578,34 @@ private struct ExperimentalCompactServerCard: View {
         stats != nil && !isOnline
     }
 
+    private var groupAccentColor: Color? {
+        ExperimentalGroupAccentPalette.color(for: config.resolvedGroupName)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            HStack(spacing: 5) {
-                Text(headerDisplayName)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundColor(palette.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            HStack(alignment: .top, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(headerDisplayName)
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    if let groupAccentColor {
+                        ExperimentalGroupIndicatorLine(
+                            color: groupAccentColor,
+                            width: 24,
+                            height: 2.5
+                        )
+                    }
+                }
 
                 if showsExpandControl {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(palette.secondaryText.opacity(0.9))
+                        .padding(.top, 2)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -666,6 +731,10 @@ private struct ExperimentalServerCard: View {
         stats != nil && !isOnline
     }
 
+    private var groupAccentColor: Color? {
+        ExperimentalGroupAccentPalette.color(for: config.resolvedGroupName)
+    }
+
     private var cpuTrendSeries: [Double] {
         metricTrendValues(history: cpuTrendValues, fallback: stats?.cpuUsage)
     }
@@ -696,16 +765,27 @@ private struct ExperimentalServerCard: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Button(action: onToggleCollapse) {
-                HStack(spacing: 6) {
-                    Text(headerDisplayName)
-                        .font(.system(size: 19, weight: .light, design: .rounded))
-                        .foregroundColor(palette.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                HStack(alignment: .top, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(headerDisplayName)
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundColor(palette.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        if let groupAccentColor {
+                            ExperimentalGroupIndicatorLine(
+                                color: groupAccentColor,
+                                width: 28,
+                                height: 2.5
+                            )
+                        }
+                    }
 
                     Image(systemName: "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(palette.secondaryText.opacity(0.92))
+                        .padding(.top, 2)
                 }
             }
             .buttonStyle(.plain)
@@ -742,14 +822,30 @@ private struct ExperimentalServerCard: View {
 
     private var balancedMetricRow: some View {
         HStack(alignment: .center, spacing: 0) {
-            cpuMetricCell
-            memMetricCell
+            metricSection {
+                cpuMetricCell
+            }
 
-            networkMetricCell
+            metricSection {
+                memMetricCell
+            }
 
-            diskMetricCell
+            metricSection {
+                networkMetricCell
+            }
+
+            metricSection {
+                diskMetricCell
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92, alignment: .leading)
+    }
+
+    private func metricSection<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var cpuMetricCell: some View {
@@ -760,7 +856,6 @@ private struct ExperimentalServerCard: View {
             trendValues: cpuTrendSeries,
             palette: palette
         )
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var memMetricCell: some View {
@@ -771,7 +866,6 @@ private struct ExperimentalServerCard: View {
             trendValues: memTrendSeries,
             palette: palette
         )
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var networkMetricCell: some View {
@@ -943,7 +1037,7 @@ private struct ExperimentalMetricTile: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .center, spacing: 0) {
             Group {
                 if let percentage {
                     Text("\(percentage)")
@@ -958,23 +1052,24 @@ private struct ExperimentalMetricTile: View {
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.62)
+            .frame(maxWidth: .infinity, alignment: .center)
 
             Text(label)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText.opacity(0.88))
                 .tracking(1.1)
                 .padding(.top, -3)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             ExperimentalUsageTrendSparkline(
                 values: trendValues,
                 isActive: percentage != nil,
                 palette: palette
             )
-            .frame(height: 28)
+            .frame(width: 70, height: 28, alignment: .center)
             .padding(.top, 8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(.trailing, 10)
+        .frame(width: 76, maxHeight: .infinity, alignment: .center)
         .opacity(percentage == nil ? 0.82 : 1)
     }
 }
@@ -1000,6 +1095,8 @@ private struct ExperimentalCompactMetricCapsule: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: value)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -1031,6 +1128,8 @@ private struct ExperimentalCompactRateCapsule: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
+                .contentTransition(.numericText(value: parts.numericAmount ?? 0))
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: parts.numericAmount ?? -1)
 
             Text(parts.compactUnit)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -1201,6 +1300,8 @@ private struct ExperimentalRateMetric: View {
                 .font(.system(size: 20, weight: .medium, design: .rounded))
                 .foregroundColor(valueColor)
                 .monospacedDigit()
+                .contentTransition(.numericText(value: item.parts.numericAmount ?? 0))
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: item.parts.numericAmount ?? -1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -1238,6 +1339,8 @@ private struct ExperimentalHeaderBadge: View {
                 .font(.system(size: 12, weight: .regular, design: .rounded))
                 .foregroundColor(resolvedColor)
                 .monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: value)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .allowsTightening(true)
