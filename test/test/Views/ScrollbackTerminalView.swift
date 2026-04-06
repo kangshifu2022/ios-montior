@@ -2,9 +2,42 @@ import UIKit
 import SwiftTerm
 
 final class ScrollbackTerminalView: SwiftTerm.TerminalView {
+    private final class HiddenKeyboardInputView: UIInputView {
+        override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
+            super.init(frame: frame, inputViewStyle: inputViewStyle)
+            allowsSelfSizing = true
+            autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            isOpaque = false
+            backgroundColor = .clear
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override var intrinsicContentSize: CGSize {
+            .zero
+        }
+
+        override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
+            CGSize(width: targetSize.width, height: 0)
+        }
+
+        override func sizeThatFits(_ size: CGSize) -> CGSize {
+            CGSize(width: size.width, height: 0)
+        }
+    }
+
     private var isReviewingScrollback = false
     private var lastKnownBoundsHeight: CGFloat?
     private var lastKnownAdjustedInsets: UIEdgeInsets?
+    private var isSoftwareKeyboardHidden = false
+    private lazy var hiddenKeyboardInputView = HiddenKeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
+
+    override var inputView: UIView? {
+        isSoftwareKeyboardHidden ? hiddenKeyboardInputView : nil
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -75,6 +108,21 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
         alwaysBounceVertical = true
         showsVerticalScrollIndicator = true
         panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
+    }
+
+    func toggleSoftwareKeyboard() {
+        isSoftwareKeyboardHidden.toggle()
+
+        guard isFirstResponder else {
+            if !isSoftwareKeyboardHidden {
+                _ = becomeFirstResponder()
+            }
+            return
+        }
+
+        reloadInputViews()
+        setNeedsLayout()
+        layoutIfNeeded()
     }
 
     @objc

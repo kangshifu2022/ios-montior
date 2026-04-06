@@ -1,6 +1,76 @@
 import UIKit
 
 final class TerminalShortcutAccessoryView: UIInputView {
+    private final class ShortcutButton: UIButton {
+        private static let defaultBackgroundColor = UIColor.tertiarySystemFill
+        private static let pressedBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.28)
+        private static let activatedBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.20)
+        private static let defaultBorderColor = UIColor.separator.withAlphaComponent(0.18)
+        private static let activatedBorderColor = UIColor.systemBlue.withAlphaComponent(0.45)
+
+        override var isHighlighted: Bool {
+            didSet {
+                updateAppearance(animated: true)
+            }
+        }
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            adjustsImageWhenHighlighted = false
+            clipsToBounds = true
+            layer.cornerRadius = 8
+            layer.cornerCurve = .continuous
+            layer.borderWidth = 1
+            updateAppearance(animated: false)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+            super.traitCollectionDidChange(previousTraitCollection)
+            updateAppearance(animated: false)
+        }
+
+        func flashActivation() {
+            UIView.animate(
+                withDuration: 0.08,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction],
+                animations: {
+                    self.backgroundColor = Self.activatedBackgroundColor
+                    self.layer.borderColor = Self.activatedBorderColor.resolvedColor(with: self.traitCollection).cgColor
+                },
+                completion: { _ in
+                    self.updateAppearance(animated: true)
+                }
+            )
+        }
+
+        private func updateAppearance(animated: Bool) {
+            let updates = {
+                self.backgroundColor = self.isHighlighted ? Self.pressedBackgroundColor : Self.defaultBackgroundColor
+                let borderColor = self.isHighlighted ? Self.activatedBorderColor : Self.defaultBorderColor
+                self.layer.borderColor = borderColor.resolvedColor(with: self.traitCollection).cgColor
+                self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
+            }
+
+            guard animated else {
+                updates()
+                return
+            }
+
+            UIView.animate(
+                withDuration: 0.12,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction],
+                animations: updates
+            )
+        }
+    }
+
     private static let rowHeight: CGFloat = 36
     private static let verticalSpacing: CGFloat = 4
     private static let horizontalSpacing: CGFloat = 4
@@ -82,7 +152,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
             rowStack.distribution = .fillEqually
 
             for item in rowItems {
-                let button = UIButton(type: .system)
+                let button = ShortcutButton(frame: .zero)
                 button.translatesAutoresizingMaskIntoConstraints = false
                 var configuration = UIButton.Configuration.plain()
                 configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
@@ -100,12 +170,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 button.titleLabel?.minimumScaleFactor = 0.7
                 button.titleLabel?.lineBreakMode = .byClipping
                 button.setTitleColor(.label, for: .normal)
-                button.backgroundColor = .tertiarySystemFill
-                button.layer.cornerRadius = 8
-                button.clipsToBounds = true
                 button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                 button.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
-                button.addAction(UIAction { _ in
+                button.addAction(UIAction { [weak button] _ in
+                    button?.flashActivation()
                     item.action()
                 }, for: .touchUpInside)
                 rowStack.addArrangedSubview(button)

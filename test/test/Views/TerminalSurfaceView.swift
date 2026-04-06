@@ -59,7 +59,13 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private func makeShortcutAccessory(for terminalView: SwiftTerm.TerminalView) -> UIView {
         TerminalShortcutAccessoryView(rows: [
             [
-                .init(systemImageName: "keyboard.chevron.compact.down", accessibilityLabel: "收起键盘", action: { _ = terminalView.resignFirstResponder() }),
+                .init(systemImageName: "keyboard", accessibilityLabel: "显示或隐藏系统键盘", action: {
+                    if let scrollbackView = terminalView as? ScrollbackTerminalView {
+                        scrollbackView.toggleSoftwareKeyboard()
+                    } else {
+                        _ = terminalView.resignFirstResponder()
+                    }
+                }),
                 .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
                 .init(title: "Esc", action: { viewModel.sendEscape() }),
                 .init(title: "Tab", action: { viewModel.sendTab() }),
