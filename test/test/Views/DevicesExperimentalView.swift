@@ -171,7 +171,6 @@ struct DevicesExperimentalView: View {
             }
         }
         .scaleEffect(isDragged ? 1.02 : 1)
-        .shadow(color: isDragged ? palette.cardShadow.opacity(1.2) : .clear, radius: 16, x: 0, y: 10)
         .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isDragged)
         .onDrag {
             draggedServerID = serverID
@@ -444,7 +443,6 @@ private struct ExperimentalCompactServerCard: View {
                 .stroke(palette.cardBorder, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
-        .shadow(color: palette.cardShadow, radius: 14, x: 0, y: 8)
     }
 
     private var failurePill: some View {
@@ -528,7 +526,6 @@ private struct ExperimentalServerCard: View {
                 .stroke(palette.cardBorder, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .shadow(color: palette.cardShadow, radius: 20, x: 0, y: 10)
     }
 
     private var header: some View {
@@ -885,14 +882,16 @@ private struct ExperimentalUsageRing: View {
         case .memoryGradient:
             return AnyShapeStyle(
                 AngularGradient(
-                    colors: [
+                    gradient: Gradient(colors: [
                         Color(red: 0.52, green: 0.92, blue: 0.31),
+                        Color(red: 0.44, green: 0.88, blue: 0.24),
                         Color(red: 0.23, green: 0.80, blue: 0.14),
-                        Color(red: 0.05, green: 0.62, blue: 0.43),
                         Color(red: 0.11, green: 0.72, blue: 0.48),
-                        Color(red: 0.44, green: 0.88, blue: 0.24)
-                    ],
-                    center: .center
+                        Color(red: 0.05, green: 0.62, blue: 0.43)
+                    ]),
+                    center: .center,
+                    startAngle: .degrees(arcStartAngle),
+                    endAngle: .degrees(arcEndAngle)
                 )
             )
         }
@@ -916,17 +915,6 @@ private struct ExperimentalUsageRing: View {
                     )
                     .stroke(activeStroke, style: activeStrokeStyle)
                 }
-
-                ExperimentalRingArc(
-                    startAngle: arcStartAngle,
-                    endAngle: arcEndAngle,
-                    inset: ringLineWidth / 2
-                )
-                .stroke(
-                    palette.isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03),
-                    lineWidth: 1
-                )
-                .padding(-5)
             } else {
                 ExperimentalRingArc(
                     startAngle: arcStartAngle,
