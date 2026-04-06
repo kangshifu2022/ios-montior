@@ -82,7 +82,7 @@ struct TerminalDiagnosticsView: View {
                 .disabled(entries.isEmpty)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalDiagnosticsDidChange)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: TerminalDiagnosticsStore.didChangeNotification)) { _ in
             entries = TerminalDiagnosticsStore.loadEntries()
         }
     }

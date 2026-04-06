@@ -1069,7 +1069,8 @@ private struct ExperimentalMetricTile: View {
             .frame(width: 70, height: 28, alignment: .center)
             .padding(.top, 8)
         }
-        .frame(width: 76, maxHeight: .infinity, alignment: .center)
+        .frame(width: 76)
+        .frame(maxHeight: .infinity, alignment: .center)
         .opacity(percentage == nil ? 0.82 : 1)
     }
 }

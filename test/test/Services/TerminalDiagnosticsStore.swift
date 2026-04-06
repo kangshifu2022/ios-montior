@@ -1,10 +1,10 @@
 import Foundation
 
-extension Notification.Name {
-    static let terminalDiagnosticsDidChange = Notification.Name("terminalDiagnosticsDidChange")
-}
-
 enum TerminalDiagnosticsStore {
+    nonisolated static var didChangeNotification: Notification.Name {
+        Notification.Name("terminalDiagnosticsDidChange")
+    }
+
     private static let storageKey = "terminal.diagnostics.entries.v1"
     private static let maxEntries = 300
     private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
@@ -94,14 +94,12 @@ enum TerminalDiagnosticsStore {
     }
 
     nonisolated private static func notifyDidChange() {
-        let post = {
-            NotificationCenter.default.post(name: .terminalDiagnosticsDidChange, object: nil)
-        }
-
         if Thread.isMainThread {
-            post()
+            NotificationCenter.default.post(name: didChangeNotification, object: nil)
         } else {
-            DispatchQueue.main.async(execute: post)
+            Task { @MainActor in
+                NotificationCenter.default.post(name: didChangeNotification, object: nil)
+            }
         }
     }
 }

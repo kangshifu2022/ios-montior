@@ -62,12 +62,12 @@ enum TerminalPersistenceStore {
         }()
         let recordID = persistentRecordID(for: server.id, sessionName: sessionName)
 
-        if let existing = updateRecord(id: recordID) { record in
+        if let existing = updateRecord(id: recordID, mutate: { record in
             record.serverName = server.name
             record.sessionName = sessionName
             record.lastAttachedAt = now
             record.allowsResume = true
-        } {
+        }) {
             return existing
         }
 
