@@ -32,12 +32,7 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     private var isReviewingScrollback = false
     private var lastKnownBoundsHeight: CGFloat?
     private var lastKnownAdjustedInsets: UIEdgeInsets?
-    private var isSoftwareKeyboardHidden = false
     private lazy var hiddenKeyboardInputView = HiddenKeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
-
-    override var inputView: UIView? {
-        isSoftwareKeyboardHidden ? hiddenKeyboardInputView : nil
-    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -111,12 +106,11 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     }
 
     func toggleSoftwareKeyboard() {
-        isSoftwareKeyboardHidden.toggle()
+        let shouldHideSoftwareKeyboard = inputView !== hiddenKeyboardInputView
+        inputView = shouldHideSoftwareKeyboard ? hiddenKeyboardInputView : nil
 
         guard isFirstResponder else {
-            if !isSoftwareKeyboardHidden {
-                _ = becomeFirstResponder()
-            }
+            _ = becomeFirstResponder()
             return
         }
 
