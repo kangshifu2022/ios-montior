@@ -9,7 +9,7 @@ enum TerminalDiagnosticsStore {
     private static let maxEntries = 300
     private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
 
-    static func record(
+    nonisolated static func record(
         _ message: String,
         level: TerminalDiagnosticLevel = .info,
         category: String,
@@ -37,20 +37,20 @@ enum TerminalDiagnosticsStore {
         notifyDidChange()
     }
 
-    static func loadEntries() -> [TerminalDiagnosticEntry] {
+    nonisolated static func loadEntries() -> [TerminalDiagnosticEntry] {
         queue.sync {
             loadEntriesUnlocked().sorted { $0.timestamp > $1.timestamp }
         }
     }
 
-    static func clear() {
+    nonisolated static func clear() {
         queue.sync {
             UserDefaults.standard.removeObject(forKey: storageKey)
         }
         notifyDidChange()
     }
 
-    static func exportText() -> String {
+    nonisolated static func exportText() -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
@@ -79,7 +79,7 @@ enum TerminalDiagnosticsStore {
         .joined(separator: "\n")
     }
 
-    private static func loadEntriesUnlocked() -> [TerminalDiagnosticEntry] {
+    nonisolated private static func loadEntriesUnlocked() -> [TerminalDiagnosticEntry] {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([TerminalDiagnosticEntry].self, from: data) else {
             return []
@@ -88,12 +88,12 @@ enum TerminalDiagnosticsStore {
         return decoded
     }
 
-    private static func saveEntriesUnlocked(_ entries: [TerminalDiagnosticEntry]) {
+    nonisolated private static func saveEntriesUnlocked(_ entries: [TerminalDiagnosticEntry]) {
         guard let data = try? JSONEncoder().encode(entries) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 
-    private static func notifyDidChange() {
+    nonisolated private static func notifyDidChange() {
         let post = {
             NotificationCenter.default.post(name: .terminalDiagnosticsDidChange, object: nil)
         }

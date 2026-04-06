@@ -125,7 +125,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             }
         }
 
-        TerminalShortcutAccessoryView(rows: [
+        return TerminalShortcutAccessoryView(rows: [
             [
                 .init(systemImageName: "keyboard", accessibilityLabel: "显示或隐藏系统键盘", action: { [weak terminalView] in
                     guard let terminalView else { return }
