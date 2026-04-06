@@ -250,6 +250,9 @@ struct DevicesExperimentalView: View {
     @ViewBuilder
     private func reorderableCard(for server: ServerConfig) -> some View {
         let serverID = server.id
+        let stats = store.stats(for: server)
+        let cpuTrendValues = store.cpuUsageHistory(for: serverID)
+        let memTrendValues = store.memUsageHistory(for: serverID)
         let isDragged = draggedServerID == serverID
         let isCollapsed = store.isCollapsed(server.id)
         let isExpandedInCompactMode = expandedServerIDsInCompactMode.contains(server.id)
@@ -262,7 +265,9 @@ struct DevicesExperimentalView: View {
             if showsDetailedCard {
                 ExperimentalServerCard(
                     config: server,
-                    stats: store.stats(for: server),
+                    stats: stats,
+                    cpuTrendValues: cpuTrendValues,
+                    memTrendValues: memTrendValues,
                     palette: palette
                 ) {
                     selectedServer = server
@@ -274,7 +279,7 @@ struct DevicesExperimentalView: View {
             } else {
                 ExperimentalCompactServerCard(
                     config: server,
-                    stats: store.stats(for: server),
+                    stats: stats,
                     palette: palette,
                     showsExpandControl: true
                 ) {
@@ -635,6 +640,8 @@ private struct ExperimentalCompactServerCard: View {
 private struct ExperimentalServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
+    let cpuTrendValues: [Double]
+    let memTrendValues: [Double]
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
     let onToggleCollapse: () -> Void
@@ -657,6 +664,14 @@ private struct ExperimentalServerCard: View {
 
     private var showsFailureState: Bool {
         stats != nil && !isOnline
+    }
+
+    private var cpuTrendSeries: [Double] {
+        metricTrendValues(history: cpuTrendValues, fallback: stats?.cpuUsage)
+    }
+
+    private var memTrendSeries: [Double] {
+        metricTrendValues(history: memTrendValues, fallback: stats?.memUsage)
     }
 
     var body: some View {
@@ -742,10 +757,10 @@ private struct ExperimentalServerCard: View {
             label: "CPU %",
             percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
             valueTint: cpuUsageTint,
-            ringStyle: .standard,
+            trendValues: cpuTrendSeries,
             palette: palette
         )
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var memMetricCell: some View {
@@ -753,10 +768,10 @@ private struct ExperimentalServerCard: View {
             label: "MEM %",
             percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
             valueTint: palette.memoryAccent,
-            ringStyle: .memoryGradient,
+            trendValues: memTrendSeries,
             palette: palette
         )
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var networkMetricCell: some View {
@@ -902,25 +917,65 @@ private struct ExperimentalServerCard: View {
     private func temperatureText(for value: Double) -> String {
         "\(Int(value.rounded()))°C"
     }
+
+    private func metricTrendValues(history: [Double], fallback: Double?) -> [Double] {
+        if !history.isEmpty {
+            return history
+        }
+
+        guard let fallback else {
+            return []
+        }
+
+        return [min(max(fallback, 0), 1)]
+    }
 }
 
 private struct ExperimentalMetricTile: View {
     let label: String
     let percentage: Int?
     let valueTint: Color
-    var ringStyle: ExperimentalRingStyle = .standard
+    let trendValues: [Double]
     let palette: ExperimentalHomePalette
 
+    private var displayColor: Color {
+        percentage == nil ? palette.secondaryText.opacity(0.42) : valueTint
+    }
+
     var body: some View {
-        ExperimentalUsageRing(
-            label: label,
-            percentage: percentage,
-            tint: valueTint,
-            ringStyle: ringStyle,
-            palette: palette
-        )
-        .frame(width: 65, height: 65)
-        .opacity(percentage == nil ? 0.78 : 1)
+        VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if let percentage {
+                    Text("\(percentage)")
+                        .contentTransition(.numericText(value: Double(percentage)))
+                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
+                } else {
+                    Text("--")
+                }
+            }
+            .font(.system(size: 34, weight: .medium, design: .rounded))
+            .foregroundColor(displayColor)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.62)
+
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(palette.secondaryText.opacity(0.88))
+                .tracking(1.1)
+                .padding(.top, -3)
+
+            ExperimentalUsageTrendSparkline(
+                values: trendValues,
+                isActive: percentage != nil,
+                palette: palette
+            )
+            .frame(height: 28)
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(.trailing, 10)
+        .opacity(percentage == nil ? 0.82 : 1)
     }
 }
 
@@ -989,147 +1044,89 @@ private struct ExperimentalCompactRateCapsule: View {
     }
 }
 
-private enum ExperimentalRingStyle {
-    case standard
-    case memoryGradient
-}
-
-private struct ExperimentalUsageRing: View {
-    let label: String
-    let percentage: Int?
-    let tint: Color
-    let ringStyle: ExperimentalRingStyle
+private struct ExperimentalUsageTrendSparkline: View {
+    let values: [Double]
+    let isActive: Bool
     let palette: ExperimentalHomePalette
 
-    private let gapAngle: Double = 130
-    private let ringLineWidth: CGFloat = 6
+    private let minimumVisibleRange: Double = 0.12
 
-    private var normalizedValue: Double {
-        Double(min(max(percentage ?? 0, 0), 100)) / 100
+    private var clampedValues: [Double] {
+        values.map { min(max($0, 0), 1) }
     }
 
-    private var arcSweepAngle: Double {
-        360 - gapAngle
-    }
+    private var normalizedValues: [Double] {
+        guard let minValue = clampedValues.min(),
+              let maxValue = clampedValues.max() else {
+            return []
+        }
 
-    private var arcStartAngle: Double {
-        90 + (gapAngle / 2)
-    }
+        let range = maxValue - minValue
+        let padding = max(0.015, (minimumVisibleRange - range) / 2)
+        let lowerBound = max(0, minValue - padding)
+        let upperBound = min(1, maxValue + padding)
+        let effectiveRange = max(upperBound - lowerBound, 0.000_1)
 
-    private var arcEndAngle: Double {
-        arcStartAngle + arcSweepAngle
-    }
-
-    private var trackColor: Color {
-        switch ringStyle {
-        case .standard:
-            return palette.isDark ? Color.white.opacity(0.14) : Color(.systemGray5)
-        case .memoryGradient:
-            return palette.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
+        return clampedValues.map { value in
+            min(max((value - lowerBound) / effectiveRange, 0), 1)
         }
     }
 
-    private var activeStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: ringLineWidth, lineCap: ringStyle == .memoryGradient ? .round : .butt)
-    }
-
-    private var activeStroke: AnyShapeStyle {
-        switch ringStyle {
-        case .standard:
-            return AnyShapeStyle(tint)
-        case .memoryGradient:
-            return AnyShapeStyle(
-                AngularGradient(
-                    gradient: Gradient(colors: [
-                        Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0),
-                        Color(red: 0.44, green: 0.88, blue: 0.24),
-                        Color(red: 0.23, green: 0.80, blue: 0.14),
-                        Color(red: 0.11, green: 0.72, blue: 0.48),
-                        Color(red: 0.05, green: 0.62, blue: 0.43)
-                    ]),
-                    center: .center,
-                    startAngle: .degrees(arcStartAngle),
-                    endAngle: .degrees(arcEndAngle)
-                )
-            )
-        }
+    private var lineColor: Color {
+        isActive
+            ? Color(red: 0.93, green: 0.72, blue: 0.07)
+            : palette.secondaryText.opacity(0.24)
     }
 
     var body: some View {
-        ZStack {
-            if ringStyle == .memoryGradient {
-                ExperimentalRingArc(
-                    startAngle: arcStartAngle,
-                    endAngle: arcEndAngle,
-                    inset: ringLineWidth / 2
-                )
-                .stroke(trackColor, lineWidth: ringLineWidth)
+        GeometryReader { geometry in
+            let size = geometry.size
 
-                if normalizedValue > 0 {
-                    ExperimentalRingArc(
-                        startAngle: arcStartAngle,
-                        endAngle: arcStartAngle + (arcSweepAngle * normalizedValue),
-                        inset: ringLineWidth / 2
+            if normalizedValues.count >= 2 {
+                sparklinePath(in: size)
+                    .stroke(
+                        lineColor,
+                        style: StrokeStyle(
+                            lineWidth: 1.45,
+                            lineCap: .round,
+                            lineJoin: .round
+                        )
                     )
-                    .stroke(activeStroke, style: activeStrokeStyle)
+            } else if let singleValue = normalizedValues.first {
+                Path { path in
+                    let y = yPosition(for: singleValue, in: size)
+                    path.move(to: CGPoint(x: 1, y: y))
+                    path.addLine(to: CGPoint(x: max(size.width - 1, 1), y: y))
                 }
+                .stroke(
+                    lineColor.opacity(0.45),
+                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
+                )
             } else {
-                ExperimentalRingArc(
-                    startAngle: arcStartAngle,
-                    endAngle: arcEndAngle,
-                    inset: ringLineWidth / 2
-                )
-                .stroke(trackColor, lineWidth: ringLineWidth)
-
-                if normalizedValue > 0 {
-                    ExperimentalRingArc(
-                        startAngle: arcStartAngle,
-                        endAngle: arcStartAngle + (arcSweepAngle * normalizedValue),
-                        inset: ringLineWidth / 2
-                    )
-                    .stroke(activeStroke, style: activeStrokeStyle)
-                }
+                Capsule()
+                    .fill(palette.secondaryText.opacity(0.16))
+                    .frame(width: max(size.width - 12, 12), height: 1.2)
+                    .position(x: size.width / 2, y: size.height * 0.62)
             }
-
-            ExperimentalRingPercentageText(
-                label: label,
-                percentage: percentage,
-                tint: tint,
-                palette: palette
-            )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage ?? -1)
-    }
-}
-
-private struct ExperimentalRingArc: Shape {
-    var startAngle: Double
-    var endAngle: Double
-    let inset: CGFloat
-
-    var animatableData: AnimatablePair<Double, Double> {
-        get { AnimatablePair(startAngle, endAngle) }
-        set {
-            startAngle = newValue.first
-            endAngle = newValue.second
         }
     }
 
-    func path(in rect: CGRect) -> Path {
-        let radius = max(0, (min(rect.width, rect.height) / 2) - inset)
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let segmentCount = max(2, Int(abs(endAngle - startAngle) / 4))
-        let angles = stride(from: 0, through: segmentCount, by: 1).map { index in
-            startAngle + ((endAngle - startAngle) * Double(index) / Double(segmentCount))
-        }
+    private func sparklinePath(in size: CGSize) -> Path {
+        let topInset: CGFloat = 1
+        let bottomInset: CGFloat = 2
+        let horizontalInset: CGFloat = 1
+        let usableHeight = max(size.height - topInset - bottomInset, 1)
+        let usableWidth = max(size.width - (horizontalInset * 2), 1)
+        let stepX = normalizedValues.count > 1
+            ? usableWidth / CGFloat(normalizedValues.count - 1)
+            : 0
 
         var path = Path()
-        for (index, angle) in angles.enumerated() {
-            let radians = angle * .pi / 180
+
+        for (index, value) in normalizedValues.enumerated() {
             let point = CGPoint(
-                x: center.x + CGFloat(cos(radians)) * radius,
-                y: center.y + CGFloat(sin(radians)) * radius
+                x: horizontalInset + (CGFloat(index) * stepX),
+                y: topInset + ((1 - CGFloat(value)) * usableHeight)
             )
 
             if index == 0 {
@@ -1141,37 +1138,12 @@ private struct ExperimentalRingArc: Shape {
 
         return path
     }
-}
 
-private struct ExperimentalRingPercentageText: View {
-    let label: String
-    let percentage: Int?
-    let tint: Color
-    let palette: ExperimentalHomePalette
-
-    var body: some View {
-        VStack(spacing: 1) {
-            Group {
-                if let percentage {
-                    Text("\(percentage)")
-                        .contentTransition(.numericText(value: Double(percentage)))
-                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
-                } else {
-                    Text("--")
-                        .hidden()
-                }
-            }
-            .font(.system(size: 21, weight: .semibold, design: .rounded))
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-
-            Text(label)
-                .font(.system(size: 8, weight: .medium, design: .rounded))
-                .foregroundColor(palette.secondaryText)
-                .tracking(0.2)
-        }
-        .foregroundColor(tint)
+    private func yPosition(for value: Double, in size: CGSize) -> CGFloat {
+        let topInset: CGFloat = 1
+        let bottomInset: CGFloat = 2
+        let usableHeight = max(size.height - topInset - bottomInset, 1)
+        return topInset + ((1 - CGFloat(value)) * usableHeight)
     }
 }
 

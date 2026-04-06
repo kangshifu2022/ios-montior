@@ -4,6 +4,12 @@ import Combine
 
 @MainActor
 final class ServerStore: ObservableObject {
+    private struct UsageTrendSample {
+        let capturedAt: Date
+        let cpuUsage: Double
+        let memUsage: Double
+    }
+
     private enum RefreshRequest: Sendable {
         case full(ServerConfig)
         case dynamic(ServerConfig)
@@ -22,6 +28,7 @@ final class ServerStore: ObservableObject {
     @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
     @Published private(set) var alertSettings = AlertSettings()
     @Published private(set) var collapsedServerIDs: Set<UUID> = []
+    @Published private var metricHistoryByServerID: [UUID: [UsageTrendSample]] = [:]
 
     private let serversKey = "saved_servers"
     private let alertSettingsKey = "saved_alert_settings"
@@ -40,6 +47,7 @@ final class ServerStore: ObservableObject {
     private let offlineTransitionGraceInterval: TimeInterval = 12
     private let autoCollapseFailureThreshold = 3
     private let maxDerivedMetricSampleAge: TimeInterval = 12
+    private let metricHistoryWindow: TimeInterval = 60
     private let refreshBatchStaggerInterval: TimeInterval = 0.18
     private let maxRefreshBatchStaggerSlots = 6
 
@@ -64,6 +72,7 @@ final class ServerStore: ObservableObject {
             lastDynamicRefreshDates.removeValue(forKey: server.id)
             lastSuccessfulDynamicRefreshDates.removeValue(forKey: server.id)
             consecutiveDynamicFailureCounts.removeValue(forKey: server.id)
+            metricHistoryByServerID.removeValue(forKey: server.id)
             refreshingServerIDs.remove(server.id)
             remoteAlertOperationServerIDs.remove(server.id)
             save()
@@ -82,6 +91,7 @@ final class ServerStore: ObservableObject {
             lastDynamicRefreshDates.removeValue(forKey: $0)
             lastSuccessfulDynamicRefreshDates.removeValue(forKey: $0)
             consecutiveDynamicFailureCounts.removeValue(forKey: $0)
+            metricHistoryByServerID.removeValue(forKey: $0)
             refreshingServerIDs.remove($0)
             remoteAlertOperationServerIDs.remove($0)
             collapsedServerIDs.remove($0)
@@ -134,6 +144,14 @@ final class ServerStore: ObservableObject {
 
     func remoteAlertStatus(for config: ServerConfig) -> RemoteAlertStatus? {
         remoteAlertStatusByServerID[config.id]
+    }
+
+    func cpuUsageHistory(for id: UUID) -> [Double] {
+        metricHistoryByServerID[id]?.map(\.cpuUsage) ?? []
+    }
+
+    func memUsageHistory(for id: UUID) -> [Double] {
+        metricHistoryByServerID[id]?.map(\.memUsage) ?? []
     }
 
     func isCollapsed(_ id: UUID) -> Bool {
@@ -373,6 +391,7 @@ final class ServerStore: ObservableObject {
                         now: receivedAt
                     )
                     dynamicInfoByServerID[id] = resolvedDynamicInfo
+                    recordMetricSample(for: id, dynamicInfo: resolvedDynamicInfo, capturedAt: receivedAt)
                     lastDynamicRefreshDates[id] = batchStartedAt
                     refreshingServerIDs.remove(id)
                 case .dynamic(let id, let dynamic):
@@ -382,6 +401,7 @@ final class ServerStore: ObservableObject {
                         now: receivedAt
                     )
                     dynamicInfoByServerID[id] = resolvedDynamicInfo
+                    recordMetricSample(for: id, dynamicInfo: resolvedDynamicInfo, capturedAt: receivedAt)
                     lastDynamicRefreshDates[id] = batchStartedAt
                     refreshingServerIDs.remove(id)
                 }
@@ -757,6 +777,33 @@ final class ServerStore: ObservableObject {
         }
 
         return String(format: "%.1fMB/s", roundedKilobytesPerSecond / 1024)
+    }
+
+    private func recordMetricSample(
+        for serverID: UUID,
+        dynamicInfo: ServerDynamicInfo,
+        capturedAt: Date
+    ) {
+        guard dynamicInfo.isOnline else { return }
+
+        let sample = UsageTrendSample(
+            capturedAt: capturedAt,
+            cpuUsage: min(max(dynamicInfo.cpuUsage, 0), 1),
+            memUsage: min(max(dynamicInfo.memUsage, 0), 1)
+        )
+
+        var history = metricHistoryByServerID[serverID] ?? []
+
+        if let lastSample = history.last,
+           abs(lastSample.capturedAt.timeIntervalSince(capturedAt)) < 0.5 {
+            history[history.count - 1] = sample
+        } else {
+            history.append(sample)
+        }
+
+        let cutoffDate = capturedAt.addingTimeInterval(-metricHistoryWindow)
+        history.removeAll { $0.capturedAt < cutoffDate }
+        metricHistoryByServerID[serverID] = history
     }
 
     private func refreshStartDelay(
