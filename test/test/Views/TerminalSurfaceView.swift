@@ -59,13 +59,30 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private func makeShortcutAccessory(for terminalView: SwiftTerm.TerminalView) -> UIView {
         TerminalShortcutAccessoryView(rows: [
             [
-                .init(systemImageName: "keyboard", accessibilityLabel: "显示或隐藏系统键盘", action: {
+                .init(systemImageName: "keyboard", accessibilityLabel: "显示或隐藏系统键盘", action: { [weak terminalView] in
+                    guard let terminalView else { return }
                     if let scrollbackView = terminalView as? ScrollbackTerminalView {
                         scrollbackView.toggleSoftwareKeyboard()
                     } else {
                         _ = terminalView.resignFirstResponder()
                     }
                 }),
+                .init(
+                    title: "Ctrl",
+                    accessibilityLabel: "切换 Ctrl 修饰键",
+                    isSelected: { [weak terminalView] in
+                        terminalView?.controlModifier ?? false
+                    },
+                    observedNotifications: [
+                        .init(name: .terminalViewControlModifierReset, objectProvider: { [weak terminalView] in
+                            terminalView
+                        })
+                    ],
+                    action: { [weak terminalView] in
+                        guard let terminalView else { return }
+                        terminalView.controlModifier.toggle()
+                    }
+                ),
                 .init(title: "Ctrl+C", action: { viewModel.sendInterrupt() }),
                 .init(title: "Esc", action: { viewModel.sendEscape() }),
                 .init(title: "Tab", action: { viewModel.sendTab() }),
@@ -73,15 +90,14 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 .init(title: "End", action: { viewModel.sendEnd() })
             ],
             [
-                .init(title: "PgUp", action: { terminalView.pageUp() }),
-                .init(title: "PgDn", action: { terminalView.pageDown() }),
+                .init(title: "PgUp", action: { [weak terminalView] in terminalView?.pageUp() }),
+                .init(title: "PgDn", action: { [weak terminalView] in terminalView?.pageDown() }),
                 .init(title: "↑", action: { viewModel.sendArrowUp() }),
                 .init(title: "↓", action: { viewModel.sendArrowDown() }),
                 .init(title: "←", action: { viewModel.sendArrowLeft() }),
                 .init(title: "→", action: { viewModel.sendArrowRight() })
             ],
             [
-                .init(title: "tmux ls", action: { viewModel.sendTmuxList() }),
                 .init(title: "^L", action: { viewModel.sendClearScreen() }),
                 .init(title: "/", action: { viewModel.sendSlash() }),
                 .init(title: "-", action: { viewModel.sendDash() }),
