@@ -16,7 +16,7 @@ struct DevicesExperimentalView: View {
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var showsExpandedGroupTags = false
     @State private var draggedServerID: UUID?
-    @Namespace private var groupTabsGlassNamespace
+    @State private var swipeActionServerID: UUID?
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -127,12 +127,15 @@ struct DevicesExperimentalView: View {
             }
             .onChange(of: selectedServer?.id) { _, _ in
                 draggedServerID = nil
+                swipeActionServerID = nil
             }
             .onChange(of: editingServer?.id) { _, _ in
                 draggedServerID = nil
+                swipeActionServerID = nil
             }
             .onChange(of: terminalServer?.id) { _, _ in
                 draggedServerID = nil
+                swipeActionServerID = nil
             }
             .task(id: store.servers.map(\.id)) {
                 triggerHomeRefresh()
@@ -145,6 +148,7 @@ struct DevicesExperimentalView: View {
             }
             .onDisappear {
                 draggedServerID = nil
+                swipeActionServerID = nil
             }
         }
         .preferredColorScheme(preferredColorScheme)
@@ -155,17 +159,15 @@ struct DevicesExperimentalView: View {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
 
-                Picker("视图模式", selection: homeCardViewSelection) {
-                    Image(systemName: "list.bullet")
-                        .accessibilityLabel("详细")
-                        .tag(ExperimentalHomeCardView.detailed)
-
-                    Image(systemName: "square.grid.2x2")
-                        .accessibilityLabel("缩略")
-                        .tag(ExperimentalHomeCardView.compact)
+                Button(action: toggleHomeCardView) {
+                    Image(systemName: homeCardViewToggleIconName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                        .contentTransition(.symbolEffect(.replace))
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 92)
+                .buttonStyle(.plain)
+                .foregroundColor(palette.primaryText)
+                .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
             }
 
             Text("概览")
@@ -182,19 +184,25 @@ struct DevicesExperimentalView: View {
         .padding(.bottom, 8)
     }
 
-    private var groupTabs: some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                GlassEffectContainer(spacing: 8) {
-                    groupTabsScrollView
-                }
-            } else {
-                groupTabsScrollView
-            }
+    private var homeCardViewToggleIconName: String {
+        switch homeCardView {
+        case .detailed:
+            return "square.grid.2x2"
+        case .compact:
+            return "list.bullet"
         }
     }
 
-    private var groupTabsScrollView: some View {
+    private var homeCardViewToggleAccessibilityLabel: String {
+        switch homeCardView {
+        case .detailed:
+            return "切换到缩略视图"
+        case .compact:
+            return "切换到详细视图"
+        }
+    }
+
+    private var groupTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(visibleGroupNames, id: \.self) { groupName in
@@ -231,7 +239,6 @@ struct DevicesExperimentalView: View {
                 }
                 .buttonStyle(.glassProminent)
                 .controlSize(.mini)
-                .glassEffectID(groupName, in: groupTabsGlassNamespace)
             } else {
                 Button {
                     handleGroupTagTap(groupName)
@@ -245,7 +252,6 @@ struct DevicesExperimentalView: View {
                 }
                 .buttonStyle(.glass)
                 .controlSize(.mini)
-                .glassEffectID(groupName, in: groupTabsGlassNamespace)
             }
         } else {
             Button {
@@ -343,16 +349,6 @@ struct DevicesExperimentalView: View {
         palette.isDark ? Color.white.opacity(0.06) : Color.white.opacity(0.82)
     }
 
-    private var homeCardViewSelection: Binding<ExperimentalHomeCardView> {
-        Binding(
-            get: { homeCardView },
-            set: { newValue in
-                guard newValue != homeCardView else { return }
-                setHomeCardView(newValue)
-            }
-        )
-    }
-
     private func triggerHomeRefresh(
         forceDynamic: Bool = false,
         forceStatic: Bool = false
@@ -374,7 +370,18 @@ struct DevicesExperimentalView: View {
         let isDragged = draggedServerID == serverID
         let showsDetailedCard = homeCardView == .detailed
 
-        Group {
+        ExperimentalSwipeActionCard(
+            id: serverID,
+            openCardID: $swipeActionServerID,
+            palette: palette,
+            cornerRadius: showsDetailedCard ? 30 : 999,
+            onEdit: {
+                editingServer = server
+            },
+            onDelete: {
+                store.deleteServer(id: serverID)
+            }
+        ) {
             if showsDetailedCard {
                 ExperimentalServerCard(
                     config: server,
@@ -408,17 +415,17 @@ struct DevicesExperimentalView: View {
             store: store,
             draggedServerID: $draggedServerID
         ))
-        .contextMenu {
-            Button {
-                editingServer = server
-            } label: {
-                Label("编辑设备", systemImage: "square.and.pencil")
-            }
-        }
     }
 
     private func setHomeCardView(_ nextMode: ExperimentalHomeCardView) {
         experimentalHomeCardViewRawValue = nextMode.rawValue
+    }
+
+    private func toggleHomeCardView() {
+        let nextMode: ExperimentalHomeCardView = homeCardView == .detailed ? .compact : .detailed
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+            setHomeCardView(nextMode)
+        }
     }
 
     private var emptyState: some View {
@@ -497,6 +504,160 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         draggedServerID = nil
         return true
+    }
+}
+
+private struct ExperimentalSwipeActionCard<Content: View>: View {
+    private enum Layout {
+        static let actionWidth: CGFloat = 74
+        static let actionSpacing: CGFloat = 1
+
+        static var totalActionWidth: CGFloat {
+            (actionWidth * 2) + actionSpacing
+        }
+    }
+
+    let id: UUID
+    @Binding var openCardID: UUID?
+    let palette: ExperimentalHomePalette
+    let cornerRadius: CGFloat
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var dragOffset: CGFloat = 0
+
+    private var baseOffset: CGFloat {
+        openCardID == id ? -Layout.totalActionWidth : 0
+    }
+
+    private var contentOffset: CGFloat {
+        let proposedOffset = baseOffset + dragOffset
+        return min(0, max(-Layout.totalActionWidth, proposedOffset))
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            swipeActions
+
+            content()
+                .offset(x: contentOffset)
+                .overlay {
+                    if openCardID == id {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                closeActions()
+                            }
+                    }
+                }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .highPriorityGesture(swipeGesture)
+        .animation(.spring(response: 0.24, dampingFraction: 0.86), value: openCardID)
+        .onChange(of: openCardID) { _, newValue in
+            if newValue != id {
+                dragOffset = 0
+            }
+        }
+    }
+
+    private var swipeActions: some View {
+        HStack(spacing: Layout.actionSpacing) {
+            swipeActionButton(
+                title: "编辑",
+                systemImage: "square.and.pencil",
+                background: Color(red: 0.23, green: 0.49, blue: 0.94),
+                action: {
+                    closeActions()
+                    onEdit()
+                }
+            )
+
+            swipeActionButton(
+                title: "删除",
+                systemImage: "trash",
+                background: Color(red: 0.86, green: 0.22, blue: 0.20),
+                action: {
+                    closeActions(animated: false)
+                    onDelete()
+                }
+            )
+        }
+        .frame(width: Layout.totalActionWidth)
+        .frame(maxHeight: .infinity)
+        .background(palette.subcardBackground)
+    }
+
+    private func swipeActionButton(
+        title: String,
+        systemImage: String,
+        background: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: Layout.actionWidth)
+        .frame(maxHeight: .infinity)
+        .background(background)
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                dragOffset = value.translation.width
+            }
+            .onEnded { value in
+                defer { dragOffset = 0 }
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+
+                let projectedOffset = baseOffset + value.predictedEndTranslation.width
+                let revealedEnough = projectedOffset <= (-Layout.totalActionWidth * 0.55)
+                let closingEnough = projectedOffset >= (-Layout.totalActionWidth * 0.35)
+
+                if revealedEnough {
+                    openActions()
+                } else if closingEnough {
+                    closeActions()
+                } else if openCardID == id {
+                    openActions()
+                } else {
+                    closeActions()
+                }
+            }
+    }
+
+    private func openActions() {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+            openCardID = id
+        }
+    }
+
+    private func closeActions(animated: Bool = true) {
+        let updates = {
+            openCardID = nil
+        }
+
+        if animated {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                updates()
+            }
+        } else {
+            updates()
+        }
     }
 }
 
