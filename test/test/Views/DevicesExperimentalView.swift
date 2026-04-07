@@ -1089,6 +1089,17 @@ private struct ExperimentalUsageTrendSparkline: View {
             : palette.secondaryText.opacity(0.24)
     }
 
+    private var areaGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                accent.opacity(palette.isDark ? 0.22 : 0.16),
+                accent.opacity(palette.isDark ? 0.03 : 0.015)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
@@ -1105,25 +1116,35 @@ private struct ExperimentalUsageTrendSparkline: View {
                         )
                     )
             } else if normalizedValues.count >= 2 {
-                sparklinePath(in: size)
-                    .stroke(
-                        lineColor,
-                        style: StrokeStyle(
-                            lineWidth: 1.45,
-                            lineCap: .round,
-                            lineJoin: .round
+                ZStack {
+                    areaPath(in: size)
+                        .fill(areaGradient)
+
+                    sparklinePath(in: size)
+                        .stroke(
+                            lineColor,
+                            style: StrokeStyle(
+                                lineWidth: 1.45,
+                                lineCap: .round,
+                                lineJoin: .round
+                            )
                         )
-                    )
-            } else if let singleValue = normalizedValues.first {
-                Path { path in
-                    let y = yPosition(for: singleValue, in: size)
-                    path.move(to: CGPoint(x: 1, y: y))
-                    path.addLine(to: CGPoint(x: max(size.width - 1, 1), y: y))
                 }
-                .stroke(
-                    lineColor.opacity(0.45),
-                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
-                )
+            } else if let singleValue = normalizedValues.first {
+                ZStack {
+                    singleValueAreaPath(for: singleValue, in: size)
+                        .fill(areaGradient.opacity(0.72))
+
+                    Path { path in
+                        let y = yPosition(for: singleValue, in: size)
+                        path.move(to: CGPoint(x: 1, y: y))
+                        path.addLine(to: CGPoint(x: max(size.width - 1, 1), y: y))
+                    }
+                    .stroke(
+                        lineColor.opacity(0.45),
+                        style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
+                    )
+                }
             } else {
                 Capsule()
                     .fill(palette.secondaryText.opacity(0.16))
@@ -1163,6 +1184,54 @@ private struct ExperimentalUsageTrendSparkline: View {
     }
 
     private func sparklinePath(in size: CGSize) -> Path {
+        var path = Path()
+        let points = sparklinePoints(in: size)
+
+        for (index, point) in points.enumerated() {
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        return path
+    }
+
+    private func areaPath(in size: CGSize) -> Path {
+        let points = sparklinePoints(in: size)
+        guard let firstPoint = points.first, let lastPoint = points.last else {
+            return Path()
+        }
+
+        let baselineY = max(size.height - 2, firstPoint.y)
+        var path = Path()
+        path.move(to: CGPoint(x: firstPoint.x, y: baselineY))
+
+        for point in points {
+            path.addLine(to: point)
+        }
+
+        path.addLine(to: CGPoint(x: lastPoint.x, y: baselineY))
+        path.closeSubpath()
+        return path
+    }
+
+    private func singleValueAreaPath(for value: Double, in size: CGSize) -> Path {
+        let y = yPosition(for: value, in: size)
+        let startX: CGFloat = 1
+        let endX = max(size.width - 1, 1)
+        let baselineY = max(size.height - 2, y)
+        var path = Path()
+        path.move(to: CGPoint(x: startX, y: baselineY))
+        path.addLine(to: CGPoint(x: startX, y: y))
+        path.addLine(to: CGPoint(x: endX, y: y))
+        path.addLine(to: CGPoint(x: endX, y: baselineY))
+        path.closeSubpath()
+        return path
+    }
+
+    private func sparklinePoints(in size: CGSize) -> [CGPoint] {
         let topInset: CGFloat = 1
         let bottomInset: CGFloat = 2
         let horizontalInset: CGFloat = 1
@@ -1172,22 +1241,12 @@ private struct ExperimentalUsageTrendSparkline: View {
             ? usableWidth / CGFloat(normalizedValues.count - 1)
             : 0
 
-        var path = Path()
-
-        for (index, value) in normalizedValues.enumerated() {
-            let point = CGPoint(
+        return normalizedValues.enumerated().map { index, value in
+            CGPoint(
                 x: horizontalInset + (CGFloat(index) * stepX),
                 y: topInset + ((1 - CGFloat(value)) * usableHeight)
             )
-
-            if index == 0 {
-                path.move(to: point)
-            } else {
-                path.addLine(to: point)
-            }
         }
-
-        return path
     }
 
     private func yPosition(for value: Double, in size: CGSize) -> CGFloat {
