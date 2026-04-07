@@ -70,7 +70,11 @@ struct DevicesExperimentalView: View {
     }
 
     private var activeGroupName: String {
-        availableGroupNames.contains(selectedGroupName) ? selectedGroupName : ServerConfig.allGroupName
+        guard showsExpandedGroupTags else {
+            return ServerConfig.allGroupName
+        }
+
+        return availableGroupNames.contains(selectedGroupName) ? selectedGroupName : ServerConfig.allGroupName
     }
 
     private var visibleGroupNames: [String] {
