@@ -153,7 +153,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             }),
             .init(title: "Exit", style: .accent, action: {
                 let modifiers = consumeAccessoryModifiers()
-                viewModel.sendExit()
+                viewModel.closeTerminal()
                 if modifiers.alt || modifiers.shift {
                     scrollbackView?.accessoryAltModifier = false
                     scrollbackView?.accessoryShiftModifier = false

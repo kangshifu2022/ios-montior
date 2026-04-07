@@ -6,20 +6,24 @@ final class TerminalShortcutAccessoryView: UIInputView {
         case accent
     }
 
-    private final class ShortcutButton: UIButton {
-        private static let defaultBackgroundColor = UIColor(red: 0.43, green: 0.43, blue: 0.45, alpha: 1.0)
-        private static let accentBackgroundColor = UIColor(red: 0.03, green: 0.50, blue: 0.20, alpha: 1.0)
-        private static let selectedBackgroundColor = UIColor(red: 0.03, green: 0.50, blue: 0.20, alpha: 1.0)
-        private static let pressedBackgroundColor = UIColor(red: 0.35, green: 0.35, blue: 0.37, alpha: 1.0)
-        private static let accentPressedBackgroundColor = UIColor(red: 0.02, green: 0.42, blue: 0.17, alpha: 1.0)
-        private static let selectedPressedBackgroundColor = UIColor(red: 0.02, green: 0.42, blue: 0.17, alpha: 1.0)
-        private static let activatedBackgroundColor = UIColor(red: 0.08, green: 0.58, blue: 0.25, alpha: 1.0)
-        private static let defaultBorderColor = UIColor.white.withAlphaComponent(0.08)
-        private static let selectedBorderColor = UIColor.white.withAlphaComponent(0.18)
-        private static let activatedBorderColor = UIColor.white.withAlphaComponent(0.22)
-        private static let defaultForegroundColor = UIColor.white.withAlphaComponent(0.92)
-        private static let selectedForegroundColor = UIColor.white
+    private struct KeyboardPalette {
+        let accessoryBackground: UIColor
+        let accessoryTopBorder: UIColor
+        let defaultBackground: UIColor
+        let defaultPressedBackground: UIColor
+        let accentBackground: UIColor
+        let accentPressedBackground: UIColor
+        let selectedBackground: UIColor
+        let selectedPressedBackground: UIColor
+        let activatedBackground: UIColor
+        let defaultBorderColor: UIColor
+        let emphasizedBorderColor: UIColor
+        let defaultForegroundColor: UIColor
+        let accentForegroundColor: UIColor
+        let selectedForegroundColor: UIColor
+    }
 
+    private final class ShortcutButton: UIButton {
         var shortcutStyle: ShortcutStyle = .normal {
             didSet {
                 updateAppearance(animated: false)
@@ -57,13 +61,14 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
 
         func flashActivation() {
+            let palette = TerminalShortcutAccessoryView.keyboardPalette(for: traitCollection)
             UIView.animate(
                 withDuration: 0.08,
                 delay: 0,
                 options: [.beginFromCurrentState, .allowUserInteraction],
                 animations: {
-                    self.backgroundColor = Self.activatedBackgroundColor
-                    self.layer.borderColor = Self.activatedBorderColor.resolvedColor(with: self.traitCollection).cgColor
+                    self.backgroundColor = palette.activatedBackground
+                    self.layer.borderColor = palette.emphasizedBorderColor.cgColor
                 },
                 completion: { _ in
                     self.updateAppearance(animated: true)
@@ -73,40 +78,44 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
         private func updateAppearance(animated: Bool) {
             let updates = {
+                let palette = TerminalShortcutAccessoryView.keyboardPalette(for: self.traitCollection)
                 let backgroundColor: UIColor
                 if self.isHighlighted {
                     if self.isSelected {
-                        backgroundColor = Self.selectedPressedBackgroundColor
+                        backgroundColor = palette.selectedPressedBackground
                     } else {
-                        backgroundColor = self.shortcutStyle == .accent ? Self.accentPressedBackgroundColor : Self.pressedBackgroundColor
+                        backgroundColor = self.shortcutStyle == .accent
+                            ? palette.accentPressedBackground
+                            : palette.defaultPressedBackground
                     }
                 } else {
                     if self.isSelected {
-                        backgroundColor = Self.selectedBackgroundColor
+                        backgroundColor = palette.selectedBackground
                     } else {
-                        backgroundColor = self.shortcutStyle == .accent ? Self.accentBackgroundColor : Self.defaultBackgroundColor
+                        backgroundColor = self.shortcutStyle == .accent
+                            ? palette.accentBackground
+                            : palette.defaultBackground
                     }
                 }
 
                 let borderColor = (self.isHighlighted || self.isSelected || self.shortcutStyle == .accent)
-                    ? Self.selectedBorderColor
-                    : Self.defaultBorderColor
+                    ? palette.emphasizedBorderColor
+                    : palette.defaultBorderColor
+                let foregroundColor: UIColor
+                if self.isSelected {
+                    foregroundColor = palette.selectedForegroundColor
+                } else if self.shortcutStyle == .accent {
+                    foregroundColor = palette.accentForegroundColor
+                } else {
+                    foregroundColor = palette.defaultForegroundColor
+                }
                 self.backgroundColor = backgroundColor
-                self.layer.borderColor = borderColor.resolvedColor(with: self.traitCollection).cgColor
+                self.layer.borderColor = borderColor.cgColor
                 var configuration = self.configuration
-                configuration?.baseForegroundColor = (self.isSelected || self.shortcutStyle == .accent)
-                    ? Self.selectedForegroundColor
-                    : Self.defaultForegroundColor
+                configuration?.baseForegroundColor = foregroundColor
                 self.configuration = configuration
-                self.setTitleColor(
-                    (self.isSelected || self.shortcutStyle == .accent)
-                        ? Self.selectedForegroundColor
-                        : Self.defaultForegroundColor,
-                    for: .normal
-                )
-                self.tintColor = (self.isSelected || self.shortcutStyle == .accent)
-                    ? Self.selectedForegroundColor
-                    : Self.defaultForegroundColor
+                self.setTitleColor(foregroundColor, for: .normal)
+                self.tintColor = foregroundColor
                 self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
             }
 
@@ -198,6 +207,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
     private let rows: [[ShortcutItem]]
     private let gridColumnCount: Int
     private let preferredHeight: CGFloat
+    private let topBorderView = UIView()
     private var buttonWidthConstraints: [ButtonWidthConstraint] = []
     private var observationTokens: [NSObjectProtocol] = []
 
@@ -208,7 +218,12 @@ final class TerminalShortcutAccessoryView: UIInputView {
         self.preferredHeight = Self.preferredHeight(forRowCount: normalizedRows.count)
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: preferredHeight), inputViewStyle: .keyboard)
         allowsSelfSizing = true
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) {
+            (self: Self, _: UITraitCollection) in
+            self.updateContainerAppearance()
+        }
         setupUI()
+        updateContainerAppearance()
     }
 
     @available(*, unavailable)
@@ -245,7 +260,8 @@ final class TerminalShortcutAccessoryView: UIInputView {
     }
 
     private func setupUI() {
-        backgroundColor = .clear
+        topBorderView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(topBorderView)
 
         let contentStack = UIStackView()
         contentStack.translatesAutoresizingMaskIntoConstraints = false
@@ -325,6 +341,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
 
         NSLayoutConstraint.activate([
+            topBorderView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            topBorderView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            topBorderView.topAnchor.constraint(equalTo: topAnchor),
+            topBorderView.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
             contentStack.leadingAnchor.constraint(equalTo: leadingAnchor),
             contentStack.trailingAnchor.constraint(equalTo: trailingAnchor),
             contentStack.topAnchor.constraint(equalTo: topAnchor),
@@ -353,6 +373,12 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
     }
 
+    private func updateContainerAppearance() {
+        let palette = Self.keyboardPalette(for: traitCollection)
+        backgroundColor = palette.accessoryBackground
+        topBorderView.backgroundColor = palette.accessoryTopBorder
+    }
+
     private static func gridColumnCount(for rows: [[ShortcutItem]]) -> Int {
         max(
             rows.map { rowItems in
@@ -368,5 +394,44 @@ final class TerminalShortcutAccessoryView: UIInputView {
         let singleColumnWidth: CGFloat = 38
         return (singleColumnWidth * CGFloat(max(columnSpan, 1)))
             + (CGFloat(max(columnSpan - 1, 0)) * horizontalSpacing)
+    }
+
+    private static func keyboardPalette(for traitCollection: UITraitCollection) -> KeyboardPalette {
+        switch traitCollection.userInterfaceStyle {
+        case .dark:
+            return KeyboardPalette(
+                accessoryBackground: UIColor(red: 0.16, green: 0.17, blue: 0.19, alpha: 1.0),
+                accessoryTopBorder: UIColor.white.withAlphaComponent(0.10),
+                defaultBackground: UIColor(red: 0.39, green: 0.40, blue: 0.43, alpha: 1.0),
+                defaultPressedBackground: UIColor(red: 0.31, green: 0.32, blue: 0.35, alpha: 1.0),
+                accentBackground: UIColor(red: 0.30, green: 0.31, blue: 0.34, alpha: 1.0),
+                accentPressedBackground: UIColor(red: 0.24, green: 0.25, blue: 0.28, alpha: 1.0),
+                selectedBackground: UIColor(red: 0.48, green: 0.49, blue: 0.53, alpha: 1.0),
+                selectedPressedBackground: UIColor(red: 0.41, green: 0.42, blue: 0.46, alpha: 1.0),
+                activatedBackground: UIColor(red: 0.44, green: 0.45, blue: 0.49, alpha: 1.0),
+                defaultBorderColor: UIColor.white.withAlphaComponent(0.06),
+                emphasizedBorderColor: UIColor.white.withAlphaComponent(0.14),
+                defaultForegroundColor: UIColor.white.withAlphaComponent(0.96),
+                accentForegroundColor: UIColor.white.withAlphaComponent(0.96),
+                selectedForegroundColor: UIColor.white
+            )
+        default:
+            return KeyboardPalette(
+                accessoryBackground: UIColor(red: 0.82, green: 0.84, blue: 0.88, alpha: 1.0),
+                accessoryTopBorder: UIColor.black.withAlphaComponent(0.08),
+                defaultBackground: UIColor.white,
+                defaultPressedBackground: UIColor(red: 0.75, green: 0.78, blue: 0.82, alpha: 1.0),
+                accentBackground: UIColor(red: 0.68, green: 0.72, blue: 0.77, alpha: 1.0),
+                accentPressedBackground: UIColor(red: 0.61, green: 0.65, blue: 0.70, alpha: 1.0),
+                selectedBackground: UIColor(red: 0.54, green: 0.58, blue: 0.63, alpha: 1.0),
+                selectedPressedBackground: UIColor(red: 0.48, green: 0.52, blue: 0.57, alpha: 1.0),
+                activatedBackground: UIColor(red: 0.64, green: 0.68, blue: 0.73, alpha: 1.0),
+                defaultBorderColor: UIColor.black.withAlphaComponent(0.06),
+                emphasizedBorderColor: UIColor.black.withAlphaComponent(0.12),
+                defaultForegroundColor: UIColor.black.withAlphaComponent(0.92),
+                accentForegroundColor: UIColor.black.withAlphaComponent(0.92),
+                selectedForegroundColor: UIColor.white
+            )
+        }
     }
 }

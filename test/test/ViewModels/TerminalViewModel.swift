@@ -315,10 +315,15 @@ final class TerminalViewModel: ObservableObject {
         send(text: "tmux ls\n")
     }
 
-    func sendExit() {
-        keepsSessionAlive = false
-        exitRequestedByUser = true
-        send(text: "exit\n")
+    func closeTerminal() {
+        TerminalDiagnosticsStore.record(
+            "close terminal requested",
+            category: "connection",
+            server: server,
+            session: activeSessionRecord
+        )
+        disconnect(clearError: true)
+        shouldDismissTerminal = true
     }
 
     func sendHome() {
