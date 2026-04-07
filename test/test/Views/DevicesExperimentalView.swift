@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct DevicesExperimentalView: View {
     fileprivate static let cardGroupIndicatorWidth: CGFloat = 2.5
     fileprivate static let cardGroupIndicatorHeight: CGFloat = 11
+    fileprivate static let detailedCardTopPadding: CGFloat = 12
 
     @ObservedObject var store: ServerStore
     @Environment(\.colorScheme) private var colorScheme
@@ -13,6 +14,7 @@ struct DevicesExperimentalView: View {
     @State private var terminalServer: ServerConfig?
     @State private var editingServer: ServerConfig?
     @State private var selectedGroupName = ServerConfig.allGroupName
+    @State private var showsExpandedGroupTags = false
     @State private var draggedServerID: UUID?
 
     private var selectedTheme: ExperimentalHomeTheme {
@@ -69,6 +71,10 @@ struct DevicesExperimentalView: View {
 
     private var activeGroupName: String {
         availableGroupNames.contains(selectedGroupName) ? selectedGroupName : ServerConfig.allGroupName
+    }
+
+    private var visibleGroupNames: [String] {
+        showsExpandedGroupTags ? availableGroupNames : [ServerConfig.allGroupName]
     }
 
     private var filteredServers: [ServerConfig] {
@@ -173,16 +179,15 @@ struct DevicesExperimentalView: View {
 
     private var groupTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(availableGroupNames, id: \.self) { groupName in
-                    let isSelected = groupName == activeGroupName
+            HStack(spacing: 6) {
+                ForEach(visibleGroupNames, id: \.self) { groupName in
+                    let isSelected = isGroupTagHighlighted(groupName)
                     let groupAccentColor = ExperimentalGroupAccentPalette.color(for: groupName)
 
                     Button {
-                        guard selectedGroupName != groupName else { return }
-                        selectedGroupName = groupName
+                        handleGroupTagTap(groupName)
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             if let groupAccentColor {
                                 ExperimentalGroupIndicatorLine(
                                     color: groupAccentColor,
@@ -195,7 +200,7 @@ struct DevicesExperimentalView: View {
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
                         }
-                        .padding(.horizontal, 11)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
@@ -211,6 +216,26 @@ struct DevicesExperimentalView: View {
             }
             .padding(.vertical, 1)
         }
+    }
+
+    private func handleGroupTagTap(_ groupName: String) {
+        if groupName == ServerConfig.allGroupName {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
+                showsExpandedGroupTags.toggle()
+            }
+            return
+        }
+
+        guard selectedGroupName != groupName else { return }
+        selectedGroupName = groupName
+    }
+
+    private func isGroupTagHighlighted(_ groupName: String) -> Bool {
+        if groupName == ServerConfig.allGroupName {
+            return showsExpandedGroupTags || activeGroupName == ServerConfig.allGroupName
+        }
+
+        return groupName == activeGroupName
     }
 
     private var selectedGroupTabBackground: Color {
@@ -641,7 +666,7 @@ private struct ExperimentalServerCard: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpenDetail)
         .padding(.horizontal, 20)
-        .padding(.top, 7)
+        .padding(.top, DevicesExperimentalView.detailedCardTopPadding)
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
@@ -731,7 +756,8 @@ private struct ExperimentalServerCard: View {
     private var cpuMetricCell: some View {
         ExperimentalMetricTile(
             label: "CPU %",
-            percentage: isOnline ? percentageValue(stats?.cpuUsage) : nil,
+            percentage: displayedPercentageValue(stats?.cpuUsage),
+            isActive: isOnline && stats?.cpuUsage != nil,
             valueTint: cpuUsageTint,
             trendValues: cpuTrendSeries,
             palette: palette
@@ -741,7 +767,8 @@ private struct ExperimentalServerCard: View {
     private var memMetricCell: some View {
         ExperimentalMetricTile(
             label: "MEM %",
-            percentage: isOnline ? percentageValue(stats?.memUsage) : nil,
+            percentage: displayedPercentageValue(stats?.memUsage),
+            isActive: isOnline && stats?.memUsage != nil,
             valueTint: palette.memoryAccent,
             trendValues: memTrendSeries,
             palette: palette
@@ -888,6 +915,10 @@ private struct ExperimentalServerCard: View {
         return Int((min(max(value, 0), 1) * 100).rounded())
     }
 
+    private func displayedPercentageValue(_ value: Double?) -> Int {
+        percentageValue(value) ?? 0
+    }
+
     private func temperatureText(for value: Double) -> String {
         "\(Int(value.rounded()))°C"
     }
@@ -907,26 +938,21 @@ private struct ExperimentalServerCard: View {
 
 private struct ExperimentalMetricTile: View {
     let label: String
-    let percentage: Int?
+    let percentage: Int
+    let isActive: Bool
     let valueTint: Color
     let trendValues: [Double]
     let palette: ExperimentalHomePalette
 
     private var displayColor: Color {
-        percentage == nil ? palette.secondaryText.opacity(0.42) : valueTint
+        isActive ? valueTint : palette.secondaryText.opacity(0.42)
     }
 
     var body: some View {
         VStack(alignment: .center, spacing: 0) {
-            Group {
-                if let percentage {
-                    Text("\(percentage)")
-                        .contentTransition(.numericText(value: Double(percentage)))
-                        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
-                } else {
-                    Text("--")
-                }
-            }
+            Text("\(percentage)")
+                .contentTransition(.numericText(value: Double(percentage)))
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: percentage)
             .font(.system(size: 20, weight: .medium, design: .rounded))
             .foregroundColor(displayColor)
             .monospacedDigit()
@@ -943,7 +969,8 @@ private struct ExperimentalMetricTile: View {
 
             ExperimentalUsageTrendSparkline(
                 values: trendValues,
-                isActive: percentage != nil,
+                isActive: isActive,
+                accent: valueTint,
                 palette: palette
             )
             .frame(width: 70, height: 28, alignment: .center)
@@ -951,7 +978,7 @@ private struct ExperimentalMetricTile: View {
         }
         .frame(width: 76)
         .frame(maxHeight: .infinity, alignment: .center)
-        .opacity(percentage == nil ? 0.82 : 1)
+        .opacity(isActive ? 1 : 0.82)
     }
 }
 
@@ -1027,6 +1054,7 @@ private struct ExperimentalCompactRateCapsule: View {
 private struct ExperimentalUsageTrendSparkline: View {
     let values: [Double]
     let isActive: Bool
+    let accent: Color
     let palette: ExperimentalHomePalette
 
     private let minimumVisibleRange: Double = 0.12
@@ -1054,7 +1082,7 @@ private struct ExperimentalUsageTrendSparkline: View {
 
     private var lineColor: Color {
         isActive
-            ? palette.secondaryText.opacity(0.88)
+            ? accent
             : palette.secondaryText.opacity(0.24)
     }
 
@@ -1062,7 +1090,18 @@ private struct ExperimentalUsageTrendSparkline: View {
         GeometryReader { geometry in
             let size = geometry.size
 
-            if normalizedValues.count >= 2 {
+            if !isActive {
+                placeholderSparklinePath(in: size)
+                    .stroke(
+                        lineColor,
+                        style: StrokeStyle(
+                            lineWidth: 1.2,
+                            lineCap: .round,
+                            lineJoin: .round,
+                            dash: [3.5, 3]
+                        )
+                    )
+            } else if normalizedValues.count >= 2 {
                 sparklinePath(in: size)
                     .stroke(
                         lineColor,
@@ -1089,6 +1128,35 @@ private struct ExperimentalUsageTrendSparkline: View {
                     .position(x: size.width / 2, y: size.height * 0.62)
             }
         }
+    }
+
+    private func placeholderSparklinePath(in size: CGSize) -> Path {
+        let topInset: CGFloat = 2
+        let bottomInset: CGFloat = 3
+        let horizontalInset: CGFloat = 1
+        let usableHeight = max(size.height - topInset - bottomInset, 1)
+        let usableWidth = max(size.width - (horizontalInset * 2), 1)
+        let placeholderLevels: [CGFloat] = [0.64, 0.46, 0.58, 0.34, 0.49, 0.29]
+        let stepX = placeholderLevels.count > 1
+            ? usableWidth / CGFloat(placeholderLevels.count - 1)
+            : 0
+
+        var path = Path()
+
+        for (index, level) in placeholderLevels.enumerated() {
+            let point = CGPoint(
+                x: horizontalInset + (CGFloat(index) * stepX),
+                y: topInset + (level * usableHeight)
+            )
+
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+
+        return path
     }
 
     private func sparklinePath(in size: CGSize) -> Path {
