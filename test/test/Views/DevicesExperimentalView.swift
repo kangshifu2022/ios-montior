@@ -627,7 +627,6 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
                 dragOffset = value.translation.width
             }
             .onEnded { value in
-                defer { dragOffset = 0 }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
 
                 let projectedOffset = baseOffset + value.predictedEndTranslation.width
@@ -647,14 +646,17 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
     }
 
     private func openActions() {
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-            openCardID = id
-        }
+        setSwipeActionsOpen(true)
     }
 
     private func closeActions(animated: Bool = true) {
+        setSwipeActionsOpen(false, animated: animated)
+    }
+
+    private func setSwipeActionsOpen(_ isOpen: Bool, animated: Bool = true) {
         let updates = {
-            openCardID = nil
+            dragOffset = 0
+            openCardID = isOpen ? id : nil
         }
 
         if animated {
