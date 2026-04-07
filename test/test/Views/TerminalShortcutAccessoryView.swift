@@ -1,15 +1,30 @@
 import UIKit
 
 final class TerminalShortcutAccessoryView: UIInputView {
+    enum ShortcutStyle {
+        case normal
+        case accent
+    }
+
     private final class ShortcutButton: UIButton {
-        private static let defaultBackgroundColor = UIColor.tertiarySystemFill
-        private static let selectedBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.18)
-        private static let pressedBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.28)
-        private static let selectedPressedBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.38)
-        private static let activatedBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.20)
-        private static let defaultBorderColor = UIColor.separator.withAlphaComponent(0.18)
-        private static let selectedBorderColor = UIColor.systemBlue.withAlphaComponent(0.45)
-        private static let activatedBorderColor = UIColor.systemBlue.withAlphaComponent(0.45)
+        private static let defaultBackgroundColor = UIColor(red: 0.43, green: 0.43, blue: 0.45, alpha: 1.0)
+        private static let accentBackgroundColor = UIColor(red: 0.03, green: 0.50, blue: 0.20, alpha: 1.0)
+        private static let selectedBackgroundColor = UIColor(red: 0.03, green: 0.50, blue: 0.20, alpha: 1.0)
+        private static let pressedBackgroundColor = UIColor(red: 0.35, green: 0.35, blue: 0.37, alpha: 1.0)
+        private static let accentPressedBackgroundColor = UIColor(red: 0.02, green: 0.42, blue: 0.17, alpha: 1.0)
+        private static let selectedPressedBackgroundColor = UIColor(red: 0.02, green: 0.42, blue: 0.17, alpha: 1.0)
+        private static let activatedBackgroundColor = UIColor(red: 0.08, green: 0.58, blue: 0.25, alpha: 1.0)
+        private static let defaultBorderColor = UIColor.white.withAlphaComponent(0.08)
+        private static let selectedBorderColor = UIColor.white.withAlphaComponent(0.18)
+        private static let activatedBorderColor = UIColor.white.withAlphaComponent(0.22)
+        private static let defaultForegroundColor = UIColor.white.withAlphaComponent(0.92)
+        private static let selectedForegroundColor = UIColor.white
+
+        var shortcutStyle: ShortcutStyle = .normal {
+            didSet {
+                updateAppearance(animated: false)
+            }
+        }
 
         override var isHighlighted: Bool {
             didSet {
@@ -60,14 +75,38 @@ final class TerminalShortcutAccessoryView: UIInputView {
             let updates = {
                 let backgroundColor: UIColor
                 if self.isHighlighted {
-                    backgroundColor = self.isSelected ? Self.selectedPressedBackgroundColor : Self.pressedBackgroundColor
+                    if self.isSelected {
+                        backgroundColor = Self.selectedPressedBackgroundColor
+                    } else {
+                        backgroundColor = self.shortcutStyle == .accent ? Self.accentPressedBackgroundColor : Self.pressedBackgroundColor
+                    }
                 } else {
-                    backgroundColor = self.isSelected ? Self.selectedBackgroundColor : Self.defaultBackgroundColor
+                    if self.isSelected {
+                        backgroundColor = Self.selectedBackgroundColor
+                    } else {
+                        backgroundColor = self.shortcutStyle == .accent ? Self.accentBackgroundColor : Self.defaultBackgroundColor
+                    }
                 }
 
-                let borderColor = (self.isHighlighted || self.isSelected) ? Self.selectedBorderColor : Self.defaultBorderColor
+                let borderColor = (self.isHighlighted || self.isSelected || self.shortcutStyle == .accent)
+                    ? Self.selectedBorderColor
+                    : Self.defaultBorderColor
                 self.backgroundColor = backgroundColor
                 self.layer.borderColor = borderColor.resolvedColor(with: self.traitCollection).cgColor
+                var configuration = self.configuration
+                configuration?.baseForegroundColor = (self.isSelected || self.shortcutStyle == .accent)
+                    ? Self.selectedForegroundColor
+                    : Self.defaultForegroundColor
+                self.configuration = configuration
+                self.setTitleColor(
+                    (self.isSelected || self.shortcutStyle == .accent)
+                        ? Self.selectedForegroundColor
+                        : Self.defaultForegroundColor,
+                    for: .normal
+                )
+                self.tintColor = (self.isSelected || self.shortcutStyle == .accent)
+                    ? Self.selectedForegroundColor
+                    : Self.defaultForegroundColor
                 self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
             }
 
@@ -85,12 +124,12 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
     }
 
-    private static let rowHeight: CGFloat = 32
-    private static let verticalSpacing: CGFloat = 4
-    private static let horizontalSpacing: CGFloat = 3
-    private static let contentInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
-    private static let buttonFont = UIFont.systemFont(ofSize: 10, weight: .semibold)
-    private static let buttonSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+    private static let rowHeight: CGFloat = 38
+    private static let verticalSpacing: CGFloat = 6
+    private static let horizontalSpacing: CGFloat = 4
+    private static let contentInsets = UIEdgeInsets(top: 6, left: 4, bottom: 6, right: 4)
+    private static let buttonFont = UIFont.systemFont(ofSize: 11, weight: .semibold)
+    private static let buttonSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
 
     struct ObservedNotification {
         let name: Notification.Name
@@ -103,6 +142,8 @@ final class TerminalShortcutAccessoryView: UIInputView {
     }
 
     struct ShortcutItem {
+        let style: ShortcutStyle
+        let preferredWidth: CGFloat?
         let title: String?
         let systemImageName: String?
         let accessibilityLabel: String
@@ -113,10 +154,14 @@ final class TerminalShortcutAccessoryView: UIInputView {
         init(
             title: String,
             accessibilityLabel: String? = nil,
+            style: ShortcutStyle = .normal,
+            preferredWidth: CGFloat? = nil,
             isSelected: (() -> Bool)? = nil,
             observedNotifications: [ObservedNotification] = [],
             action: @escaping () -> Void
         ) {
+            self.style = style
+            self.preferredWidth = preferredWidth
             self.title = title
             self.systemImageName = nil
             self.accessibilityLabel = accessibilityLabel ?? title
@@ -128,10 +173,14 @@ final class TerminalShortcutAccessoryView: UIInputView {
         init(
             systemImageName: String,
             accessibilityLabel: String,
+            style: ShortcutStyle = .normal,
+            preferredWidth: CGFloat? = nil,
             isSelected: (() -> Bool)? = nil,
             observedNotifications: [ObservedNotification] = [],
             action: @escaping () -> Void
         ) {
+            self.style = style
+            self.preferredWidth = preferredWidth
             self.title = nil
             self.systemImageName = systemImageName
             self.accessibilityLabel = accessibilityLabel
@@ -221,13 +270,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
                     configuration.preferredSymbolConfigurationForImage = Self.buttonSymbolConfiguration
                 }
                 button.configuration = configuration
+                button.shortcutStyle = item.style
                 button.accessibilityLabel = item.accessibilityLabel
                 button.titleLabel?.font = Self.buttonFont
                 button.titleLabel?.adjustsFontForContentSizeCategory = false
                 button.titleLabel?.adjustsFontSizeToFitWidth = true
                 button.titleLabel?.minimumScaleFactor = 0.6
                 button.titleLabel?.lineBreakMode = .byClipping
-                button.setTitleColor(.label, for: .normal)
                 button.isSelected = item.isSelected?() ?? false
                 button.setContentCompressionResistancePriority(.required, for: .horizontal)
                 button.setContentHuggingPriority(.required, for: .horizontal)
@@ -272,6 +321,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
     }
 
     private static func preferredButtonWidth(for item: ShortcutItem) -> CGFloat {
+        if let preferredWidth = item.preferredWidth {
+            return preferredWidth
+        }
+
         if item.systemImageName != nil {
             return 34
         }

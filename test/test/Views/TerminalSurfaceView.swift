@@ -84,6 +84,15 @@ struct TerminalSurfaceView: UIViewRepresentable {
             viewModel.send(bytes: bytes)
         }
 
+        func sendControlShortcut(_ byte: UInt8) {
+            let modifiers = consumeAccessoryModifiers()
+            var payload = [byte]
+            if modifiers.alt {
+                payload.insert(27, at: 0)
+            }
+            sendShortcutBytes(payload)
+        }
+
         func sendShortcutText(_ text: String, shiftedText: String? = nil, supportsShift: Bool = true) {
             let modifiers = consumeAccessoryModifiers()
             let resolvedText: String
@@ -130,18 +139,95 @@ struct TerminalSurfaceView: UIViewRepresentable {
             }
         }
 
+        func pasteClipboardText() {
+            _ = consumeAccessoryModifiers()
+            guard let content = UIPasteboard.general.string, !content.isEmpty else { return }
+            viewModel.send(text: content)
+        }
+
         return TerminalShortcutAccessoryView(rows: [
             [
-                .init(systemImageName: "keyboard", accessibilityLabel: "显示或隐藏系统键盘", action: { [weak terminalView] in
-                    guard let terminalView else { return }
-                    if let scrollbackView = terminalView as? ScrollbackTerminalView {
-                        scrollbackView.toggleSoftwareKeyboard()
-                    } else {
-                        _ = terminalView.resignFirstResponder()
+                .init(title: "ESC", preferredWidth: 38, action: {
+                    let modifiers = consumeAccessoryModifiers()
+                    let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
+                    sendShortcutBytes(payload)
+                }),
+                .init(title: "Exit", style: .accent, preferredWidth: 48, action: {
+                    let modifiers = consumeAccessoryModifiers()
+                    viewModel.sendExit()
+                    if modifiers.alt || modifiers.shift {
+                        scrollbackView?.accessoryAltModifier = false
+                        scrollbackView?.accessoryShiftModifier = false
                     }
                 }),
+                .init(title: "-", preferredWidth: 30, action: {
+                    sendShortcutText("-", shiftedText: "_")
+                }),
+                .init(title: "|", preferredWidth: 30, action: {
+                    sendShortcutText("|")
+                }),
+                .init(title: "↑", preferredWidth: 30, action: {
+                    sendModifiedCSI(finalByte: 65, baseBytes: [27, 91, 65])
+                }),
+                .init(title: "/", preferredWidth: 30, action: {
+                    sendShortcutText("/", shiftedText: "?")
+                }),
+                .init(title: "PgUp", preferredWidth: 42, action: { [weak terminalView] in
+                    terminalView?.pageUp()
+                }),
+                .init(
+                    systemImageName: "doc.on.doc",
+                    accessibilityLabel: "粘贴剪贴板内容",
+                    preferredWidth: 34,
+                    action: {
+                        pasteClipboardText()
+                    }
+                ),
+                .init(
+                    systemImageName: "keyboard",
+                    accessibilityLabel: "显示或隐藏系统键盘",
+                    style: .accent,
+                    preferredWidth: 34,
+                    action: { [weak terminalView] in
+                        guard let terminalView else { return }
+                        if let scrollbackView = terminalView as? ScrollbackTerminalView {
+                            scrollbackView.toggleSoftwareKeyboard()
+                        } else {
+                            _ = terminalView.resignFirstResponder()
+                        }
+                    }
+                )
+            ],
+            [
+                .init(title: "Tab", preferredWidth: 64, action: {
+                    sendTabShortcut()
+                }),
+                .init(title: "\\", preferredWidth: 30, action: {
+                    sendShortcutText("\\", shiftedText: "|")
+                }),
+                .init(title: "←", preferredWidth: 30, action: {
+                    sendModifiedCSI(finalByte: 68, baseBytes: [27, 91, 68])
+                }),
+                .init(title: "↓", preferredWidth: 30, action: {
+                    sendModifiedCSI(finalByte: 66, baseBytes: [27, 91, 66])
+                }),
+                .init(title: "→", preferredWidth: 30, action: {
+                    sendModifiedCSI(finalByte: 67, baseBytes: [27, 91, 67])
+                }),
+                .init(title: "PgDn", preferredWidth: 42, action: { [weak terminalView] in
+                    terminalView?.pageDown()
+                }),
+                .init(
+                    title: "< >",
+                    accessibilityLabel: "脚本快捷键，暂未启用",
+                    preferredWidth: 72,
+                    action: {}
+                )
+            ],
+            [
                 .init(
                     title: "Ctrl",
+                    preferredWidth: 40,
                     accessibilityLabel: "切换 Ctrl 修饰键",
                     isSelected: { [weak terminalView] in
                         terminalView?.controlModifier ?? false
@@ -158,6 +244,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 ),
                 .init(
                     title: "Alt",
+                    preferredWidth: 40,
                     accessibilityLabel: "切换 Alt 修饰键",
                     isSelected: { [weak scrollbackView] in
                         scrollbackView?.accessoryAltModifier ?? false
@@ -173,6 +260,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 ),
                 .init(
                     title: "Shift",
+                    preferredWidth: 44,
                     accessibilityLabel: "切换 Shift 修饰键",
                     isSelected: { [weak scrollbackView] in
                         scrollbackView?.accessoryShiftModifier ?? false
@@ -186,70 +274,17 @@ struct TerminalSurfaceView: UIViewRepresentable {
                         scrollbackView?.accessoryShiftModifier.toggle()
                     }
                 ),
-                .init(title: "Ctrl+C", action: {
-                    let modifiers = consumeAccessoryModifiers()
-                    var payload = [UInt8(3)]
-                    if modifiers.alt {
-                        payload.insert(27, at: 0)
-                    }
-                    sendShortcutBytes(payload)
+                .init(title: "Ctrl+C", preferredWidth: 64, action: {
+                    sendControlShortcut(3)
                 }),
-                .init(title: "Esc", action: {
-                    let modifiers = consumeAccessoryModifiers()
-                    let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
-                    sendShortcutBytes(payload)
+                .init(title: "Ctrl+B", preferredWidth: 64, action: {
+                    sendControlShortcut(2)
                 }),
-                .init(title: "Tab", action: {
-                    sendTabShortcut()
-                }),
-                .init(title: "Home", action: {
+                .init(title: "Home", preferredWidth: 42, action: {
                     sendModifiedCSI(finalByte: 72, baseBytes: [27, 91, 72])
                 }),
-                .init(title: "End", action: {
+                .init(title: "End", preferredWidth: 38, action: {
                     sendModifiedCSI(finalByte: 70, baseBytes: [27, 91, 70])
-                })
-            ],
-            [
-                .init(title: "PgUp", action: { [weak terminalView] in terminalView?.pageUp() }),
-                .init(title: "PgDn", action: { [weak terminalView] in terminalView?.pageDown() }),
-                .init(title: "↑", action: {
-                    sendModifiedCSI(finalByte: 65, baseBytes: [27, 91, 65])
-                }),
-                .init(title: "↓", action: {
-                    sendModifiedCSI(finalByte: 66, baseBytes: [27, 91, 66])
-                }),
-                .init(title: "←", action: {
-                    sendModifiedCSI(finalByte: 68, baseBytes: [27, 91, 68])
-                }),
-                .init(title: "→", action: {
-                    sendModifiedCSI(finalByte: 67, baseBytes: [27, 91, 67])
-                })
-            ],
-            [
-                .init(title: "^L", action: {
-                    let modifiers = consumeAccessoryModifiers()
-                    var payload = [UInt8(12)]
-                    if modifiers.alt {
-                        payload.insert(27, at: 0)
-                    }
-                    sendShortcutBytes(payload)
-                }),
-                .init(title: "/", action: {
-                    sendShortcutText("/", shiftedText: "?")
-                }),
-                .init(title: "-", action: {
-                    sendShortcutText("-", shiftedText: "_")
-                }),
-                .init(title: "|", action: {
-                    sendShortcutText("|")
-                }),
-                .init(title: "exit", action: {
-                    let modifiers = consumeAccessoryModifiers()
-                    viewModel.sendExit()
-                    if modifiers.alt || modifiers.shift {
-                        scrollbackView?.accessoryAltModifier = false
-                        scrollbackView?.accessoryShiftModifier = false
-                    }
                 })
             ]
         ])
