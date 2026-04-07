@@ -2,8 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DevicesExperimentalView: View {
-    private static let cardGroupIndicatorWidth: CGFloat = 2.5
-    private static let cardGroupIndicatorHeight: CGFloat = 11
+    fileprivate static let cardGroupIndicatorWidth: CGFloat = 2.5
+    fileprivate static let cardGroupIndicatorHeight: CGFloat = 11
 
     @ObservedObject var store: ServerStore
     @Environment(\.colorScheme) private var colorScheme
