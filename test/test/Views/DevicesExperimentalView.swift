@@ -155,7 +155,7 @@ struct DevicesExperimentalView: View {
     }
 
     private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
 
@@ -215,7 +215,7 @@ struct DevicesExperimentalView: View {
                     )
                 }
             }
-            .padding(.vertical, 1)
+            .padding(.vertical, 0)
         }
     }
 
@@ -280,20 +280,20 @@ struct DevicesExperimentalView: View {
                 ExperimentalGroupIndicatorLine(
                     color: groupAccentColor,
                     width: 2.5,
-                    height: 11
+                    height: 9
                 )
             }
 
             Text(groupName)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundColor(
                     usesLiquidGlass
                         ? (isSelected ? palette.primaryText : palette.secondaryText)
                         : (isSelected ? selectedGroupTabTextColor : palette.secondaryText)
                 )
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
 
         if usesLiquidGlass {
             label
@@ -542,20 +542,28 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
 
             content()
                 .offset(x: contentOffset)
-                .overlay {
+                .allowsHitTesting(openCardID != id)
+                .overlay(alignment: .leading) {
                     if openCardID == id {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                closeActions()
+                        GeometryReader { geometry in
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .frame(
+                                    width: max(geometry.size.width - Layout.totalActionWidth, 0),
+                                    height: geometry.size.height,
+                                    alignment: .leading
+                                )
+                                .onTapGesture {
+                                    closeActions()
+                                }
                             }
+                        }
                     }
                 }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .highPriorityGesture(swipeGesture)
-        .animation(.spring(response: 0.24, dampingFraction: 0.86), value: openCardID)
         .onChange(of: openCardID) { _, newValue in
             if newValue != id {
                 dragOffset = 0
@@ -570,7 +578,7 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
                 systemImage: "square.and.pencil",
                 background: Color(red: 0.23, green: 0.49, blue: 0.94),
                 action: {
-                    closeActions()
+                    closeActions(animated: false)
                     onEdit()
                 }
             )
