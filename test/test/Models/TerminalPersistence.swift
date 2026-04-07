@@ -50,7 +50,7 @@ enum TerminalRestorePolicy: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .askEveryTime:
-            return "进入终端后先探测远端 tmux；检测到会话时再给出恢复选择。"
+            return "每次进入都先显示启动选项，由你决定用 tmux 还是直接 SSH。"
         case .resumeMostRecent:
             return "检测到可恢复会话时直接接回最近一次。"
         case .alwaysStartNew:

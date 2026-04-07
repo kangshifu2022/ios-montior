@@ -10,12 +10,12 @@ final class TerminalViewModel: ObservableObject {
     @Published var lastError: String?
     @Published var shouldDismissTerminal = false
     @Published var isShowingLaunchSheet = false
+    @Published private(set) var keyboardFocusRequestID = 0
     @Published private(set) var recoverableSessions: [TerminalSavedSession] = []
     @Published private(set) var latestSnapshot: TerminalSavedSession?
     @Published private(set) var remoteTmuxSessions: [TerminalRemoteTmuxSession] = []
     @Published private(set) var isRefreshingRemoteTmuxSessions = false
     @Published private(set) var remoteTmuxStatusText: String?
-    @Published private(set) var isResolvingLaunchChoice = false
 
     let server: ServerConfig
 
@@ -45,9 +45,6 @@ final class TerminalViewModel: ObservableObject {
     }
 
     var statusText: String {
-        if isResolvingLaunchChoice {
-            return "检查中"
-        }
         if isConnecting {
             return "连接中"
         }
@@ -99,7 +96,7 @@ final class TerminalViewModel: ObservableObject {
         )
 
         if shouldAsk {
-            resolveLaunchChoiceAfterRemoteTmuxCheck(defaultMode: defaultMode)
+            isShowingLaunchSheet = true
             return
         }
 
@@ -241,7 +238,6 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask?.cancel()
         remoteTmuxFetchTask = nil
         isRefreshingRemoteTmuxSessions = false
-        isResolvingLaunchChoice = false
         flushScrollbackNowIfNeeded()
         scrollbackFlushTask?.cancel()
         scrollbackFlushTask = nil
@@ -413,7 +409,6 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask?.cancel()
         remoteTmuxFetchTask = nil
         isRefreshingRemoteTmuxSessions = false
-        isResolvingLaunchChoice = false
         lastError = nil
         terminalTitle = nil
         shouldDismissTerminal = false
@@ -430,6 +425,7 @@ final class TerminalViewModel: ObservableObject {
             server: server,
             session: record
         )
+        requestKeyboardFocus()
         connectIfNeeded()
     }
 
@@ -548,59 +544,6 @@ final class TerminalViewModel: ObservableObject {
         latestSnapshot = TerminalPersistenceStore.latestSnapshot(for: server)
     }
 
-    private func resolveLaunchChoiceAfterRemoteTmuxCheck(defaultMode: TerminalDefaultConnectionMode) {
-        remoteTmuxFetchTask?.cancel()
-        isResolvingLaunchChoice = true
-        remoteTmuxStatusText = nil
-        TerminalDiagnosticsStore.record(
-            "ask-every-time: probing remote tmux before showing launch sheet",
-            category: "launch",
-            server: server
-        )
-
-        let server = self.server
-        remoteTmuxFetchTask = Task {
-            let result = await TerminalTmuxService.fetchSessions(config: server)
-            guard !Task.isCancelled else { return }
-
-            await MainActor.run {
-                self.isResolvingLaunchChoice = false
-                self.remoteTmuxFetchTask = nil
-
-                switch result {
-                case .success(let snapshot):
-                    self.remoteTmuxSessions = snapshot.sessions
-                    self.remoteTmuxStatusText = snapshot.notice
-
-                    if snapshot.sessions.isEmpty {
-                        TerminalDiagnosticsStore.record(
-                            "tmux probe found no sessions, starting default connection",
-                            category: "launch",
-                            server: self.server
-                        )
-                        self.startDefaultConnection(using: defaultMode)
-                    } else {
-                        TerminalDiagnosticsStore.record(
-                            "tmux probe found \(snapshot.sessions.count) sessions, showing launch sheet",
-                            category: "launch",
-                            server: self.server
-                        )
-                        self.isShowingLaunchSheet = true
-                    }
-                case .failure(let error):
-                    TerminalDiagnosticsStore.record(
-                        "tmux probe failed, starting default connection: \(error.message)",
-                        level: .warning,
-                        category: "launch",
-                        server: self.server
-                    )
-                    self.remoteTmuxStatusText = error.message
-                    self.startDefaultConnection(using: defaultMode)
-                }
-            }
-        }
-    }
-
     private func startDefaultConnection(using mode: TerminalDefaultConnectionMode) {
         TerminalDiagnosticsStore.record(
             "start default connection using \(mode.rawValue)",
@@ -613,6 +556,10 @@ final class TerminalViewModel: ObservableObject {
         case .directSSH:
             startDirectSession()
         }
+    }
+
+    private func requestKeyboardFocus() {
+        keyboardFocusRequestID &+= 1
     }
 
     private func flushPendingOutput() {

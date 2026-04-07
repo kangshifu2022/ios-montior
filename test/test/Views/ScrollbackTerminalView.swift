@@ -37,6 +37,7 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     private var isReviewingScrollback = false
     private var lastKnownBoundsHeight: CGFloat?
     private var lastKnownAdjustedInsets: UIEdgeInsets?
+    private var isAwaitingKeyboardFocus = false
     private lazy var hiddenKeyboardInputView = HiddenKeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
 
     var accessoryAltModifier = false {
@@ -116,6 +117,12 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
 
         lastKnownBoundsHeight = bounds.height
         lastKnownAdjustedInsets = adjustedContentInset
+        fulfillPendingKeyboardFocusIfNeeded()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        fulfillPendingKeyboardFocusIfNeeded()
     }
 
     private func configureScrollbackBehavior() {
@@ -136,6 +143,11 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
         reloadInputViews()
         setNeedsLayout()
         layoutIfNeeded()
+    }
+
+    func requestKeyboardFocus() {
+        isAwaitingKeyboardFocus = true
+        fulfillPendingKeyboardFocusIfNeeded()
     }
 
     @objc
@@ -220,5 +232,14 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
 
     private var bottomFollowThreshold: CGFloat {
         max(28, bounds.height * 0.04)
+    }
+
+    private func fulfillPendingKeyboardFocusIfNeeded() {
+        guard isAwaitingKeyboardFocus, window != nil else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isAwaitingKeyboardFocus, self.window != nil else { return }
+            self.isAwaitingKeyboardFocus = !self.becomeFirstResponder()
+        }
     }
 }

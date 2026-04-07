@@ -225,6 +225,7 @@ struct DevicesExperimentalView: View {
     private func handleGroupTagTap(_ groupName: String) {
         if groupName == ServerConfig.allGroupName {
             withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
+                selectedGroupName = ServerConfig.allGroupName
                 showsExpandedGroupTags.toggle()
             }
             return
@@ -236,7 +237,7 @@ struct DevicesExperimentalView: View {
 
     private func isGroupTagHighlighted(_ groupName: String) -> Bool {
         if groupName == ServerConfig.allGroupName {
-            return showsExpandedGroupTags || activeGroupName == ServerConfig.allGroupName
+            return activeGroupName == ServerConfig.allGroupName
         }
 
         return groupName == activeGroupName

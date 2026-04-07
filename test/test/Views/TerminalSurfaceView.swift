@@ -41,6 +41,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
         uiView.inputAccessoryView = makeShortcutAccessory(for: uiView)
         applyAppearance(to: uiView)
         uiView.reloadInputViews()
+
+        if context.coordinator.lastKeyboardFocusRequestID != viewModel.keyboardFocusRequestID {
+            context.coordinator.lastKeyboardFocusRequestID = viewModel.keyboardFocusRequestID
+            (uiView as? ScrollbackTerminalView)?.requestKeyboardFocus()
+        }
     }
 
     static func dismantleUIView(_ uiView: SwiftTerm.TerminalView, coordinator: Coordinator) {
@@ -281,6 +286,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     final class Coordinator: NSObject, TerminalViewDelegate {
         let viewModel: TerminalViewModel
         weak var terminalView: SwiftTerm.TerminalView?
+        var lastKeyboardFocusRequestID = 0
 
         init(viewModel: TerminalViewModel) {
             self.viewModel = viewModel
