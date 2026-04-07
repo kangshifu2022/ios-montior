@@ -5,7 +5,7 @@ enum TerminalDiagnosticLevel: String, Codable, CaseIterable, Hashable, Sendable 
     case warning
     case error
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .info:
             return "INFO"
@@ -27,7 +27,7 @@ struct TerminalDiagnosticEntry: Identifiable, Codable, Hashable, Sendable {
     var sessionName: String?
     var message: String
 
-    init(
+    nonisolated init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
         level: TerminalDiagnosticLevel,
@@ -47,7 +47,7 @@ struct TerminalDiagnosticEntry: Identifiable, Codable, Hashable, Sendable {
         self.message = message
     }
 
-    var serverSummary: String? {
+    nonisolated var serverSummary: String? {
         switch (serverName, serverHost) {
         case let (name?, host?) where !name.isEmpty && !host.isEmpty:
             return "\(name) · \(host)"

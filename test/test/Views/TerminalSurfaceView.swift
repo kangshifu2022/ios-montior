@@ -228,8 +228,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
         let bottomRow: [TerminalShortcutAccessoryView.ShortcutItem] = [
             .init(
                 title: "Ctrl",
-                preferredWidth: 40,
                 accessibilityLabel: "切换 Ctrl 修饰键",
+                preferredWidth: 40,
                 isSelected: { [weak terminalView] in
                     terminalView?.controlModifier ?? false
                 },
@@ -245,8 +245,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
             ),
             .init(
                 title: "Alt",
-                preferredWidth: 40,
                 accessibilityLabel: "切换 Alt 修饰键",
+                preferredWidth: 40,
                 isSelected: { [weak scrollbackView] in
                     scrollbackView?.accessoryAltModifier ?? false
                 },
@@ -261,8 +261,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
             ),
             .init(
                 title: "Shift",
-                preferredWidth: 44,
                 accessibilityLabel: "切换 Shift 修饰键",
+                preferredWidth: 44,
                 isSelected: { [weak scrollbackView] in
                     scrollbackView?.accessoryShiftModifier ?? false
                 },
