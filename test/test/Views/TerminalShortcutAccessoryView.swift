@@ -1,7 +1,7 @@
 import UIKit
 
 final class TerminalShortcutAccessoryView: UIInputView {
-    enum ShortcutStyle {
+    enum ShortcutStyle: Equatable {
         case normal
         case accent
     }

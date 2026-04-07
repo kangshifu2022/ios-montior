@@ -5,7 +5,6 @@ enum TerminalDiagnosticsStore {
         Notification.Name("terminalDiagnosticsDidChange")
     }
 
-    private static let storageKey = "terminal.diagnostics.entries.v1"
     private static let maxEntries = 300
     private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
 
@@ -44,6 +43,7 @@ enum TerminalDiagnosticsStore {
     }
 
     nonisolated static func clear() {
+        let storageKey = "terminal.diagnostics.entries.v1"
         queue.sync {
             UserDefaults.standard.removeObject(forKey: storageKey)
         }
@@ -62,10 +62,10 @@ enum TerminalDiagnosticsStore {
         return entries.map { entry in
             var fragments: [String] = []
             fragments.append(formatter.string(from: entry.timestamp))
-            fragments.append("[\(entry.level.title)]")
+            fragments.append("[\(levelTitle(for: entry.level))]")
             fragments.append("[\(entry.category)]")
 
-            if let serverSummary = entry.serverSummary, !serverSummary.isEmpty {
+            if let serverSummary = formattedServerSummary(for: entry), !serverSummary.isEmpty {
                 fragments.append("[\(serverSummary)]")
             }
 
@@ -80,6 +80,7 @@ enum TerminalDiagnosticsStore {
     }
 
     nonisolated private static func loadEntriesUnlocked() -> [TerminalDiagnosticEntry] {
+        let storageKey = "terminal.diagnostics.entries.v1"
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([TerminalDiagnosticEntry].self, from: data) else {
             return []
@@ -89,8 +90,33 @@ enum TerminalDiagnosticsStore {
     }
 
     nonisolated private static func saveEntriesUnlocked(_ entries: [TerminalDiagnosticEntry]) {
+        let storageKey = "terminal.diagnostics.entries.v1"
         guard let data = try? JSONEncoder().encode(entries) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    nonisolated private static func levelTitle(for level: TerminalDiagnosticLevel) -> String {
+        switch level {
+        case .info:
+            return "INFO"
+        case .warning:
+            return "WARN"
+        case .error:
+            return "ERROR"
+        }
+    }
+
+    nonisolated private static func formattedServerSummary(for entry: TerminalDiagnosticEntry) -> String? {
+        switch (entry.serverName, entry.serverHost) {
+        case let (name?, host?) where !name.isEmpty && !host.isEmpty:
+            return "\(name) · \(host)"
+        case let (name?, _) where !name.isEmpty:
+            return name
+        case let (_, host?) where !host.isEmpty:
+            return host
+        default:
+            return nil
+        }
     }
 
     nonisolated private static func notifyDidChange() {
