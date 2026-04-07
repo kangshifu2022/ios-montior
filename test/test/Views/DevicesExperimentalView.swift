@@ -1250,16 +1250,10 @@ private struct ExperimentalRateMetric: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(item.label)
-                .font(.system(size: 16, weight: .regular, design: .rounded))
-                .foregroundColor(metaColor)
-                .monospacedDigit()
-                .frame(width: 14, alignment: .leading)
-
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
+        VStack(alignment: .center, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(display.numberText)
-                    .font(.system(size: 28, weight: .medium, design: .rounded))
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
                     .foregroundColor(valueColor)
                     .monospacedDigit()
                     .contentTransition(.numericText(value: display.animationValue))
@@ -1267,22 +1261,31 @@ private struct ExperimentalRateMetric: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
 
-                Text(display.unitText)
-                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                Text(display.compactUnitText)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundColor(metaColor)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
-                    .padding(.leading, 1)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(item.label)
+                Text("/s")
+            }
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundColor(metaColor)
+            .monospacedDigit()
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
 private struct ExperimentalNormalizedRateDisplay {
     let numberText: String
-    let unitText: String
+    let compactUnitText: String
     let animationValue: Double
 
     init(parts: ExperimentalRateParts) {
@@ -1291,7 +1294,7 @@ private struct ExperimentalNormalizedRateDisplay {
             unit: parts.unit
         )
         numberText = parts.hasRenderableValue ? Self.displayText(from: normalized.amount) : "0"
-        unitText = Self.displayUnit(from: normalized.unit)
+        compactUnitText = Self.compactUnit(from: normalized.unit)
         animationValue = normalized.amount
     }
 
@@ -1315,18 +1318,20 @@ private struct ExperimentalNormalizedRateDisplay {
         }
     }
 
-    private static func displayUnit(from rawUnit: String) -> String {
+    private static func compactUnit(from rawUnit: String) -> String {
         switch rawUnit.lowercased() {
         case "k/s":
-            return "K/s"
+            return "K"
         case "m/s", "mb/s":
-            return "M/s"
+            return "M"
         case "g/s", "gb/s":
-            return "G/s"
+            return "G"
         case "b/s":
-            return "B/s"
+            return "B"
         default:
             return rawUnit
+                .replacingOccurrences(of: "/s", with: "")
+                .uppercased()
         }
     }
 
@@ -1335,15 +1340,12 @@ private struct ExperimentalNormalizedRateDisplay {
             return "0"
         }
 
-        if amount >= 10 {
-            return String(Int(amount.rounded(.towardZero)))
+        let roundedAmount = Int(amount.rounded())
+        if roundedAmount == 0, amount > 0 {
+            return "1"
         }
 
-        if amount >= 1 {
-            return amount == floor(amount) ? String(Int(amount)) : String(format: "%.1f", amount)
-        }
-
-        return String(format: "%.1f", amount)
+        return String(roundedAmount)
     }
 }
 
