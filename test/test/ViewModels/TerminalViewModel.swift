@@ -32,6 +32,7 @@ final class TerminalViewModel: ObservableObject {
     private var scrollbackFlushTask: Task<Void, Never>?
 
     private static let maxScrollbackBytes = 96 * 1024
+    private static let replayInspectionWindowBytes = 2048
 
     init(server: ServerConfig) {
         self.server = server
@@ -260,8 +261,9 @@ final class TerminalViewModel: ObservableObject {
 
     func attachOutputSink(_ sink: @escaping ([UInt8]) -> Void) {
         outputSink = sink
-        if !scrollbackBuffer.isEmpty {
-            sink(Array(scrollbackBuffer))
+        let replayBuffer = replayableScrollbackBuffer()
+        if !replayBuffer.isEmpty {
+            sink(replayBuffer)
         }
     }
 
@@ -564,6 +566,39 @@ final class TerminalViewModel: ObservableObject {
 
     private func requestKeyboardFocus() {
         keyboardFocusRequestID &+= 1
+    }
+
+    private func replayableScrollbackBuffer() -> [UInt8] {
+        guard !scrollbackBuffer.isEmpty else { return [] }
+
+        var replayData = scrollbackBuffer
+        let wasTrimmedToLimit = replayData.count >= Self.maxScrollbackBytes
+
+        if wasTrimmedToLimit {
+            replayData = Self.dropPotentiallyCorruptedReplayPrefix(in: replayData)
+        }
+
+        // Normalize invalid UTF-8 boundaries introduced by byte trimming while preserving ANSI escapes.
+        replayData = Data(String(decoding: replayData, as: UTF8.self).utf8)
+        return Array(replayData)
+    }
+
+    private static func dropPotentiallyCorruptedReplayPrefix(in data: Data) -> Data {
+        guard !data.isEmpty else { return data }
+
+        let inspectionCount = min(data.count, replayInspectionWindowBytes)
+        let inspectionPrefix = data.prefix(inspectionCount)
+
+        if let lineBreakIndex = inspectionPrefix.firstIndex(where: { $0 == 10 || $0 == 13 }) {
+            let nextIndex = data.index(after: lineBreakIndex)
+            return Data(data.suffix(from: nextIndex))
+        }
+
+        if let escapeIndex = inspectionPrefix.firstIndex(of: 0x1B) {
+            return Data(data.suffix(from: escapeIndex))
+        }
+
+        return data
     }
 
     private func bootstrapCommand(for record: TerminalSavedSession) -> String? {
