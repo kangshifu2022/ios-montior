@@ -16,6 +16,7 @@ struct DevicesExperimentalView: View {
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var showsExpandedGroupTags = false
     @State private var draggedServerID: UUID?
+    @Namespace private var groupTabsGlassNamespace
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -182,43 +183,124 @@ struct DevicesExperimentalView: View {
     }
 
     private var groupTabs: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: 8) {
+                    groupTabsScrollView
+                }
+            } else {
+                groupTabsScrollView
+            }
+        }
+    }
+
+    private var groupTabsScrollView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(visibleGroupNames, id: \.self) { groupName in
                     let isSelected = isGroupTagHighlighted(groupName)
                     let groupAccentColor = ExperimentalGroupAccentPalette.color(for: groupName)
-
-                    Button {
-                        handleGroupTagTap(groupName)
-                    } label: {
-                        HStack(spacing: 6) {
-                            if let groupAccentColor {
-                                ExperimentalGroupIndicatorLine(
-                                    color: groupAccentColor,
-                                    width: 2.5,
-                                    height: 11
-                                )
-                            }
-
-                            Text(groupName)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
-                        )
-                        .overlay(
-                            Capsule()
-                                .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    groupTabButton(
+                        groupName: groupName,
+                        isSelected: isSelected,
+                        groupAccentColor: groupAccentColor
+                    )
                 }
             }
             .padding(.vertical, 1)
+        }
+    }
+
+    @ViewBuilder
+    private func groupTabButton(
+        groupName: String,
+        isSelected: Bool,
+        groupAccentColor: Color?
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            if isSelected {
+                Button {
+                    handleGroupTagTap(groupName)
+                } label: {
+                    groupTabLabel(
+                        groupName: groupName,
+                        isSelected: isSelected,
+                        groupAccentColor: groupAccentColor,
+                        usesLiquidGlass: true
+                    )
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.mini)
+                .glassEffectID(groupName, in: groupTabsGlassNamespace)
+            } else {
+                Button {
+                    handleGroupTagTap(groupName)
+                } label: {
+                    groupTabLabel(
+                        groupName: groupName,
+                        isSelected: isSelected,
+                        groupAccentColor: groupAccentColor,
+                        usesLiquidGlass: true
+                    )
+                }
+                .buttonStyle(.glass)
+                .controlSize(.mini)
+                .glassEffectID(groupName, in: groupTabsGlassNamespace)
+            }
+        } else {
+            Button {
+                handleGroupTagTap(groupName)
+            } label: {
+                groupTabLabel(
+                    groupName: groupName,
+                    isSelected: isSelected,
+                    groupAccentColor: groupAccentColor,
+                    usesLiquidGlass: false
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private func groupTabLabel(
+        groupName: String,
+        isSelected: Bool,
+        groupAccentColor: Color?,
+        usesLiquidGlass: Bool
+    ) -> some View {
+        let label = HStack(spacing: 6) {
+            if let groupAccentColor {
+                ExperimentalGroupIndicatorLine(
+                    color: groupAccentColor,
+                    width: 2.5,
+                    height: 11
+                )
+            }
+
+            Text(groupName)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(
+                    usesLiquidGlass
+                        ? (isSelected ? palette.primaryText : palette.secondaryText)
+                        : (isSelected ? selectedGroupTabTextColor : palette.secondaryText)
+                )
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+
+        if usesLiquidGlass {
+            label
+        } else {
+            label
+                .background(
+                    Capsule()
+                        .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
+                )
         }
     }
 
