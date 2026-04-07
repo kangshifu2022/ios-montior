@@ -782,8 +782,8 @@ private struct ExperimentalServerCard: View {
 
     private var networkMetricCell: some View {
         ExperimentalRateMetricColumn(
-            topItem: downloadMetric,
-            bottomItem: uploadMetric,
+            topItem: uploadMetric,
+            bottomItem: downloadMetric,
             accent: palette.rateAccent,
             palette: palette
         )
@@ -889,28 +889,26 @@ private struct ExperimentalServerCard: View {
     }
 
     private var uploadMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "network-upload", label: "TX", value: uploadSpeedText)
+        rateMetric(id: "network-upload", label: "↑", value: uploadSpeedText)
     }
 
     private var downloadMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "network-download", label: "RX", value: downloadSpeedText)
+        rateMetric(id: "network-download", label: "↓", value: downloadSpeedText)
     }
 
     private var diskReadMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "disk-read", label: "RD", value: diskReadSpeedText)
+        rateMetric(id: "disk-read", label: "r", value: diskReadSpeedText)
     }
 
     private var diskWriteMetric: ExperimentalRateMetricDescriptor {
-        rateMetric(id: "disk-write", label: "WR", value: diskWriteSpeedText)
+        rateMetric(id: "disk-write", label: "w", value: diskWriteSpeedText)
     }
 
     private func rateMetric(id: String, label: String, value: String) -> ExperimentalRateMetricDescriptor {
         let parts = ExperimentalRateParts(rawValue: value)
-        let unitText = parts.unit.isEmpty ? "k/s" : parts.unit.lowercased()
         return ExperimentalRateMetricDescriptor(
             id: id,
             label: label,
-            unitText: unitText,
             parts: parts
         )
     }
@@ -1203,7 +1201,6 @@ private struct ExperimentalUsageTrendSparkline: View {
 private struct ExperimentalRateMetricDescriptor: Identifiable {
     let id: String
     let label: String
-    let unitText: String
     let parts: ExperimentalRateParts
 }
 
@@ -1214,7 +1211,7 @@ private struct ExperimentalRateMetricColumn: View {
     let palette: ExperimentalHomePalette
 
     var body: some View {
-        VStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             ExperimentalRateMetric(
                 item: topItem,
                 accent: accent,
@@ -1227,7 +1224,7 @@ private struct ExperimentalRateMetricColumn: View {
                 palette: palette
             )
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -1235,6 +1232,10 @@ private struct ExperimentalRateMetric: View {
     let item: ExperimentalRateMetricDescriptor
     let accent: Color
     let palette: ExperimentalHomePalette
+
+    private var display: ExperimentalNormalizedRateDisplay {
+        ExperimentalNormalizedRateDisplay(parts: item.parts)
+    }
 
     private var isActive: Bool {
         item.parts.hasRenderableValue
@@ -1249,26 +1250,100 @@ private struct ExperimentalRateMetric: View {
     }
 
     var body: some View {
-        VStack(alignment: .center, spacing: -2) {
-            Text(item.parts.displayNumber)
-                .font(.system(size: 20, weight: .medium, design: .rounded))
-                .foregroundColor(valueColor)
-                .monospacedDigit()
-                .contentTransition(.numericText(value: item.parts.numericAmount ?? 0))
-                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: item.parts.numericAmount ?? -1)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            Text("\(item.label) \(item.unitText)")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(item.label)
+                .font(.system(size: 16, weight: .regular, design: .rounded))
                 .foregroundColor(metaColor)
                 .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(width: 14, alignment: .leading)
+
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(display.numberText)
+                    .font(.system(size: 28, weight: .medium, design: .rounded))
+                    .foregroundColor(valueColor)
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: display.animationValue))
+                    .animation(.spring(response: 0.34, dampingFraction: 0.84), value: display.animationValue)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+
+                Text(display.unitText)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundColor(metaColor)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .padding(.leading, 1)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ExperimentalNormalizedRateDisplay {
+    let numberText: String
+    let unitText: String
+    let animationValue: Double
+
+    init(parts: ExperimentalRateParts) {
+        let normalized = Self.normalizedAmount(
+            amount: parts.numericAmount ?? 0,
+            unit: parts.unit
+        )
+        numberText = parts.hasRenderableValue ? Self.displayText(from: normalized.amount) : "0"
+        unitText = Self.displayUnit(from: normalized.unit)
+        animationValue = normalized.amount
+    }
+
+    private static func normalizedAmount(amount: Double, unit: String) -> (amount: Double, unit: String) {
+        let normalizedUnit = unit.lowercased()
+
+        switch normalizedUnit {
+        case "k/s":
+            if amount >= 1024 {
+                return (amount / 1024, "m/s")
+            }
+            return (amount, "k/s")
+        case "mb/s":
+            return (amount, "m/s")
+        case "gb/s":
+            return (amount, "g/s")
+        case "":
+            return (amount, "k/s")
+        default:
+            return (amount, normalizedUnit)
+        }
+    }
+
+    private static func displayUnit(from rawUnit: String) -> String {
+        switch rawUnit.lowercased() {
+        case "k/s":
+            return "K/s"
+        case "m/s", "mb/s":
+            return "M/s"
+        case "g/s", "gb/s":
+            return "G/s"
+        case "b/s":
+            return "B/s"
+        default:
+            return rawUnit
+        }
+    }
+
+    private static func displayText(from amount: Double) -> String {
+        if abs(amount) < 0.000_1 {
+            return "0"
+        }
+
+        if amount >= 10 {
+            return String(Int(amount.rounded(.towardZero)))
+        }
+
+        if amount >= 1 {
+            return amount == floor(amount) ? String(Int(amount)) : String(format: "%.1f", amount)
+        }
+
+        return String(format: "%.1f", amount)
     }
 }
 
