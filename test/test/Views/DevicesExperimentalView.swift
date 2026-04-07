@@ -966,7 +966,7 @@ private struct ExperimentalMetricTile: View {
             Text(label)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(palette.secondaryText.opacity(0.88))
-                .tracking(1.1)
+                .tracking(0.55)
                 .padding(.top, -3)
                 .frame(maxWidth: .infinity, alignment: .center)
 

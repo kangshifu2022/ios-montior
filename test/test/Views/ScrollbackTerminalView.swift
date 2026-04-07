@@ -7,6 +7,12 @@ extension Notification.Name {
 }
 
 final class ScrollbackTerminalView: SwiftTerm.TerminalView {
+    private enum Zoom {
+        static let minimumPointSize: CGFloat = 8
+        static let maximumPointSize: CGFloat = 22
+        static let step: CGFloat = 0.5
+    }
+
     private final class HiddenKeyboardInputView: UIInputView {
         override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
             super.init(frame: frame, inputViewStyle: inputViewStyle)
@@ -38,6 +44,15 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
     private var lastKnownBoundsHeight: CGFloat?
     private var lastKnownAdjustedInsets: UIEdgeInsets?
     private var isAwaitingKeyboardFocus = false
+    private var pinchStartFontPointSize: CGFloat?
+    private lazy var terminalPinchGestureRecognizer: UIPinchGestureRecognizer = {
+        let gestureRecognizer = UIPinchGestureRecognizer(
+            target: self,
+            action: #selector(handlePinchStateChange(_:))
+        )
+        gestureRecognizer.cancelsTouchesInView = false
+        return gestureRecognizer
+    }()
     private lazy var hiddenKeyboardInputView = HiddenKeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
 
     var accessoryAltModifier = false {
@@ -129,6 +144,8 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
         alwaysBounceVertical = true
         showsVerticalScrollIndicator = true
         panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
+        pinchGestureRecognizer?.isEnabled = false
+        addGestureRecognizer(terminalPinchGestureRecognizer)
     }
 
     func toggleSoftwareKeyboard() {
@@ -158,6 +175,29 @@ final class ScrollbackTerminalView: SwiftTerm.TerminalView {
         default:
             break
         }
+    }
+
+    @objc
+    private func handlePinchStateChange(_ gestureRecognizer: UIPinchGestureRecognizer) {
+        switch gestureRecognizer.state {
+        case .began:
+            pinchStartFontPointSize = font.pointSize
+        case .changed:
+            guard let pinchStartFontPointSize else { return }
+            let scaledPointSize = pinchStartFontPointSize * gestureRecognizer.scale
+            applyZoom(pointSize: scaledPointSize)
+        case .ended, .cancelled, .failed:
+            pinchStartFontPointSize = nil
+        default:
+            break
+        }
+    }
+
+    private func applyZoom(pointSize: CGFloat) {
+        let clampedPointSize = min(max(pointSize, Zoom.minimumPointSize), Zoom.maximumPointSize)
+        let snappedPointSize = (clampedPointSize / Zoom.step).rounded() * Zoom.step
+        guard abs(snappedPointSize - font.pointSize) >= 0.01 else { return }
+        font = font.withSize(snappedPointSize)
     }
 
     private func updateScrollbackReviewState() {
