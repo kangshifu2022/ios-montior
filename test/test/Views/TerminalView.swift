@@ -2,14 +2,23 @@ import SwiftUI
 
 struct TerminalView: View {
     let server: ServerConfig
-    @StateObject private var viewModel: TerminalViewModel
+    @ObservedObject var viewModel: TerminalViewModel
+    private let onSuspend: (() -> Void)?
+    private let onClose: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
-    init(server: ServerConfig) {
+    init(
+        server: ServerConfig,
+        viewModel: TerminalViewModel,
+        onSuspend: (() -> Void)? = nil,
+        onClose: (() -> Void)? = nil
+    ) {
         self.server = server
-        _viewModel = StateObject(wrappedValue: TerminalViewModel(server: server))
+        self.viewModel = viewModel
+        self.onSuspend = onSuspend
+        self.onClose = onClose
     }
 
     var body: some View {
@@ -27,17 +36,15 @@ struct TerminalView: View {
         }
         .task {
             viewModel.prepareLaunchIfNeeded()
+            viewModel.connectIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
             viewModel.handleScenePhaseChange(newPhase)
         }
         .onChange(of: viewModel.shouldDismissTerminal) { _, shouldDismiss in
             guard shouldDismiss else { return }
-            dismiss()
+            closeTerminalView()
             viewModel.acknowledgeDismissRequest()
-        }
-        .onDisappear {
-            viewModel.disconnect(clearError: true)
         }
         .sheet(isPresented: $viewModel.isShowingLaunchSheet) {
             TerminalLaunchSheet(
@@ -62,7 +69,7 @@ struct TerminalView: View {
                 onRefreshRemoteTmuxSessions: {
                     viewModel.refreshRemoteTmuxSessions()
                 },
-                onCloseTerminal: dismissTerminal
+                onCloseTerminal: closeTerminalView
             )
             .task {
                 viewModel.refreshRemoteTmuxSessionsIfNeeded()
@@ -79,7 +86,7 @@ struct TerminalView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            Button(action: dismissTerminal) {
+            Button(action: suspendOrCloseTerminal) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(width: 32, height: 32)
@@ -87,7 +94,7 @@ struct TerminalView: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(viewModel.isPersistentSession ? "断开并关闭终端" : "关闭终端")
+            .accessibilityLabel(viewModel.hasSessionToSuspend ? "挂起终端" : "关闭终端")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(viewModel.displayTitle)
@@ -127,7 +134,21 @@ struct TerminalView: View {
         }
     }
 
-    private func dismissTerminal() {
+    private func suspendOrCloseTerminal() {
+        guard viewModel.hasSessionToSuspend, let onSuspend else {
+            closeTerminalView()
+            return
+        }
+
+        onSuspend()
+    }
+
+    private func closeTerminalView() {
+        if let onClose {
+            onClose()
+            return
+        }
+
         viewModel.disconnect(clearError: true)
         dismiss()
     }

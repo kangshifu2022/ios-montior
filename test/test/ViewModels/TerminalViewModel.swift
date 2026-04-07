@@ -23,7 +23,6 @@ final class TerminalViewModel: ObservableObject {
     private var sessionTask: Task<Void, Never>?
     private var remoteTmuxFetchTask: Task<Void, Never>?
     private var outputSink: (([UInt8]) -> Void)?
-    private var pendingOutput: [[UInt8]] = []
     private var terminalSize = TerminalSize.fallback
     private var keepsSessionAlive = false
     private var exitRequestedByUser = false
@@ -79,6 +78,10 @@ final class TerminalViewModel: ObservableObject {
 
     var isPersistentSession: Bool {
         activeSessionRecord?.kind == .persistentTmux
+    }
+
+    var hasSessionToSuspend: Bool {
+        activeSessionRecord != nil
     }
 
     func prepareLaunchIfNeeded() {
@@ -257,7 +260,9 @@ final class TerminalViewModel: ObservableObject {
 
     func attachOutputSink(_ sink: @escaping ([UInt8]) -> Void) {
         outputSink = sink
-        flushPendingOutput()
+        if !scrollbackBuffer.isEmpty {
+            sink(Array(scrollbackBuffer))
+        }
     }
 
     func detachOutputSink() {
@@ -418,7 +423,6 @@ final class TerminalViewModel: ObservableObject {
         terminalTitle = nil
         shouldDismissTerminal = false
         isShowingLaunchSheet = false
-        pendingOutput.removeAll()
         activeSessionRecord = record
         scrollbackBuffer = record.scrollback
         scrollbackFlushTask?.cancel()
@@ -463,8 +467,6 @@ final class TerminalViewModel: ObservableObject {
             appendToScrollback(bytes)
             if let outputSink {
                 outputSink(bytes)
-            } else {
-                pendingOutput.append(bytes)
             }
         case .error(let message):
             TerminalDiagnosticsStore.record(
@@ -478,9 +480,10 @@ final class TerminalViewModel: ObservableObject {
             isConnected = false
             lastError = message
         case .disconnected:
+            let endedGracefully = lastError == nil
             TerminalDiagnosticsStore.record(
-                "event disconnected, exitRequested=\(exitRequestedByUser)",
-                level: exitRequestedByUser ? .info : .warning,
+                "event disconnected, exitRequested=\(exitRequestedByUser), graceful=\(endedGracefully)",
+                level: exitRequestedByUser || endedGracefully ? .info : .warning,
                 category: "event",
                 server: server,
                 session: activeSessionRecord
@@ -490,13 +493,9 @@ final class TerminalViewModel: ObservableObject {
             isConnected = false
             sessionTask = nil
 
-            if exitRequestedByUser, let activeSessionRecord, activeSessionRecord.kind == .persistentTmux {
-                self.activeSessionRecord = TerminalPersistenceStore.markEnded(activeSessionRecord.id) ?? activeSessionRecord
-            }
-
             refreshSessionSummaries()
 
-            if exitRequestedByUser {
+            if exitRequestedByUser || endedGracefully {
                 shouldDismissTerminal = true
             }
             exitRequestedByUser = false
@@ -565,12 +564,6 @@ final class TerminalViewModel: ObservableObject {
 
     private func requestKeyboardFocus() {
         keyboardFocusRequestID &+= 1
-    }
-
-    private func flushPendingOutput() {
-        guard let outputSink, !pendingOutput.isEmpty else { return }
-        pendingOutput.forEach(outputSink)
-        pendingOutput.removeAll()
     }
 
     private func bootstrapCommand(for record: TerminalSavedSession) -> String? {

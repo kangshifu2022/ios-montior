@@ -30,7 +30,7 @@ struct ServerCard: View {
         )
         .shadow(color: shadowColor, radius: 14, x: 0, y: 8)
         .fullScreenCover(isPresented: $showTerminal) {
-            TerminalView(server: config)
+            StandaloneTerminalView(server: config)
         }
     }
 

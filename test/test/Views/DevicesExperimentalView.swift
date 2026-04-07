@@ -7,11 +7,11 @@ struct DevicesExperimentalView: View {
     fileprivate static let detailedCardTopPadding: CGFloat = 12
 
     @ObservedObject var store: ServerStore
+    @EnvironmentObject private var terminalWorkspace: TerminalWorkspace
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @AppStorage(ExperimentalHomeCardView.storageKey) private var experimentalHomeCardViewRawValue = ExperimentalHomeCardView.detailed.rawValue
     @State private var selectedServer: ServerConfig?
-    @State private var terminalServer: ServerConfig?
     @State private var editingServer: ServerConfig?
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var showsExpandedGroupTags = false
@@ -122,8 +122,17 @@ struct DevicesExperimentalView: View {
             .sheet(item: $editingServer) { server in
                 AddServerView(store: store, editingServer: server)
             }
-            .fullScreenCover(item: $terminalServer) { config in
-                TerminalView(server: config)
+            .fullScreenCover(item: $terminalWorkspace.presentedSession) { session in
+                TerminalView(
+                    server: session.server,
+                    viewModel: session.viewModel,
+                    onSuspend: {
+                        terminalWorkspace.suspend(session)
+                    },
+                    onClose: {
+                        terminalWorkspace.close(session)
+                    }
+                )
             }
             .onChange(of: selectedServer?.id) { _, _ in
                 draggedServerID = nil
@@ -133,7 +142,7 @@ struct DevicesExperimentalView: View {
                 draggedServerID = nil
                 swipeActionServerID = nil
             }
-            .onChange(of: terminalServer?.id) { _, _ in
+            .onChange(of: terminalWorkspace.presentedSession?.id) { _, _ in
                 draggedServerID = nil
                 swipeActionServerID = nil
             }
@@ -156,8 +165,24 @@ struct DevicesExperimentalView: View {
 
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 0) {
+            HStack(spacing: 10) {
                 Spacer(minLength: 0)
+
+                if !terminalWorkspace.suspendedSessions.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(terminalWorkspace.suspendedSessions) { session in
+                                SuspendedTerminalButton(
+                                    session: session,
+                                    palette: palette
+                                ) {
+                                    terminalWorkspace.resume(session)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 220)
+                }
 
                 Button(action: toggleHomeCardView) {
                     Image(systemName: homeCardViewToggleIconName)
@@ -293,7 +318,7 @@ struct DevicesExperimentalView: View {
                 )
         }
         .padding(.horizontal, 7)
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
 
         if usesLiquidGlass {
             label
@@ -392,7 +417,7 @@ struct DevicesExperimentalView: View {
                 ) {
                     selectedServer = server
                 } onOpenTerminal: {
-                    terminalServer = server
+                    terminalWorkspace.presentTerminal(for: server)
                 }
             } else {
                 ExperimentalCompactServerCard(
@@ -448,6 +473,58 @@ struct DevicesExperimentalView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .shadow(color: palette.cardShadow, radius: 18, x: 0, y: 10)
+    }
+}
+
+private struct SuspendedTerminalButton: View {
+    let session: TerminalWorkspaceSession
+    let palette: ExperimentalHomePalette
+    let action: () -> Void
+
+    @ObservedObject private var viewModel: TerminalViewModel
+
+    init(
+        session: TerminalWorkspaceSession,
+        palette: ExperimentalHomePalette,
+        action: @escaping () -> Void
+    ) {
+        self.session = session
+        self.palette = palette
+        self.action = action
+        _viewModel = ObservedObject(wrappedValue: session.viewModel)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: "terminal")
+                    .font(.system(size: 12, weight: .bold))
+
+                Text(titleText)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .foregroundColor(palette.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(palette.cardBackground.opacity(0.96))
+            .overlay(
+                Capsule()
+                    .stroke(palette.cardBorder, lineWidth: 1)
+            )
+            .clipShape(Capsule())
+            .shadow(color: palette.cardShadow.opacity(0.6), radius: 10, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("恢复 \(titleText) 终端")
+    }
+
+    private var titleText: String {
+        let trimmedTitle = viewModel.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedTitle.isEmpty {
+            return trimmedTitle
+        }
+        return session.server.name
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var store = ServerStore()
+    @StateObject private var terminalWorkspace = TerminalWorkspace()
 
     var body: some View {
         TabView {
@@ -25,6 +26,7 @@ struct ContentView: View {
                     Label("设置", systemImage: "gearshape")
                 }
         }
+        .environmentObject(terminalWorkspace)
     }
 }
 
