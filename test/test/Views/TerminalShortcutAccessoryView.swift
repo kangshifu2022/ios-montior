@@ -143,7 +143,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
     struct ShortcutItem {
         let style: ShortcutStyle
-        let preferredWidth: CGFloat?
+        let columnSpan: Int
         let title: String?
         let systemImageName: String?
         let accessibilityLabel: String
@@ -155,13 +155,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
             title: String,
             accessibilityLabel: String? = nil,
             style: ShortcutStyle = .normal,
-            preferredWidth: CGFloat? = nil,
+            columnSpan: Int = 1,
             isSelected: (() -> Bool)? = nil,
             observedNotifications: [ObservedNotification] = [],
             action: @escaping () -> Void
         ) {
             self.style = style
-            self.preferredWidth = preferredWidth
+            self.columnSpan = max(columnSpan, 1)
             self.title = title
             self.systemImageName = nil
             self.accessibilityLabel = accessibilityLabel ?? title
@@ -174,13 +174,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
             systemImageName: String,
             accessibilityLabel: String,
             style: ShortcutStyle = .normal,
-            preferredWidth: CGFloat? = nil,
+            columnSpan: Int = 1,
             isSelected: (() -> Bool)? = nil,
             observedNotifications: [ObservedNotification] = [],
             action: @escaping () -> Void
         ) {
             self.style = style
-            self.preferredWidth = preferredWidth
+            self.columnSpan = max(columnSpan, 1)
             self.title = nil
             self.systemImageName = systemImageName
             self.accessibilityLabel = accessibilityLabel
@@ -190,13 +190,21 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
     }
 
+    private struct ButtonWidthConstraint {
+        let columnSpan: Int
+        let constraint: NSLayoutConstraint
+    }
+
     private let rows: [[ShortcutItem]]
+    private let gridColumnCount: Int
     private let preferredHeight: CGFloat
+    private var buttonWidthConstraints: [ButtonWidthConstraint] = []
     private var observationTokens: [NSObjectProtocol] = []
 
     init(rows: [[ShortcutItem]]) {
         let normalizedRows = rows.filter { !$0.isEmpty }
         self.rows = normalizedRows
+        self.gridColumnCount = Self.gridColumnCount(for: normalizedRows)
         self.preferredHeight = Self.preferredHeight(forRowCount: normalizedRows.count)
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: preferredHeight), inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -231,6 +239,11 @@ final class TerminalShortcutAccessoryView: UIInputView {
         invalidateIntrinsicContentSize()
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateButtonWidths()
+    }
+
     private func setupUI() {
         backgroundColor = .clear
 
@@ -249,7 +262,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
             rowStack.axis = .horizontal
             rowStack.spacing = Self.horizontalSpacing
             rowStack.alignment = .fill
-            rowStack.distribution = .fillProportionally
+            rowStack.distribution = .fill
 
             for item in rowItems {
                 let button = ShortcutButton(frame: .zero)
@@ -281,7 +294,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 button.setContentCompressionResistancePriority(.required, for: .horizontal)
                 button.setContentHuggingPriority(.required, for: .horizontal)
                 button.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
-                button.widthAnchor.constraint(equalToConstant: Self.preferredButtonWidth(for: item)).isActive = true
+                let widthConstraint = button.widthAnchor.constraint(
+                    equalToConstant: Self.fallbackButtonWidth(forColumnSpan: item.columnSpan)
+                )
+                widthConstraint.isActive = true
+                buttonWidthConstraints.append(
+                    ButtonWidthConstraint(columnSpan: item.columnSpan, constraint: widthConstraint)
+                )
                 button.addAction(UIAction { [weak button] _ in
                     button?.flashActivation()
                     item.action()
@@ -320,25 +339,34 @@ final class TerminalShortcutAccessoryView: UIInputView {
         return totalVerticalInsets + totalRowSpacing + (CGFloat(clampedRowCount) * rowHeight)
     }
 
-    private static func preferredButtonWidth(for item: ShortcutItem) -> CGFloat {
-        if let preferredWidth = item.preferredWidth {
-            return preferredWidth
-        }
+    private func updateButtonWidths() {
+        let availableWidth = bounds.width - Self.contentInsets.left - Self.contentInsets.right
+        guard availableWidth > 0 else { return }
 
-        if item.systemImageName != nil {
-            return 34
-        }
+        let totalSpacing = CGFloat(max(gridColumnCount - 1, 0)) * Self.horizontalSpacing
+        let singleColumnWidth = max((availableWidth - totalSpacing) / CGFloat(gridColumnCount), 0)
 
-        let titleLength = (item.title ?? "").count
-        switch titleLength {
-        case 0...1:
-            return 34
-        case 2...3:
-            return 40
-        case 4...5:
-            return 48
-        default:
-            return 56
+        for buttonWidthConstraint in buttonWidthConstraints {
+            let span = max(buttonWidthConstraint.columnSpan, 1)
+            buttonWidthConstraint.constraint.constant =
+                (singleColumnWidth * CGFloat(span)) + (CGFloat(span - 1) * Self.horizontalSpacing)
         }
+    }
+
+    private static func gridColumnCount(for rows: [[ShortcutItem]]) -> Int {
+        max(
+            rows.map { rowItems in
+                rowItems.reduce(0) { partialResult, item in
+                    partialResult + max(item.columnSpan, 1)
+                }
+            }.max() ?? 1,
+            1
+        )
+    }
+
+    private static func fallbackButtonWidth(forColumnSpan columnSpan: Int) -> CGFloat {
+        let singleColumnWidth: CGFloat = 38
+        return (singleColumnWidth * CGFloat(max(columnSpan, 1)))
+            + (CGFloat(max(columnSpan - 1, 0)) * horizontalSpacing)
     }
 }

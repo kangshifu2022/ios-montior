@@ -146,12 +146,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
         }
 
         let topRow: [TerminalShortcutAccessoryView.ShortcutItem] = [
-            .init(title: "ESC", preferredWidth: 38, action: {
+            .init(title: "ESC", action: {
                 let modifiers = consumeAccessoryModifiers()
                 let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
                 sendShortcutBytes(payload)
             }),
-            .init(title: "Exit", style: .accent, preferredWidth: 48, action: {
+            .init(title: "Exit", style: .accent, action: {
                 let modifiers = consumeAccessoryModifiers()
                 viewModel.sendExit()
                 if modifiers.alt || modifiers.shift {
@@ -159,25 +159,24 @@ struct TerminalSurfaceView: UIViewRepresentable {
                     scrollbackView?.accessoryShiftModifier = false
                 }
             }),
-            .init(title: "-", preferredWidth: 30, action: {
+            .init(title: "-", action: {
                 sendShortcutText("-", shiftedText: "_")
             }),
-            .init(title: "|", preferredWidth: 30, action: {
+            .init(title: "|", action: {
                 sendShortcutText("|")
             }),
-            .init(title: "↑", preferredWidth: 30, action: {
+            .init(title: "↑", action: {
                 sendModifiedCSI(finalByte: 65, baseBytes: [27, 91, 65])
             }),
-            .init(title: "/", preferredWidth: 30, action: {
+            .init(title: "/", action: {
                 sendShortcutText("/", shiftedText: "?")
             }),
-            .init(title: "PgUp", preferredWidth: 42, action: { [weak terminalView] in
+            .init(title: "PgUp", action: { [weak terminalView] in
                 terminalView?.pageUp()
             }),
             .init(
                 systemImageName: "doc.on.doc",
                 accessibilityLabel: "粘贴剪贴板内容",
-                preferredWidth: 34,
                 action: {
                     pasteClipboardText()
                 }
@@ -186,7 +185,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 systemImageName: "keyboard",
                 accessibilityLabel: "显示或隐藏系统键盘",
                 style: .accent,
-                preferredWidth: 34,
                 action: { [weak terminalView] in
                     guard let terminalView else { return }
                     if let scrollbackView = terminalView as? ScrollbackTerminalView {
@@ -199,28 +197,28 @@ struct TerminalSurfaceView: UIViewRepresentable {
         ]
 
         let middleRow: [TerminalShortcutAccessoryView.ShortcutItem] = [
-            .init(title: "Tab", preferredWidth: 64, action: {
+            .init(title: "Tab", columnSpan: 2, action: {
                 sendTabShortcut()
             }),
-            .init(title: "\\", preferredWidth: 30, action: {
+            .init(title: "\\", action: {
                 sendShortcutText("\\", shiftedText: "|")
             }),
-            .init(title: "←", preferredWidth: 30, action: {
+            .init(title: "←", action: {
                 sendModifiedCSI(finalByte: 68, baseBytes: [27, 91, 68])
             }),
-            .init(title: "↓", preferredWidth: 30, action: {
+            .init(title: "↓", action: {
                 sendModifiedCSI(finalByte: 66, baseBytes: [27, 91, 66])
             }),
-            .init(title: "→", preferredWidth: 30, action: {
+            .init(title: "→", action: {
                 sendModifiedCSI(finalByte: 67, baseBytes: [27, 91, 67])
             }),
-            .init(title: "PgDn", preferredWidth: 42, action: { [weak terminalView] in
+            .init(title: "PgDn", action: { [weak terminalView] in
                 terminalView?.pageDown()
             }),
             .init(
                 title: "< >",
                 accessibilityLabel: "脚本快捷键，暂未启用",
-                preferredWidth: 72,
+                columnSpan: 2,
                 action: {}
             )
         ]
@@ -229,7 +227,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
             .init(
                 title: "Ctrl",
                 accessibilityLabel: "切换 Ctrl 修饰键",
-                preferredWidth: 40,
                 isSelected: { [weak terminalView] in
                     terminalView?.controlModifier ?? false
                 },
@@ -246,7 +243,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
             .init(
                 title: "Alt",
                 accessibilityLabel: "切换 Alt 修饰键",
-                preferredWidth: 40,
                 isSelected: { [weak scrollbackView] in
                     scrollbackView?.accessoryAltModifier ?? false
                 },
@@ -262,7 +258,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
             .init(
                 title: "Shift",
                 accessibilityLabel: "切换 Shift 修饰键",
-                preferredWidth: 44,
                 isSelected: { [weak scrollbackView] in
                     scrollbackView?.accessoryShiftModifier ?? false
                 },
@@ -275,16 +270,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
                     scrollbackView?.accessoryShiftModifier.toggle()
                 }
             ),
-            .init(title: "Ctrl+C", preferredWidth: 64, action: {
+            .init(title: "Ctrl+C", columnSpan: 2, action: {
                 sendControlShortcut(3)
             }),
-            .init(title: "Ctrl+B", preferredWidth: 64, action: {
+            .init(title: "Ctrl+B", columnSpan: 2, action: {
                 sendControlShortcut(2)
             }),
-            .init(title: "Home", preferredWidth: 42, action: {
+            .init(title: "Home", action: {
                 sendModifiedCSI(finalByte: 72, baseBytes: [27, 91, 72])
             }),
-            .init(title: "End", preferredWidth: 38, action: {
+            .init(title: "End", action: {
                 sendModifiedCSI(finalByte: 70, baseBytes: [27, 91, 70])
             })
         ]
