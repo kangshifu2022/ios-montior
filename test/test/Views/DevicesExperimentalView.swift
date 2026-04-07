@@ -1256,6 +1256,7 @@ private struct ExperimentalRateMetric: View {
                     .font(.system(size: 20, weight: .medium, design: .rounded))
                     .foregroundColor(valueColor)
                     .monospacedDigit()
+                    .tracking(-1.1)
                     .contentTransition(.numericText(value: display.animationValue))
                     .animation(.spring(response: 0.34, dampingFraction: 0.84), value: display.animationValue)
                     .lineLimit(1)
