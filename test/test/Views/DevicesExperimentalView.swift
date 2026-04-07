@@ -509,8 +509,8 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
 
 private struct ExperimentalSwipeActionCard<Content: View>: View {
     private enum Layout {
-        static let actionWidth: CGFloat = 74
-        static let actionSpacing: CGFloat = 1
+        static var actionWidth: CGFloat { 74 }
+        static var actionSpacing: CGFloat { 1 }
 
         static var totalActionWidth: CGFloat {
             (actionWidth * 2) + actionSpacing

@@ -6,7 +6,7 @@ enum TerminalDiagnosticsStore {
     }
 
     nonisolated private static let maxEntries = 300
-    nonisolated(unsafe) private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
+    private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
 
     nonisolated static func record(
         _ message: String,
