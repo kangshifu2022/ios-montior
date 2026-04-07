@@ -27,7 +27,6 @@ final class ServerStore: ObservableObject {
     @Published private(set) var remoteAlertStatusByServerID: [UUID: RemoteAlertStatus] = [:]
     @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
     @Published private(set) var alertSettings = AlertSettings()
-    @Published private(set) var collapsedServerIDs: Set<UUID> = []
     @Published private var metricHistoryByServerID: [UUID: [UsageTrendSample]] = [:]
 
     private let serversKey = "saved_servers"
@@ -35,7 +34,6 @@ final class ServerStore: ObservableObject {
     private let staticInfoKey = "cached_server_static_info"
     private let dynamicInfoKey = "cached_server_dynamic_info"
     private let remoteAlertStatusKey = "cached_remote_alert_status"
-    private let collapsedServerIDsKey = "collapsed_server_ids"
     private let legacyStatsKey = "cached_server_stats"
     private var lastStaticRefreshDates: [UUID: Date] = [:]
     private var lastDynamicRefreshDates: [UUID: Date] = [:]
@@ -45,7 +43,6 @@ final class ServerStore: ObservableObject {
     private let dynamicRefreshInterval: TimeInterval = 3
     private let offlineTransitionFailureThreshold = 2
     private let offlineTransitionGraceInterval: TimeInterval = 12
-    private let autoCollapseFailureThreshold = 3
     private let maxDerivedMetricSampleAge: TimeInterval = 12
     private let metricHistoryWindow: TimeInterval = 60
     private let refreshBatchStaggerInterval: TimeInterval = 0.18
@@ -94,10 +91,8 @@ final class ServerStore: ObservableObject {
             metricHistoryByServerID.removeValue(forKey: $0)
             refreshingServerIDs.remove($0)
             remoteAlertOperationServerIDs.remove($0)
-            collapsedServerIDs.remove($0)
         }
         save()
-        saveCollapsedServerIDs()
         saveCachedInfo()
     }
 
@@ -152,23 +147,6 @@ final class ServerStore: ObservableObject {
 
     func memUsageHistory(for id: UUID) -> [Double] {
         metricHistoryByServerID[id]?.map(\.memUsage) ?? []
-    }
-
-    func isCollapsed(_ id: UUID) -> Bool {
-        collapsedServerIDs.contains(id)
-    }
-
-    func toggleCollapsed(_ id: UUID) {
-        setCollapsed(!collapsedServerIDs.contains(id), for: id)
-    }
-
-    func setCollapsed(_ isCollapsed: Bool, for id: UUID) {
-        if isCollapsed {
-            collapsedServerIDs.insert(id)
-        } else {
-            collapsedServerIDs.remove(id)
-        }
-        saveCollapsedServerIDs()
     }
 
     func isPerformingRemoteAlertAction(_ id: UUID) -> Bool {
@@ -443,12 +421,6 @@ final class ServerStore: ObservableObject {
         }
     }
 
-    private func saveCollapsedServerIDs() {
-        if let data = try? JSONEncoder().encode(collapsedServerIDs) {
-            UserDefaults.standard.set(data, forKey: collapsedServerIDsKey)
-        }
-    }
-
     private func load() {
         if let data = UserDefaults.standard.data(forKey: serversKey),
            let decoded = try? JSONDecoder().decode([ServerConfig].self, from: data) {
@@ -494,11 +466,6 @@ final class ServerStore: ObservableObject {
         if let alertStatusData = UserDefaults.standard.data(forKey: remoteAlertStatusKey),
            let decodedAlertStatus = try? JSONDecoder().decode([UUID: RemoteAlertStatus].self, from: alertStatusData) {
             remoteAlertStatusByServerID = decodedAlertStatus.filter { validIDs.contains($0.key) }
-        }
-
-        if let collapsedData = UserDefaults.standard.data(forKey: collapsedServerIDsKey),
-           let decodedCollapsedIDs = try? JSONDecoder().decode(Set<UUID>.self, from: collapsedData) {
-            collapsedServerIDs = Set(decodedCollapsedIDs.filter { validIDs.contains($0) })
         }
 
         migrateLegacyStatsIfNeeded(validIDs: validIDs)
@@ -594,10 +561,6 @@ final class ServerStore: ObservableObject {
 
         let nextFailureCount = (consecutiveDynamicFailureCounts[serverID] ?? 0) + 1
         consecutiveDynamicFailureCounts[serverID] = nextFailureCount
-        handleRepeatedConnectionFailureIfNeeded(
-            serverID: serverID,
-            failureCount: nextFailureCount
-        )
 
         guard shouldDelayOfflineTransition(
             serverID: serverID,
@@ -833,19 +796,6 @@ final class ServerStore: ObservableObject {
             accumulator = (accumulator * 33 + Int(scalar.value)) % slotCount
         }
         return accumulator
-    }
-
-    private func handleRepeatedConnectionFailureIfNeeded(
-        serverID: UUID,
-        failureCount: Int
-    ) {
-        guard failureCount == autoCollapseFailureThreshold,
-              !collapsedServerIDs.contains(serverID),
-              latestConfig(for: serverID) != nil else {
-            return
-        }
-
-        setCollapsed(true, for: serverID)
     }
 
     private func shouldDelayOfflineTransition(

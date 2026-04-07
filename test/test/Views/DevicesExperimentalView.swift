@@ -2,6 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DevicesExperimentalView: View {
+    private static let cardGroupIndicatorWidth: CGFloat = 2.5
+    private static let cardGroupIndicatorHeight: CGFloat = 11
+
     @ObservedObject var store: ServerStore
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
@@ -11,8 +14,6 @@ struct DevicesExperimentalView: View {
     @State private var editingServer: ServerConfig?
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var draggedServerID: UUID?
-    @State private var expandedServerIDsInCompactMode: Set<UUID> = []
-    @State private var failedCardShakeCounts: [UUID: Int] = [:]
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -78,17 +79,6 @@ struct DevicesExperimentalView: View {
         return store.servers.filter { $0.resolvedGroupName == activeGroupName }
     }
 
-    private var failureLockedServerIDs: Set<UUID> {
-        Set(
-            store.servers.compactMap { server in
-                guard let stats = store.stats(for: server), !stats.isOnline else {
-                    return nil
-                }
-                return server.id
-            }
-        )
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -145,12 +135,6 @@ struct DevicesExperimentalView: View {
             .onDisappear {
                 draggedServerID = nil
             }
-            .onAppear {
-                syncFailureCollapsedState(for: failureLockedServerIDs)
-            }
-            .onChange(of: failureLockedServerIDs) { _, newValue in
-                syncFailureCollapsedState(for: newValue)
-            }
         }
         .preferredColorScheme(preferredColorScheme)
     }
@@ -189,7 +173,7 @@ struct DevicesExperimentalView: View {
 
     private var groupTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(availableGroupNames, id: \.self) { groupName in
                     let isSelected = groupName == activeGroupName
                     let groupAccentColor = ExperimentalGroupAccentPalette.color(for: groupName)
@@ -202,17 +186,17 @@ struct DevicesExperimentalView: View {
                             if let groupAccentColor {
                                 ExperimentalGroupIndicatorLine(
                                     color: groupAccentColor,
-                                    width: 3,
-                                    height: 14
+                                    width: 2.5,
+                                    height: 11
                                 )
                             }
 
                             Text(groupName)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
                         .background(
                             Capsule()
                                 .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
@@ -225,7 +209,7 @@ struct DevicesExperimentalView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 1)
         }
     }
 
@@ -276,12 +260,7 @@ struct DevicesExperimentalView: View {
         let cpuTrendValues = store.cpuUsageHistory(for: serverID)
         let memTrendValues = store.memUsageHistory(for: serverID)
         let isDragged = draggedServerID == serverID
-        let isCollapsed = store.isCollapsed(server.id)
-        let isExpandedInCompactMode = expandedServerIDsInCompactMode.contains(server.id)
-        let expansionLocked = failureLockedServerIDs.contains(serverID)
-        let showsDetailedCard = expansionLocked
-            ? false
-            : (homeCardView == .detailed ? !isCollapsed : isExpandedInCompactMode)
+        let showsDetailedCard = homeCardView == .detailed
 
         Group {
             if showsDetailedCard {
@@ -293,8 +272,6 @@ struct DevicesExperimentalView: View {
                     palette: palette
                 ) {
                     selectedServer = server
-                } onToggleCollapse: {
-                    toggleCardExpansion(for: server.id)
                 } onOpenTerminal: {
                     terminalServer = server
                 }
@@ -302,18 +279,14 @@ struct DevicesExperimentalView: View {
                 ExperimentalCompactServerCard(
                     config: server,
                     stats: stats,
-                    palette: palette,
-                    showsExpandControl: true
+                    palette: palette
                 ) {
                     selectedServer = server
-                } onToggleCollapse: {
-                    toggleCardExpansion(for: server.id)
                 }
             }
         }
         .scaleEffect(isDragged ? 1.02 : 1)
         .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isDragged)
-        .modifier(ExperimentalCardShake(animatableData: CGFloat(failedCardShakeCounts[serverID] ?? 0)))
         .onDrag {
             draggedServerID = serverID
             return NSItemProvider(object: serverID.uuidString as NSString)
@@ -334,45 +307,6 @@ struct DevicesExperimentalView: View {
 
     private func setHomeCardView(_ nextMode: ExperimentalHomeCardView) {
         experimentalHomeCardViewRawValue = nextMode.rawValue
-        expandedServerIDsInCompactMode.removeAll()
-
-        for server in store.servers {
-            let shouldCollapseCard = nextMode == .compact || failureLockedServerIDs.contains(server.id)
-            store.setCollapsed(shouldCollapseCard, for: server.id)
-        }
-    }
-
-    private func toggleCardExpansion(for serverID: UUID) {
-        if failureLockedServerIDs.contains(serverID) {
-            triggerFailedCardShake(for: serverID)
-            return
-        }
-
-        if homeCardView == .compact {
-            if expandedServerIDsInCompactMode.contains(serverID) {
-                expandedServerIDsInCompactMode.remove(serverID)
-            } else {
-                expandedServerIDsInCompactMode.insert(serverID)
-            }
-            return
-        }
-
-        store.toggleCollapsed(serverID)
-    }
-
-    private func syncFailureCollapsedState(for failedServerIDs: Set<UUID>) {
-        for serverID in failedServerIDs {
-            expandedServerIDsInCompactMode.remove(serverID)
-            if !store.isCollapsed(serverID) {
-                store.setCollapsed(true, for: serverID)
-            }
-        }
-    }
-
-    private func triggerFailedCardShake(for serverID: UUID) {
-        withAnimation(.easeInOut(duration: 0.42)) {
-            failedCardShakeCounts[serverID, default: 0] += 1
-        }
     }
 
     private var emptyState: some View {
@@ -454,21 +388,6 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     }
 }
 
-private struct ExperimentalCardShake: GeometryEffect {
-    var amount: CGFloat = 9
-    var shakesPerUnit: CGFloat = 3
-    var animatableData: CGFloat
-
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        ProjectionTransform(
-            CGAffineTransform(
-                translationX: amount * sin(animatableData * .pi * shakesPerUnit),
-                y: 0
-            )
-        )
-    }
-}
-
 private enum ExperimentalGroupAccentPalette {
     private static let colors: [Color] = [
         Color(red: 0.98, green: 0.49, blue: 0.25),
@@ -512,9 +431,7 @@ private struct ExperimentalCompactServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
     let palette: ExperimentalHomePalette
-    let showsExpandControl: Bool
     let onOpenDetail: () -> Void
-    let onToggleCollapse: () -> Void
 
     private var isOnline: Bool {
         stats?.isOnline == true
@@ -569,8 +486,8 @@ private struct ExperimentalCompactServerCard: View {
                 if let groupAccentColor {
                     ExperimentalGroupIndicatorLine(
                         color: groupAccentColor,
-                        width: 3,
-                        height: 14
+                        width: DevicesExperimentalView.cardGroupIndicatorWidth,
+                        height: DevicesExperimentalView.cardGroupIndicatorHeight
                     )
                 }
 
@@ -622,11 +539,7 @@ private struct ExperimentalCompactServerCard: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if showsExpandControl {
-                onToggleCollapse()
-            } else {
-                onOpenDetail()
-            }
+            onOpenDetail()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -683,7 +596,6 @@ private struct ExperimentalServerCard: View {
     let memTrendValues: [Double]
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
-    let onToggleCollapse: () -> Void
     let onOpenTerminal: () -> Void
 
     private var isOnline: Bool {
@@ -742,30 +654,21 @@ private struct ExperimentalServerCard: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            Button(action: onToggleCollapse) {
-                HStack(alignment: .center, spacing: 8) {
-                    if let groupAccentColor {
-                        ExperimentalGroupIndicatorLine(
-                            color: groupAccentColor,
-                            width: 3,
-                            height: 14
-                        )
-                    }
-
-                    HStack(spacing: 6) {
-                        Text(headerDisplayName)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundColor(deviceNameColor)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(palette.secondaryText.opacity(0.92))
-                    }
+            HStack(alignment: .center, spacing: 8) {
+                if let groupAccentColor {
+                    ExperimentalGroupIndicatorLine(
+                        color: groupAccentColor,
+                        width: DevicesExperimentalView.cardGroupIndicatorWidth,
+                        height: DevicesExperimentalView.cardGroupIndicatorHeight
+                    )
                 }
+
+                Text(headerDisplayName)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(deviceNameColor)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .buttonStyle(.plain)
 
             Spacer(minLength: 12)
 
