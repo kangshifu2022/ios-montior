@@ -543,20 +543,18 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
             content()
                 .offset(x: contentOffset)
                 .allowsHitTesting(openCardID != id)
-                .overlay(alignment: .leading) {
+                .overlay {
                     if openCardID == id {
-                        GeometryReader { geometry in
+                        HStack(spacing: 0) {
                             Color.clear
                                 .contentShape(Rectangle())
-                                .frame(
-                                    width: max(geometry.size.width - Layout.totalActionWidth, 0),
-                                    height: geometry.size.height,
-                                    alignment: .leading
-                                )
                                 .onTapGesture {
                                     closeActions()
                                 }
-                            }
+
+                            Color.clear
+                                .frame(width: Layout.totalActionWidth)
+                                .allowsHitTesting(false)
                         }
                     }
                 }
