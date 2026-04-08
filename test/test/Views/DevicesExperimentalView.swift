@@ -914,13 +914,7 @@ private struct ExperimentalCompactServerCard: View {
     }
 
     private var failurePill: some View {
-        Text("连接失败")
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .foregroundColor(Color(red: 0.82, green: 0.29, blue: 0.23))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color(red: 0.82, green: 0.29, blue: 0.23).opacity(0.10))
-            .clipShape(Capsule())
+        ExperimentalConnectionFailureBadge(palette: palette)
     }
 
     private var terminalButton: some View {
@@ -1199,13 +1193,7 @@ private struct ExperimentalServerCard: View {
     }
 
     private var connectionFailedBadge: some View {
-        Text("连接失败")
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundColor(Color(red: 0.82, green: 0.29, blue: 0.23))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(Color(red: 0.82, green: 0.29, blue: 0.23).opacity(0.10))
-            .clipShape(Capsule())
+        ExperimentalConnectionFailureBadge(palette: palette)
     }
 
     private var cpuTemperatureText: String? {
@@ -1819,6 +1807,24 @@ private struct ExperimentalHeaderBadge: View {
                 .minimumScaleFactor(0.72)
                 .allowsTightening(true)
         }
+    }
+}
+
+private struct ExperimentalConnectionFailureBadge: View {
+    let palette: ExperimentalHomePalette
+
+    private var accentColor: Color {
+        palette.offline.opacity(palette.isDark ? 0.94 : 0.98)
+    }
+
+    var body: some View {
+        Image(systemName: "wifi.slash")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(accentColor)
+            .frame(width: 28, height: 28)
+            .background(accentColor.opacity(palette.isDark ? 0.14 : 0.10))
+            .clipShape(Capsule())
+            .accessibilityLabel("连接失败")
     }
 }
 
