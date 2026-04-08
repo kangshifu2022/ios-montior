@@ -40,6 +40,8 @@ jobs:
             -project test/test.xcodeproj \
             -scheme test \
             -destination "generic/platform=iOS" \
+            -provisioningProfile "dd3688d7-0425-4667-a40b-b1c651e6a72a" \
             SWIFT_STRICT_CONCURRENCY=minimal \
             OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
+            PROVISIONING_PROFILE="dd3688d7-0425-4667-a40b-b1c651e6a72a" \
             CODE_SIGNING_ALLOWED=YES
