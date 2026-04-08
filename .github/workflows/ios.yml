@@ -22,7 +22,6 @@ jobs:
           echo "$PROFILE_BASE64" | base64 --decode > profile.mobileprovision
 
           security create-keychain -p "" build.keychain
-          security set-keychain-settings -lut 21600 build.keychain
           security unlock-keychain -p "" build.keychain
 
           security import cert.p12 \
@@ -35,8 +34,6 @@ jobs:
 
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-
-          ls -l ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: Build Archive
         run: |
