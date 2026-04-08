@@ -14,6 +14,7 @@ struct DevicesExperimentalView: View {
     @AppStorage(ExperimentalHomeCardView.storageKey) private var experimentalHomeCardViewRawValue = ExperimentalHomeCardView.detailed.rawValue
     @State private var selectedServer: ServerConfig?
     @State private var editingServer: ServerConfig?
+    @State private var pendingDeletionServer: ServerConfig?
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var showsExpandedGroupTags = false
     @State private var draggedServerID: UUID?
@@ -122,6 +123,17 @@ struct DevicesExperimentalView: View {
             }
             .sheet(item: $editingServer) { server in
                 AddServerView(store: store, editingServer: server)
+            }
+            .alert("删除设备", isPresented: deleteConfirmationPresented) {
+                Button("删除", role: .destructive) {
+                    confirmDeletePendingServer()
+                }
+
+                Button("取消", role: .cancel) {
+                    pendingDeletionServer = nil
+                }
+            } message: {
+                Text("确认删除“\(pendingDeletionServerDisplayName)”？删除后会移除这台设备的配置和缓存数据。")
             }
             .fullScreenCover(item: $terminalWorkspace.presentedSession) { session in
                 TerminalView(
@@ -405,7 +417,8 @@ struct DevicesExperimentalView: View {
                 editingServer = server
             },
             onDelete: {
-                store.deleteServer(id: serverID)
+                swipeActionServerID = nil
+                pendingDeletionServer = server
             }
         ) {
             if showsDetailedCard {
@@ -445,6 +458,36 @@ struct DevicesExperimentalView: View {
 
     private func setHomeCardView(_ nextMode: ExperimentalHomeCardView) {
         experimentalHomeCardViewRawValue = nextMode.rawValue
+    }
+
+    private var deleteConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeletionServer != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingDeletionServer = nil
+                }
+            }
+        )
+    }
+
+    private var pendingDeletionServerDisplayName: String {
+        guard let pendingDeletionServer else {
+            return "这台设备"
+        }
+
+        let trimmedName = pendingDeletionServer.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+
+        return pendingDeletionServer.host
+    }
+
+    private func confirmDeletePendingServer() {
+        guard let pendingDeletionServer else { return }
+        store.deleteServer(id: pendingDeletionServer.id)
+        self.pendingDeletionServer = nil
     }
 
     private func toggleHomeCardView() {
@@ -614,9 +657,15 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         return min(0, max(-Layout.totalActionWidth, proposedOffset))
     }
 
+    private var shouldShowSwipeActions: Bool {
+        contentOffset < -0.5
+    }
+
     var body: some View {
         ZStack(alignment: .trailing) {
-            swipeActions
+            if shouldShowSwipeActions {
+                swipeActions
+            }
 
             content()
                 .offset(x: contentOffset)
