@@ -20,11 +20,12 @@ jobs:
         run: |
           echo "$P12_BASE64" | base64 --decode > cert.p12
           echo "$PROFILE_BASE64" | base64 --decode > profile.mobileprovision
-
+          
           security create-keychain -p "1234" build.keychain
           security unlock-keychain -p "1234" build.keychain
           security set-keychain-settings build.keychain
 
+          echo "P12_PASSWORD=$P12_PASSWORD"
           security import cert.p12 \
             -k build.keychain \
             -P "$P12_PASSWORD" \
