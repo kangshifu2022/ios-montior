@@ -181,22 +181,6 @@ struct DevicesExperimentalView: View {
             HStack(spacing: 10) {
                 Spacer(minLength: 0)
 
-                if !terminalWorkspace.suspendedSessions.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(terminalWorkspace.suspendedSessions) { session in
-                                SuspendedTerminalButton(
-                                    session: session,
-                                    palette: palette
-                                ) {
-                                    terminalWorkspace.resume(session)
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 220)
-                }
-
                 Button(action: toggleHomeCardView) {
                     Image(systemName: homeCardViewToggleIconName)
                         .font(.system(size: 16, weight: .semibold))
@@ -405,6 +389,7 @@ struct DevicesExperimentalView: View {
         let stats = store.stats(for: server)
         let cpuTrendValues = store.cpuUsageHistory(for: serverID)
         let memTrendValues = store.memUsageHistory(for: serverID)
+        let hasSuspendedTerminal = terminalWorkspace.hasSuspendedSession(forServerID: serverID)
         let isDragged = draggedServerID == serverID
         let showsDetailedCard = homeCardView == .detailed
 
@@ -427,6 +412,7 @@ struct DevicesExperimentalView: View {
                     stats: stats,
                     cpuTrendValues: cpuTrendValues,
                     memTrendValues: memTrendValues,
+                    hasSuspendedTerminal: hasSuspendedTerminal,
                     palette: palette
                 ) {
                     selectedServer = server
@@ -437,9 +423,12 @@ struct DevicesExperimentalView: View {
                 ExperimentalCompactServerCard(
                     config: server,
                     stats: stats,
+                    hasSuspendedTerminal: hasSuspendedTerminal,
                     palette: palette
                 ) {
                     selectedServer = server
+                } onOpenTerminal: {
+                    terminalWorkspace.presentTerminal(for: server)
                 }
             }
         }
@@ -519,58 +508,6 @@ struct DevicesExperimentalView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: DevicesExperimentalView.detailedCardCornerRadius, style: .continuous))
         .shadow(color: palette.cardShadow, radius: 18, x: 0, y: 10)
-    }
-}
-
-private struct SuspendedTerminalButton: View {
-    let session: TerminalWorkspaceSession
-    let palette: ExperimentalHomePalette
-    let action: () -> Void
-
-    @ObservedObject private var viewModel: TerminalViewModel
-
-    init(
-        session: TerminalWorkspaceSession,
-        palette: ExperimentalHomePalette,
-        action: @escaping () -> Void
-    ) {
-        self.session = session
-        self.palette = palette
-        self.action = action
-        _viewModel = ObservedObject(wrappedValue: session.viewModel)
-    }
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: "terminal")
-                    .font(.system(size: 12, weight: .bold))
-
-                Text(titleText)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-            }
-            .foregroundColor(palette.primaryText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(palette.cardBackground.opacity(0.96))
-            .overlay(
-                Capsule()
-                    .stroke(palette.cardBorder, lineWidth: 1)
-            )
-            .clipShape(Capsule())
-            .shadow(color: palette.cardShadow.opacity(0.6), radius: 10, x: 0, y: 4)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("恢复 \(titleText) 终端")
-    }
-
-    private var titleText: String {
-        let trimmedTitle = viewModel.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedTitle.isEmpty {
-            return trimmedTitle
-        }
-        return session.server.name
     }
 }
 
@@ -837,11 +774,19 @@ private struct ExperimentalGroupIndicatorLine: View {
     }
 }
 
+private let suspendedTerminalAccentColor = Color(
+    red: 48.0 / 255.0,
+    green: 209.0 / 255.0,
+    blue: 88.0 / 255.0
+)
+
 private struct ExperimentalCompactServerCard: View {
     let config: ServerConfig
     let stats: ServerStats?
+    let hasSuspendedTerminal: Bool
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
+    let onOpenTerminal: () -> Void
 
     private var isOnline: Bool {
         stats?.isOnline == true
@@ -950,6 +895,8 @@ private struct ExperimentalCompactServerCard: View {
                 }
                 .fixedSize(horizontal: true, vertical: false)
             }
+
+            terminalButton
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -974,6 +921,26 @@ private struct ExperimentalCompactServerCard: View {
             .padding(.vertical, 7)
             .background(Color(red: 0.82, green: 0.29, blue: 0.23).opacity(0.10))
             .clipShape(Capsule())
+    }
+
+    private var terminalButton: some View {
+        Button(action: onOpenTerminal) {
+            Image(systemName: "terminal")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(terminalButtonForeground)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isOnline && !hasSuspendedTerminal)
+        .opacity(isOnline || hasSuspendedTerminal ? 1 : 0.45)
+        .accessibilityLabel(hasSuspendedTerminal ? "恢复挂起终端" : "打开终端")
+    }
+
+    private var terminalButtonForeground: Color {
+        if hasSuspendedTerminal {
+            return suspendedTerminalAccentColor
+        }
+        return isOnline ? palette.primaryText : palette.secondaryText
     }
 
     private func percentageText(_ value: Double?) -> String {
@@ -1012,6 +979,7 @@ private struct ExperimentalServerCard: View {
     let stats: ServerStats?
     let cpuTrendValues: [Double]
     let memTrendValues: [Double]
+    let hasSuspendedTerminal: Bool
     let palette: ExperimentalHomePalette
     let onOpenDetail: () -> Void
     let onOpenTerminal: () -> Void
@@ -1198,8 +1166,9 @@ private struct ExperimentalServerCard: View {
                 .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
-        .disabled(!isOnline)
-        .opacity(isOnline ? 1 : 0.45)
+        .disabled(!isOnline && !hasSuspendedTerminal)
+        .opacity(isOnline || hasSuspendedTerminal ? 1 : 0.45)
+        .accessibilityLabel(hasSuspendedTerminal ? "恢复挂起终端" : "打开终端")
     }
 
     private var downloadSpeedText: String {
@@ -1223,7 +1192,10 @@ private struct ExperimentalServerCard: View {
     }
 
     private var terminalButtonForeground: Color {
-        isOnline ? palette.primaryText : palette.secondaryText
+        if hasSuspendedTerminal {
+            return suspendedTerminalAccentColor
+        }
+        return isOnline ? palette.primaryText : palette.secondaryText
     }
 
     private var connectionFailedBadge: some View {

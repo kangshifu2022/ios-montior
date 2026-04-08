@@ -12,6 +12,14 @@ final class TerminalWorkspace: ObservableObject {
         Array(sessions.reversed()).filter { $0.id != presentedSession?.id }
     }
 
+    func suspendedSession(forServerID serverID: UUID) -> TerminalWorkspaceSession? {
+        suspendedSessions.first { $0.server.id == serverID }
+    }
+
+    func hasSuspendedSession(forServerID serverID: UUID) -> Bool {
+        suspendedSession(forServerID: serverID) != nil
+    }
+
     func presentTerminal(for server: ServerConfig) {
         if let existingSession = sessions.first(where: { $0.server.id == server.id }) {
             presentedSession = existingSession
