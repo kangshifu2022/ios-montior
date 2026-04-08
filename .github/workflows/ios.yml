@@ -54,12 +54,12 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -archivePath $RUNNER_TEMP/test.xcarchive \
+            SWIFT_STRICT_CONCURRENCY=minimal \
+            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
             DEVELOPMENT_TEAM=UV3V49Y5ZZ \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="dd3688d7-0425-4667-a40b-b1c651e6a72a" \
-            SWIFT_STRICT_CONCURRENCY=minimal \
-            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal"
+            "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*][name=test]"="dd3688d7-0425-4667-a40b-b1c651e6a72a"
 
       # ==============================
       # 4. 导出 IPA（Ad Hoc）
