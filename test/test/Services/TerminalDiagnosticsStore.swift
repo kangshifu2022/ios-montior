@@ -5,8 +5,8 @@ enum TerminalDiagnosticsStore {
         Notification.Name("terminalDiagnosticsDidChange")
     }
 
-    nonisolated private static let maxEntries = 300
-    nonisolated private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
+    nonisolated(unsafe) private static let maxEntries = 300
+    nonisolated(unsafe) private static let queue = DispatchQueue(label: "terminal.diagnostics.store")
 
     nonisolated static func record(
         _ message: String,

@@ -29,7 +29,25 @@ struct TerminalView: View {
             TerminalSurfaceView(viewModel: viewModel, colorScheme: colorScheme)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(terminalBackground)
+
+            VStack(spacing: 0) {
+                if let connectionNoticeText = viewModel.connectionNoticeText {
+                    TerminalConnectionStatusCard(
+                        title: viewModel.showsConnectionFailureNotice ? "连接失败" : viewModel.statusText,
+                        message: connectionNoticeText,
+                        showsProgress: viewModel.showsConnectionProgressNotice,
+                        isError: viewModel.showsConnectionFailureNotice
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                Spacer()
+            }
+            .allowsHitTesting(false)
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.connectionNoticeText)
         .background(screenBackground)
         .safeAreaInset(edge: .top, spacing: 0) {
             headerBar
@@ -175,12 +193,55 @@ struct TerminalView: View {
 
     private var errorPresented: Binding<Bool> {
         Binding(
-            get: { viewModel.lastError != nil },
+            get: { viewModel.lastError != nil && viewModel.lastError != viewModel.lastConnectionIssueText },
             set: { newValue in
                 if !newValue {
                     viewModel.clearError()
                 }
             }
         )
+    }
+}
+
+private struct TerminalConnectionStatusCard: View {
+    let title: String
+    let message: String
+    let showsProgress: Bool
+    let isError: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            if showsProgress {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(.primary)
+            } else {
+                Image(systemName: isError ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(isError ? Color.red : Color.blue)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Text(message)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isError ? Color.red.opacity(0.16) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
     }
 }

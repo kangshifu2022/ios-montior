@@ -6,6 +6,7 @@ import NIOSSH
 actor TerminalSession {
     enum Event: Sendable {
         case connecting(String)
+        case awaitingInitialOutput(String)
         case connected
         case output([UInt8])
         case error(String)
@@ -28,12 +29,18 @@ actor TerminalSession {
         onEvent: @escaping @Sendable (Event) async -> Void
     ) async {
         isStopping = false
+        let hasBootstrapCommand = !(bootstrapCommand ?? "").isEmpty
         TerminalDiagnosticsStore.record(
-            "start requested with size \(terminalSize.columns)x\(terminalSize.rows), bootstrap=\(!(bootstrapCommand ?? "").isEmpty)",
+            "start requested with size \(terminalSize.columns)x\(terminalSize.rows), bootstrap=\(hasBootstrapCommand)",
             category: "session",
             server: server
         )
-        await onEvent(.connecting(server.host))
+        TerminalDiagnosticsStore.record(
+            "starting ssh connection to \(server.host):\(server.port)",
+            category: "session",
+            server: server
+        )
+        await onEvent(.connecting("正在建立 SSH 连接…"))
 
         let algorithms = SSHAlgorithms.all
 
@@ -58,6 +65,12 @@ actor TerminalSession {
                 category: "session",
                 server: server
             )
+            TerminalDiagnosticsStore.record(
+                "requesting pty channel",
+                category: "session",
+                server: server
+            )
+            await onEvent(.connecting("SSH 已连接，正在打开终端…"))
 
             closeConnection = {
                 try? await client.close()
@@ -91,7 +104,12 @@ actor TerminalSession {
                     category: "session",
                     server: self.server
                 )
-                await onEvent(.connected)
+                TerminalDiagnosticsStore.record(
+                    "waiting for initial terminal output",
+                    category: "session",
+                    server: self.server
+                )
+                await onEvent(.awaitingInitialOutput("终端已打开，等待远端首屏输出…"))
 
                 if let bootstrapCommand, !bootstrapCommand.isEmpty {
                     TerminalDiagnosticsStore.record(
@@ -102,6 +120,7 @@ actor TerminalSession {
                     try await ttyStdinWriter.write(ByteBuffer(bytes: Array(bootstrapCommand.utf8)))
                 }
 
+                var hasDeliveredInitialOutput = false
                 for try await event in ttyOutput {
                     let bytes: [UInt8]
                     switch event {
@@ -109,6 +128,15 @@ actor TerminalSession {
                         bytes = Array(buffer.readableBytesView)
                     }
                     guard !bytes.isEmpty else { continue }
+                    if !hasDeliveredInitialOutput {
+                        hasDeliveredInitialOutput = true
+                        TerminalDiagnosticsStore.record(
+                            "received initial terminal output",
+                            category: "session",
+                            server: self.server
+                        )
+                        await onEvent(.connected)
+                    }
                     await onEvent(.output(bytes))
                 }
 
@@ -196,16 +224,16 @@ actor TerminalSession {
         let lowercased = message.lowercased()
 
         if lowercased.contains("authentication") || lowercased.contains("auth") {
-            return "authentication failed"
+            return "认证失败"
         }
         if lowercased.contains("timeout") {
-            return "connection timed out"
+            return "连接超时"
         }
         if lowercased.contains("refused") {
-            return "connection refused"
+            return "连接被拒绝"
         }
         if lowercased.contains("unreachable") || lowercased.contains("no route") {
-            return "host unreachable"
+            return "主机不可达"
         }
         return message
     }

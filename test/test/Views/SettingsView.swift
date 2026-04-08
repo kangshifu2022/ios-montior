@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: ServerStore
+    @EnvironmentObject private var terminalWorkspace: TerminalWorkspace
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @AppStorage(TerminalDefaultConnectionMode.storageKey) private var terminalDefaultConnectionModeRawValue = TerminalDefaultConnectionMode.directSSH.rawValue
     @AppStorage(TerminalRestorePolicy.storageKey) private var terminalRestorePolicyRawValue = TerminalRestorePolicy.alwaysStartNew.rawValue
@@ -87,7 +88,7 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    .onDelete { store.delete(at: $0) }
+                    .onDelete(perform: deleteServers)
                     
                     Button(action: { showAddServer = true }) {
                         HStack {
@@ -119,5 +120,14 @@ struct SettingsView: View {
 
     private var selectedTerminalRestorePolicy: TerminalRestorePolicy {
         TerminalRestorePolicy(rawValue: terminalRestorePolicyRawValue) ?? .alwaysStartNew
+    }
+
+    private func deleteServers(at offsets: IndexSet) {
+        let deletedIDs = offsets.map { store.servers[$0].id }
+        for id in deletedIDs {
+            terminalWorkspace.closeSessions(forServerID: id)
+            TerminalPersistenceStore.removeSessions(for: id)
+        }
+        store.delete(at: offsets)
     }
 }

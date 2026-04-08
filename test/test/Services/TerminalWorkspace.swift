@@ -39,6 +39,13 @@ final class TerminalWorkspace: ObservableObject {
         remove(session)
     }
 
+    func closeSessions(forServerID serverID: UUID) {
+        let matchingSessions = sessions.filter { $0.server.id == serverID }
+        for session in matchingSessions {
+            close(session)
+        }
+    }
+
     private func observeLifecycle(of session: TerminalWorkspaceSession) {
         dismissObservers[session.id] = session.viewModel.$shouldDismissTerminal
             .removeDuplicates()

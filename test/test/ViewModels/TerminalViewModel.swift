@@ -11,6 +11,9 @@ final class TerminalViewModel: ObservableObject {
     @Published var shouldDismissTerminal = false
     @Published var isShowingLaunchSheet = false
     @Published var isShowingTmuxSessionPicker = false
+    @Published private(set) var isAwaitingTerminalOutput = false
+    @Published private(set) var connectionStageText: String?
+    @Published private(set) var lastConnectionIssueText: String?
     @Published private(set) var keyboardFocusRequestID = 0
     @Published private(set) var recoverableSessions: [TerminalSavedSession] = []
     @Published private(set) var latestSnapshot: TerminalSavedSession?
@@ -33,9 +36,12 @@ final class TerminalViewModel: ObservableObject {
     private var activeSessionRecord: TerminalSavedSession?
     private var scrollbackBuffer = Data()
     private var scrollbackFlushTask: Task<Void, Never>?
+    private var connectionTimeoutTask: Task<Void, Never>?
+    private var activeConnectionAttemptID = 0
 
     private static let maxScrollbackBytes = 96 * 1024
     private static let replayInspectionWindowBytes = 2048
+    private static let connectionStageTimeoutNanoseconds: UInt64 = 15_000_000_000
 
     private struct BootstrapCommandOverride {
         let recordID: String
@@ -56,6 +62,12 @@ final class TerminalViewModel: ObservableObject {
         if isConnecting {
             return "连接中"
         }
+        if isAwaitingTerminalOutput {
+            return "等待响应"
+        }
+        if lastConnectionIssueText != nil {
+            return "连接失败"
+        }
         return isConnected ? "已连接" : "未连接"
     }
 
@@ -72,6 +84,18 @@ final class TerminalViewModel: ObservableObject {
     var sessionSummaryText: String {
         guard let activeSessionRecord else {
             return statusText
+        }
+
+        if let connectionNoticeText {
+            switch activeSessionRecord.kind {
+            case .persistentTmux:
+                if let sessionName = activeSessionRecord.sessionName, !sessionName.isEmpty {
+                    return "tmux · \(sessionName) · \(connectionNoticeText)"
+                }
+                return "tmux · \(connectionNoticeText)"
+            case .directSSH:
+                return "SSH · \(connectionNoticeText)"
+            }
         }
 
         switch activeSessionRecord.kind {
@@ -91,6 +115,30 @@ final class TerminalViewModel: ObservableObject {
 
     var hasSessionToSuspend: Bool {
         activeSessionRecord != nil
+    }
+
+    var connectionNoticeText: String? {
+        if showsConnectionProgressNotice {
+            if let connectionStageText, !connectionStageText.isEmpty {
+                return connectionStageText
+            }
+
+            if isAwaitingTerminalOutput {
+                return "终端已打开，正在等待远端首屏输出…"
+            }
+
+            return "正在建立 SSH 连接…"
+        }
+
+        return lastConnectionIssueText
+    }
+
+    var showsConnectionProgressNotice: Bool {
+        isConnecting || isAwaitingTerminalOutput
+    }
+
+    var showsConnectionFailureNotice: Bool {
+        !showsConnectionProgressNotice && lastConnectionIssueText != nil
     }
 
     func prepareLaunchIfNeeded() {
@@ -123,7 +171,13 @@ final class TerminalViewModel: ObservableObject {
     func connectIfNeeded() {
         guard sessionTask == nil, let activeSessionRecord else { return }
         lastError = nil
+        lastConnectionIssueText = nil
+        shouldDismissTerminal = false
         keepsSessionAlive = true
+        isConnected = false
+        isConnecting = true
+        isAwaitingTerminalOutput = false
+        updateConnectionStage("准备建立 SSH 连接…")
         TerminalDiagnosticsStore.record(
             "connect requested",
             category: "connection",
@@ -131,6 +185,8 @@ final class TerminalViewModel: ObservableObject {
             session: activeSessionRecord
         )
         let bootstrapCommand = self.connectBootstrapCommand(for: activeSessionRecord)
+        activeConnectionAttemptID &+= 1
+        let attemptID = activeConnectionAttemptID
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
@@ -138,7 +194,7 @@ final class TerminalViewModel: ObservableObject {
                 terminalSize: self.terminalSize,
                 bootstrapCommand: bootstrapCommand
             ) { event in
-                await self.handle(event)
+                await self.handle(event, attemptID: attemptID)
             }
         }
     }
@@ -286,6 +342,10 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask?.cancel()
         remoteTmuxFetchTask = nil
         isRefreshingRemoteTmuxSessions = false
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
+        connectionStageText = nil
+        isAwaitingTerminalOutput = false
         flushScrollbackNowIfNeeded()
         scrollbackFlushTask?.cancel()
         scrollbackFlushTask = nil
@@ -300,6 +360,7 @@ final class TerminalViewModel: ObservableObject {
         isConnecting = false
         if clearError {
             lastError = nil
+            lastConnectionIssueText = nil
         }
     }
 
@@ -466,10 +527,15 @@ final class TerminalViewModel: ObservableObject {
         remoteTmuxFetchTask = nil
         isRefreshingRemoteTmuxSessions = false
         lastError = nil
+        lastConnectionIssueText = nil
+        connectionStageText = nil
         terminalTitle = nil
         shouldDismissTerminal = false
         isShowingLaunchSheet = false
         isShowingTmuxSessionPicker = false
+        isConnected = false
+        isConnecting = false
+        isAwaitingTerminalOutput = false
         activeSessionRecord = record
         scrollbackBuffer = record.scrollback
         scrollbackFlushTask?.cancel()
@@ -485,28 +551,64 @@ final class TerminalViewModel: ObservableObject {
         connectIfNeeded()
     }
 
-    private func handle(_ event: TerminalSession.Event) async {
-        switch event {
-        case .connecting:
+    private func handle(_ event: TerminalSession.Event, attemptID: Int) async {
+        guard attemptID == activeConnectionAttemptID else {
+            if case .output = event {
+                return
+            }
+
             TerminalDiagnosticsStore.record(
-                "event connecting",
+                "ignored stale event: \(Self.eventSummary(for: event))",
+                category: "event",
+                server: server,
+                session: activeSessionRecord
+            )
+            return
+        }
+
+        switch event {
+        case .connecting(let message):
+            TerminalDiagnosticsStore.record(
+                "event connecting: \(message)",
                 category: "event",
                 server: server,
                 session: activeSessionRecord
             )
             isConnecting = true
             isConnected = false
+            isAwaitingTerminalOutput = false
             lastError = nil
-        case .connected:
+            lastConnectionIssueText = nil
+            updateConnectionStage(message)
+        case .awaitingInitialOutput(let message):
             TerminalDiagnosticsStore.record(
-                "event connected",
+                "event awaiting initial output: \(message)",
                 category: "event",
                 server: server,
                 session: activeSessionRecord
             )
             isConnecting = false
             isConnected = true
+            isAwaitingTerminalOutput = true
+            lastError = nil
+            lastConnectionIssueText = nil
             shouldDismissTerminal = false
+            updateConnectionStage(message)
+        case .connected:
+            TerminalDiagnosticsStore.record(
+                "event connected (initial output received)",
+                category: "event",
+                server: server,
+                session: activeSessionRecord
+            )
+            isConnecting = false
+            isConnected = true
+            isAwaitingTerminalOutput = false
+            shouldDismissTerminal = false
+            connectionTimeoutTask?.cancel()
+            connectionTimeoutTask = nil
+            connectionStageText = nil
+            lastConnectionIssueText = nil
             Task {
                 try? await session.resize(to: terminalSize)
             }
@@ -525,9 +627,14 @@ final class TerminalViewModel: ObservableObject {
             )
             isConnecting = false
             isConnected = false
+            isAwaitingTerminalOutput = false
+            connectionTimeoutTask?.cancel()
+            connectionTimeoutTask = nil
+            connectionStageText = nil
+            lastConnectionIssueText = message
             lastError = message
         case .disconnected:
-            let endedGracefully = lastError == nil
+            let endedGracefully = lastConnectionIssueText == nil && lastError == nil
             let shouldDismissAfterDisconnect = !suppressNextDisconnectDismiss && (exitRequestedByUser || endedGracefully)
             TerminalDiagnosticsStore.record(
                 "event disconnected, exitRequested=\(exitRequestedByUser), graceful=\(endedGracefully), suppressDismiss=\(suppressNextDisconnectDismiss)",
@@ -539,6 +646,10 @@ final class TerminalViewModel: ObservableObject {
             flushScrollbackNowIfNeeded()
             isConnecting = false
             isConnected = false
+            isAwaitingTerminalOutput = false
+            connectionTimeoutTask?.cancel()
+            connectionTimeoutTask = nil
+            connectionStageText = nil
             sessionTask = nil
 
             refreshSessionSummaries()
@@ -615,6 +726,40 @@ final class TerminalViewModel: ObservableObject {
         keyboardFocusRequestID &+= 1
     }
 
+    private func updateConnectionStage(_ message: String) {
+        connectionStageText = message
+        scheduleConnectionTimeout(for: message)
+    }
+
+    private func scheduleConnectionTimeout(for message: String) {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.connectionStageTimeoutNanoseconds)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard let self,
+                      self.showsConnectionProgressNotice,
+                      self.connectionStageText == message else {
+                    return
+                }
+
+                let timeoutMessage = "连接超时：\(message)"
+                TerminalDiagnosticsStore.record(
+                    "connection timeout at stage \(message)",
+                    level: .warning,
+                    category: "connection",
+                    server: self.server,
+                    session: self.activeSessionRecord
+                )
+                self.connectionStageText = nil
+                self.lastConnectionIssueText = timeoutMessage
+                self.lastError = timeoutMessage
+                self.disconnect(clearError: false)
+            }
+        }
+    }
+
     private func connectBootstrapCommand(for record: TerminalSavedSession) -> String? {
         if let bootstrapCommandOverride,
            bootstrapCommandOverride.recordID == record.id {
@@ -655,6 +800,23 @@ final class TerminalViewModel: ObservableObject {
         }
 
         return data
+    }
+
+    private static func eventSummary(for event: TerminalSession.Event) -> String {
+        switch event {
+        case .connecting(let message):
+            return "connecting(\(message))"
+        case .awaitingInitialOutput(let message):
+            return "awaitingInitialOutput(\(message))"
+        case .connected:
+            return "connected"
+        case .output:
+            return "output"
+        case .error(let message):
+            return "error(\(message))"
+        case .disconnected:
+            return "disconnected"
+        }
     }
 
     private func bootstrapCommand(for record: TerminalSavedSession) -> String? {

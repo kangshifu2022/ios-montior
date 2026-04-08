@@ -133,7 +133,7 @@ struct DevicesExperimentalView: View {
                     pendingDeletionServer = nil
                 }
             } message: {
-                Text("确认删除“\(pendingDeletionServerDisplayName)”？删除后会移除这台设备的配置和缓存数据。")
+                Text("确认删除“\(pendingDeletionServerDisplayName)”？删除后会移除这台设备的配置、监控缓存和本地终端会话数据。")
             }
             .fullScreenCover(item: $terminalWorkspace.presentedSession) { session in
                 TerminalView(
@@ -486,6 +486,8 @@ struct DevicesExperimentalView: View {
 
     private func confirmDeletePendingServer() {
         guard let pendingDeletionServer else { return }
+        terminalWorkspace.closeSessions(forServerID: pendingDeletionServer.id)
+        TerminalPersistenceStore.removeSessions(for: pendingDeletionServer.id)
         store.deleteServer(id: pendingDeletionServer.id)
         self.pendingDeletionServer = nil
     }
@@ -876,6 +878,10 @@ private struct ExperimentalCompactServerCard: View {
         cpuUsageTint(for: stats?.cpuUsage)
     }
 
+    private var memTint: Color {
+        usageTint(for: stats?.memUsage)
+    }
+
     private var showsFailureState: Bool {
         stats != nil && !isOnline
     }
@@ -926,7 +932,7 @@ private struct ExperimentalCompactServerCard: View {
                         title: "MEM",
                         value: memText,
                         isActive: isOnline,
-                        accent: palette.memoryAccent,
+                        accent: memTint,
                         palette: palette
                     )
 
@@ -978,6 +984,10 @@ private struct ExperimentalCompactServerCard: View {
     }
 
     private func cpuUsageTint(for value: Double?) -> Color {
+        usageTint(for: value)
+    }
+
+    private func usageTint(for value: Double?) -> Color {
         guard let value else {
             return palette.secondaryText
         }
@@ -1143,6 +1153,7 @@ private struct ExperimentalServerCard: View {
             isActive: isOnline && stats?.cpuUsage != nil,
             valueTint: cpuUsageTint,
             trendValues: cpuTrendSeries,
+            sparklineYAxisMode: .adaptive,
             palette: palette
         )
     }
@@ -1152,8 +1163,9 @@ private struct ExperimentalServerCard: View {
             label: "MEM %",
             percentage: displayedPercentageValue(stats?.memUsage),
             isActive: isOnline && stats?.memUsage != nil,
-            valueTint: palette.memoryAccent,
+            valueTint: memUsageTint,
             trendValues: memTrendSeries,
+            sparklineYAxisMode: .absolute,
             palette: palette
         )
     }
@@ -1248,11 +1260,19 @@ private struct ExperimentalServerCard: View {
     }
 
     private var cpuUsageTint: Color {
-        guard let usage = stats?.cpuUsage, isOnline else {
+        usageTint(for: stats?.cpuUsage)
+    }
+
+    private var memUsageTint: Color {
+        usageTint(for: stats?.memUsage)
+    }
+
+    private func usageTint(for value: Double?) -> Color {
+        guard let value, isOnline else {
             return palette.secondaryText
         }
 
-        switch usage {
+        switch value {
         case ..<0.20:
             return Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0)
         case ..<0.40:
@@ -1323,6 +1343,7 @@ private struct ExperimentalMetricTile: View {
     let isActive: Bool
     let valueTint: Color
     let trendValues: [Double]
+    let sparklineYAxisMode: ExperimentalUsageTrendSparkline.YAxisMode
     let palette: ExperimentalHomePalette
 
     private var displayColor: Color {
@@ -1352,6 +1373,7 @@ private struct ExperimentalMetricTile: View {
                 values: trendValues,
                 isActive: isActive,
                 accent: valueTint,
+                yAxisMode: sparklineYAxisMode,
                 palette: palette
             )
             .frame(width: 70, height: 28, alignment: .center)
@@ -1433,9 +1455,15 @@ private struct ExperimentalCompactRateCapsule: View {
 }
 
 private struct ExperimentalUsageTrendSparkline: View {
+    enum YAxisMode {
+        case adaptive
+        case absolute
+    }
+
     let values: [Double]
     let isActive: Bool
     let accent: Color
+    let yAxisMode: YAxisMode
     let palette: ExperimentalHomePalette
 
     private let minimumVisibleRange: Double = 0.12
@@ -1445,19 +1473,24 @@ private struct ExperimentalUsageTrendSparkline: View {
     }
 
     private var normalizedValues: [Double] {
-        guard let minValue = clampedValues.min(),
-              let maxValue = clampedValues.max() else {
-            return []
-        }
+        switch yAxisMode {
+        case .adaptive:
+            guard let minValue = clampedValues.min(),
+                  let maxValue = clampedValues.max() else {
+                return []
+            }
 
-        let range = maxValue - minValue
-        let padding = max(0.015, (minimumVisibleRange - range) / 2)
-        let lowerBound = max(0, minValue - padding)
-        let upperBound = min(1, maxValue + padding)
-        let effectiveRange = max(upperBound - lowerBound, 0.000_1)
+            let range = maxValue - minValue
+            let padding = max(0.015, (minimumVisibleRange - range) / 2)
+            let lowerBound = max(0, minValue - padding)
+            let upperBound = min(1, maxValue + padding)
+            let effectiveRange = max(upperBound - lowerBound, 0.000_1)
 
-        return clampedValues.map { value in
-            min(max((value - lowerBound) / effectiveRange, 0), 1)
+            return clampedValues.map { value in
+                min(max((value - lowerBound) / effectiveRange, 0), 1)
+            }
+        case .absolute:
+            return clampedValues
         }
     }
 

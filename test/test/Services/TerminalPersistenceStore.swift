@@ -45,6 +45,12 @@ enum TerminalPersistenceStore {
             .first
     }
 
+    static func removeSessions(for serverID: UUID) {
+        var sessions = loadSessions()
+        sessions.removeAll { $0.serverID == serverID }
+        saveSessions(sessions)
+    }
+
     static func beginDirectSession(for server: ServerConfig) -> TerminalSavedSession {
         let now = Date()
         let record = TerminalSavedSession(

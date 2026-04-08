@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AddServerView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var terminalWorkspace: TerminalWorkspace
     @ObservedObject var store: ServerStore
     @FocusState private var isGroupNameFieldFocused: Bool
     
@@ -157,7 +158,7 @@ struct AddServerView: View {
                             showsDeleteConfirmation = true
                         }
                     } footer: {
-                        Text("删除后会移除这台设备的配置和缓存数据。")
+                        Text("删除后会移除这台设备的配置、监控缓存和本地终端会话数据。")
                     }
                 }
             }
@@ -174,7 +175,7 @@ struct AddServerView: View {
 
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("确认删除这台设备？")
+                Text("确认彻底删除这台设备？本地终端会话和缓存数据也会一并清除。")
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -211,6 +212,8 @@ struct AddServerView: View {
             return
         }
 
+        terminalWorkspace.closeSessions(forServerID: id)
+        TerminalPersistenceStore.removeSessions(for: id)
         store.deleteServer(id: id)
         dismiss()
     }
