@@ -93,7 +93,6 @@ final class TerminalWorkspace: ObservableObject {
     }
 }
 
-@MainActor 
 final class TerminalWorkspaceSession: Identifiable {
     let id = UUID()
     let server: ServerConfig
