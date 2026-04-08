@@ -1,45 +1,92 @@
-name: iOS starter workflow
+name: iOS Build (AdHoc IPA)
+
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
+
 jobs:
   build:
-    name: Build and Test
     runs-on: macos-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ==============================
+      # 1. 安装证书（p12）
+      # ==============================
       - name: Install certificate
         run: |
           CERT_PATH=$RUNNER_TEMP/cert.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
-          echo "${{ secrets.CERTIFICATES_P12 }}" | base64 --decode -o $CERT_PATH
+
+          echo "${{ secrets.CERTIFICATES_P12 }}" | base64 --decode > $CERT_PATH
+
           security create-keychain -p "temp123" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "temp123" $KEYCHAIN_PATH
-          security import $CERT_PATH -P "${{ secrets.CERTIFICATES_P12_PASSWORD }}" \
-            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -s -k "temp123" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
 
-      - name: Build
+          security import $CERT_PATH \
+            -P "${{ secrets.CERTIFICATES_P12_PASSWORD }}" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k "temp123" $KEYCHAIN_PATH
+
+          # 🔴 关键：让 Xcode 能找到证书
+          security list-keychains -d user -s $KEYCHAIN_PATH login.keychain
+
+      # ==============================
+      # 2. 安装 Provisioning Profile
+      # ==============================
+      - name: Install provisioning profile
         run: |
-          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > $RUNNER_TEMP/AuthKey.p8
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+
+      # ==============================
+      # 3. Archive（构建）
+      # ==============================
+      - name: Build Archive
+        run: |
           xcodebuild archive \
             -project test/test.xcodeproj \
             -scheme test \
             -sdk iphoneos \
             -configuration Release \
             -archivePath $RUNNER_TEMP/test.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath $RUNNER_TEMP/AuthKey.p8 \
-            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} \
-            SWIFT_STRICT_CONCURRENCY=minimal \
-            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
-            CODE_SIGN_STYLE=Automatic \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM=UV3V49Y5ZZ
+            DEVELOPMENT_TEAM=UV3V49Y5ZZ \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution"
+
+      # ==============================
+      # 4. 导出 IPA（Ad Hoc）
+      # ==============================
+      - name: Export IPA
+        run: |
+          cat > $RUNNER_TEMP/exportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>ad-hoc</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/test.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/exportOptions.plist \
+            -exportPath $RUNNER_TEMP/build
+
+      # ==============================
+      # 5. 上传 IPA
+      # ==============================
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: $RUNNER_TEMP/build/*.ipa
