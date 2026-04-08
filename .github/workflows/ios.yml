@@ -43,6 +43,15 @@ jobs:
           <dict>
               <key>method</key>
               <string>ad-hoc</string>
+
+              <key>signingStyle</key>
+              <string>manual</string>
+
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.wenchaoliu.test</key>
+                  <string>test</string>
+              </dict>
           </dict>
           </plist>
           EOF
