@@ -41,7 +41,10 @@ final class TerminalViewModel: ObservableObject {
     private var scrollbackBuffer = Data()
     private var scrollbackFlushTask: Task<Void, Never>?
     private var connectionTimeoutTask: Task<Void, Never>?
+    private var disconnectTask: Task<Void, Never>?
     private var activeConnectionAttemptID = 0
+    private var isDisconnectingSession = false
+    private var pendingConnectAfterDisconnect = false
 
     private static let maxScrollbackBytes = 96 * 1024
     private static let replayInspectionWindowBytes = 2048
@@ -129,7 +132,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     var shouldReuseWorkspaceSession: Bool {
-        activeSessionRecord != nil && (isConnected || isAwaitingTerminalOutput)
+        activeSessionRecord != nil && (isConnected || isAwaitingTerminalOutput || isConnecting)
     }
 
     var connectionNoticeText: String? {
@@ -184,9 +187,20 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func connectIfNeeded() {
+        guard !isDisconnectingSession else {
+            pendingConnectAfterDisconnect = true
+            TerminalDiagnosticsStore.record(
+                "connect deferred while previous session teardown is still in progress",
+                category: "connection",
+                server: server,
+                session: activeSessionRecord
+            )
+            return
+        }
         guard sessionTask == nil, let activeSessionRecord else { return }
         lastError = nil
         lastConnectionIssueText = nil
+        pendingConnectAfterDisconnect = false
         shouldDismissTerminal = false
         keepsSessionAlive = true
         isConnected = false
@@ -447,9 +461,21 @@ final class TerminalViewModel: ObservableObject {
         scrollbackFlushTask = nil
         sessionTask?.cancel()
         sessionTask = nil
+        pendingConnectAfterDisconnect = false
+        disconnectTask?.cancel()
+        isDisconnectingSession = true
 
-        Task {
-            await session.stop()
+        disconnectTask = Task { [weak self] in
+            guard let self else { return }
+            await self.session.stop()
+            await MainActor.run {
+                self.isDisconnectingSession = false
+                self.disconnectTask = nil
+                if self.pendingConnectAfterDisconnect {
+                    self.pendingConnectAfterDisconnect = false
+                    self.connectIfNeeded()
+                }
+            }
         }
 
         isConnected = false

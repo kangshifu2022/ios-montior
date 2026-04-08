@@ -17,7 +17,8 @@ actor TerminalSession {
     private var stdinWriter: (@Sendable ([UInt8]) async throws -> Void)?
     private var resizePTY: (@Sendable (TerminalSize) async throws -> Void)?
     private var closeConnection: (@Sendable () async -> Void)?
-    private var isStopping = false
+    private var activeRunID: UInt64 = 0
+    private var stoppingRunIDs = Set<UInt64>()
 
     init(server: ServerConfig) {
         self.server = server
@@ -28,7 +29,9 @@ actor TerminalSession {
         bootstrapCommand: String? = nil,
         onEvent: @escaping @Sendable (Event) async -> Void
     ) async {
-        isStopping = false
+        activeRunID &+= 1
+        let runID = activeRunID
+        stoppingRunIDs.remove(runID)
         let hasBootstrapCommand = !(bootstrapCommand ?? "").isEmpty
         TerminalDiagnosticsStore.record(
             "start requested with size \(terminalSize.columns)x\(terminalSize.rows), bootstrap=\(hasBootstrapCommand)",
@@ -72,9 +75,9 @@ actor TerminalSession {
             )
             await onEvent(.connecting("SSH 已连接，正在打开终端…"))
 
-            closeConnection = {
+            setCloseConnection({
                 try? await client.close()
-            }
+            }, for: runID)
 
             try await client.withPTY(
                 SSHChannelRequestEvent.PseudoTerminalRequest(
@@ -87,10 +90,10 @@ actor TerminalSession {
                     terminalModes: .init([.ECHO: 1])
                 )
             ) { ttyOutput, ttyStdinWriter in
-                self.setStdinWriter { input in
+                self.setStdinWriter(for: runID) { input in
                     try await ttyStdinWriter.write(ByteBuffer(bytes: input))
                 }
-                self.setPTYResizer { size in
+                self.setPTYResizer(for: runID) { size in
                     try await ttyStdinWriter.changeSize(
                         cols: size.columns,
                         rows: size.rows,
@@ -154,7 +157,8 @@ actor TerminalSession {
             )
             await onEvent(.disconnected)
         } catch {
-            if !isStopping, !Self.isBenignClosure(error) {
+            let wasStopping = stoppingRunIDs.contains(runID)
+            if !wasStopping, !Self.isBenignClosure(error) {
                 TerminalDiagnosticsStore.record(
                     "session error: \(Self.describe(error))",
                     level: .error,
@@ -172,7 +176,7 @@ actor TerminalSession {
             await onEvent(.disconnected)
         }
 
-        clearState()
+        clearState(for: runID)
     }
 
     func send(_ input: [UInt8]) async throws {
@@ -190,33 +194,56 @@ actor TerminalSession {
     }
 
     func stop() async {
-        isStopping = true
+        let runID = activeRunID
+        stoppingRunIDs.insert(runID)
         TerminalDiagnosticsStore.record(
             "stop requested",
             category: "session",
             server: server
         )
-        stdinWriter = nil
-        resizePTY = nil
+        if activeRunID == runID {
+            stdinWriter = nil
+            resizePTY = nil
+        }
+        let closeConnection = activeRunID == runID ? self.closeConnection : nil
         if let closeConnection {
             await closeConnection()
         }
-        closeConnection = nil
+        if activeRunID == runID {
+            self.closeConnection = nil
+        }
     }
 
-    private func setStdinWriter(_ writer: @escaping @Sendable ([UInt8]) async throws -> Void) {
+    private func setStdinWriter(
+        for runID: UInt64,
+        _ writer: @escaping @Sendable ([UInt8]) async throws -> Void
+    ) {
+        guard activeRunID == runID else { return }
         stdinWriter = writer
     }
 
-    private func setPTYResizer(_ resizer: @escaping @Sendable (TerminalSize) async throws -> Void) {
+    private func setPTYResizer(
+        for runID: UInt64,
+        _ resizer: @escaping @Sendable (TerminalSize) async throws -> Void
+    ) {
+        guard activeRunID == runID else { return }
         resizePTY = resizer
     }
 
-    private func clearState() {
+    private func setCloseConnection(
+        _ closer: @escaping @Sendable () async -> Void,
+        for runID: UInt64
+    ) {
+        guard activeRunID == runID else { return }
+        closeConnection = closer
+    }
+
+    private func clearState(for runID: UInt64) {
+        defer { stoppingRunIDs.remove(runID) }
+        guard activeRunID == runID else { return }
         stdinWriter = nil
         resizePTY = nil
         closeConnection = nil
-        isStopping = false
     }
 
     private static func describe(_ error: Error) -> String {
