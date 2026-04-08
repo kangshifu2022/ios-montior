@@ -735,11 +735,17 @@ final class ServerStore: ObservableObject {
         previous: ServerDynamicInfo?,
         capturedAt: Date
     ) {
+        let hasExplicitCPUUsage = hasExplicitCPUUsageSample(in: dynamicInfo)
+
         guard var currentSample = dynamicInfo.liveSample, currentSample.hasCounters else {
             if let previous, previous.isOnline {
                 dynamicInfo.liveSample = previous.liveSample
             }
-            preserveDerivedMetrics(from: previous, to: &dynamicInfo)
+            if hasExplicitCPUUsage {
+                preserveTransferRates(from: previous, to: &dynamicInfo)
+            } else {
+                preserveDerivedMetrics(from: previous, to: &dynamicInfo)
+            }
             return
         }
 
@@ -750,7 +756,9 @@ final class ServerStore: ObservableObject {
               previous.isOnline,
               let previousSample = previous.liveSample,
               let previousCapturedAt = previousSample.capturedAt else {
-            preserveCPUUsage(from: previous, to: &dynamicInfo)
+            if !hasExplicitCPUUsage {
+                preserveCPUUsage(from: previous, to: &dynamicInfo)
+            }
             resetTransferRates(to: &dynamicInfo)
             return
         }
@@ -758,15 +766,19 @@ final class ServerStore: ObservableObject {
         let elapsed = capturedAt.timeIntervalSince(previousCapturedAt)
         guard elapsed > 0, elapsed <= maxDerivedMetricSampleAge else {
             // Transfer rates should not survive long gaps such as app relaunches.
-            preserveCPUUsage(from: previous, to: &dynamicInfo)
+            if !hasExplicitCPUUsage {
+                preserveCPUUsage(from: previous, to: &dynamicInfo)
+            }
             resetTransferRates(to: &dynamicInfo)
             return
         }
 
-        if let cpuUsage = deriveCPUUsage(previous: previousSample, current: currentSample) {
-            dynamicInfo.cpuUsage = cpuUsage
-        } else {
-            dynamicInfo.cpuUsage = previous.cpuUsage
+        if !hasExplicitCPUUsage {
+            if let cpuUsage = deriveCPUUsage(previous: previousSample, current: currentSample) {
+                dynamicInfo.cpuUsage = cpuUsage
+            } else {
+                dynamicInfo.cpuUsage = previous.cpuUsage
+            }
         }
 
         if let downloadBytesPerSecond = deriveBytesPerSecond(
@@ -815,6 +827,11 @@ final class ServerStore: ObservableObject {
     private func preserveDerivedMetrics(from previous: ServerDynamicInfo?, to dynamicInfo: inout ServerDynamicInfo) {
         guard let previous, previous.isOnline else { return }
         dynamicInfo.cpuUsage = previous.cpuUsage
+        preserveTransferRates(from: previous, to: &dynamicInfo)
+    }
+
+    private func preserveTransferRates(from previous: ServerDynamicInfo?, to dynamicInfo: inout ServerDynamicInfo) {
+        guard let previous, previous.isOnline else { return }
         dynamicInfo.downloadSpeed = previous.downloadSpeed
         dynamicInfo.uploadSpeed = previous.uploadSpeed
         dynamicInfo.diskReadSpeed = previous.diskReadSpeed
@@ -834,6 +851,17 @@ final class ServerStore: ObservableObject {
         dynamicInfo.uploadSpeed = "0k/s"
         dynamicInfo.diskReadSpeed = "0k/s"
         dynamicInfo.diskWriteSpeed = "0k/s"
+    }
+
+    private func hasExplicitCPUUsageSample(in dynamicInfo: ServerDynamicInfo) -> Bool {
+        let lines = dynamicInfo.rawOutput.components(separatedBy: .newlines)
+        guard let markerIndex = lines.firstIndex(of: "=CPU_USAGE="),
+              markerIndex + 1 < lines.count else {
+            return false
+        }
+
+        let valueLine = lines[markerIndex + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return Double(valueLine) != nil
     }
 
     private func deriveCPUUsage(previous: ServerLiveSample, current: ServerLiveSample) -> Double? {

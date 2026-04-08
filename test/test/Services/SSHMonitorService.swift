@@ -224,9 +224,9 @@ final class SSHMonitorService {
     private static let fullStatsScript = """
     echo "=OS="; (if [ -f /etc/os-release ]; then . /etc/os-release; echo "${PRETTY_NAME:-$NAME}"; elif [ -f /etc/openwrt_release ]; then . /etc/openwrt_release; echo "${DISTRIB_DESCRIPTION:-$DISTRIB_ID $DISTRIB_RELEASE}"; else uname -sr; fi)
     echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
-    echo "=CPU_INFO="; (awk -F: '/model name|Hardware|system type|machine/ {gsub(/^[ \\t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || uname -m 2>/dev/null || echo unknown)
-    echo "=CPU_CORES="; (awk '/^processor/ {n++} END {print (n > 0 ? n : 1)}' /proc/cpuinfo 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
-    echo "=CPU_FREQ="; (if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf "%.0f MHz\\n", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null; elif [ -r /proc/cpuinfo ]; then awk -F: '/cpu MHz/ {gsub(/^[ \\t]+/, "", $2); printf "%.0f MHz\\n", $2; found=1; exit} /clock/ {gsub(/^[ \\t]+/, "", $2); print $2; found=1; exit} END {if (!found) print "unknown"}' /proc/cpuinfo 2>/dev/null; else echo "unknown"; fi)
+    echo "=CPU_INFO="; (if [ -r /proc/cpuinfo ]; then awk -F: '/model name|Hardware|system type|machine/ {gsub(/^[ \\t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model 2>/dev/null || uname -m 2>/dev/null || echo unknown; else uname -m 2>/dev/null || echo unknown; fi)
+    echo "=CPU_CORES="; (if [ -r /proc/cpuinfo ]; then awk '/^processor/ {n++} END {print (n > 0 ? n : 1)}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then sysctl -n hw.logicalcpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1; else getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1; fi)
+    echo "=CPU_FREQ="; (if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf "%.0f MHz\\n", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null; elif [ -r /proc/cpuinfo ]; then awk -F: '/cpu MHz/ {gsub(/^[ \\t]+/, "", $2); printf "%.0f MHz\\n", $2; found=1; exit} /clock/ {gsub(/^[ \\t]+/, "", $2); print $2; found=1; exit} END {if (!found) print "unknown"}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then sysctl -n hw.cpufrequency 2>/dev/null | awk '{if ($1 > 0) printf "%.0f MHz\\n", $1 / 1000000; else print "unknown"}' || echo "unknown"; else echo "unknown"; fi)
     exit 0
     """
 
@@ -283,6 +283,32 @@ final class SSHMonitorService {
         echo "0 0"
       fi
     }
+    cpu_usage_macos() {
+      LC_ALL=C iostat -C -w 1 -c 2 2>/dev/null | awk '
+        $0 ~ /(^|[[:space:]])us[[:space:]]+sy[[:space:]]+id([[:space:]]|$)/ {
+          for (i = 1; i <= NF; i++) {
+            if ($i == "us") us_col = i
+            if ($i == "sy") sy_col = i
+            if ($i == "id") id_col = i
+          }
+          next
+        }
+        us_col && sy_col && id_col && NF >= id_col &&
+        $(us_col) ~ /^[0-9.]+$/ &&
+        $(sy_col) ~ /^[0-9.]+$/ &&
+        $(id_col) ~ /^[0-9.]+$/ {
+          sample++
+          if (sample == 1) next
+          idle = $(id_col) + 0
+          printf "%.1f\\n", 100 - idle
+          found = 1
+          exit
+        }
+        END {
+          if (!found) print "unknown"
+        }
+      '
+    }
     echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
     echo "=WIFI_PHY_BANDS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then found=""; for p in /sys/class/ieee80211/phy*; do [ -d "$p" ] || continue; phy=$(basename "$p"); band=$(iw phy "$phy" info 2>/dev/null | awk '/Band 1:/{band="24g"} /Band 2:/{band="5g"} /Band 3:/{band="6g"} END{if(band) print band}'); [ -n "$band" ] || band="unknown"; printf "%s,%s;" "$phy" "$band"; found=1; done; if [ -n "$found" ]; then echo; else echo "none"; fi; else echo "none"; fi)
     echo "=TEMP_SENSORS="; (found=""; for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/temp}; label=$(cat "$d/type" 2>/dev/null); [ -n "$label" ] || label=$(basename "$d"); label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/*}; phy=$(printf '%s' "$f" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; d=${f%/*}; resolved=$(readlink -f "$d" 2>/dev/null); v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; phy=$(printf '%s' "$resolved" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; if [ -n "$found" ]; then echo; else echo "unavailable"; fi)
@@ -300,6 +326,10 @@ final class SSHMonitorService {
     [ -n "$N" ] || N=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
     [ -n "$N" ] || N=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {print $2; exit}' /proc/net/dev 2>/dev/null)
     D=$(rdd 2>/dev/null)
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+      echo "=CPU_USAGE="
+      cpu_usage_macos
+    fi
     echo "=CPU_STAT="; (rct)
     echo "=NET="; (if [ -n "$N" ]; then awk -F'[: ]+' -v iface="$N" 'NR > 2 && $2 == iface {print $3, $11; found=1; exit} END {if (!found) print "0 0"}' /proc/net/dev 2>/dev/null; else echo "0 0"; fi)
     echo "=DISK_IO="; (rdc "$D")
@@ -512,6 +542,9 @@ final class SSHMonitorService {
             } else if line == "=PSI_IO=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyPressureValues(from: lines[i + 1], resource: .io, to: &stats)
+            } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyCPUUsage(from: lines[i + 1], to: &stats)
             } else if line == "=CPU_STAT=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyCPUSnapshot(from: lines[i + 1], to: &liveSample)
@@ -556,11 +589,13 @@ final class SSHMonitorService {
             "=PSI_CPU=",
             "=PSI_MEMORY=",
             "=PSI_IO=",
-            "=CPU_STAT=",
             "=NET=",
             "=DISK_IO="
         ]
-        let missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
+        var missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
+        if !seenMarkers.contains("=CPU_STAT=") && !seenMarkers.contains("=CPU_USAGE=") {
+            missingMarkers.append("=CPU_STAT=/=CPU_USAGE=")
+        }
         if !missingMarkers.isEmpty {
             stats.diagnostics.append("Missing script sections: \(missingMarkers.joined(separator: ", "))")
         }
@@ -646,6 +681,9 @@ final class SSHMonitorService {
             } else if line == "=PSI_IO=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyPressureValues(from: lines[i + 1], resource: .io, to: &dynamic)
+            } else if line == "=CPU_USAGE=" && i + 1 < lines.count {
+                seenMarkers.insert(line)
+                applyCPUUsage(from: lines[i + 1], to: &dynamic)
             } else if line == "=CPU_STAT=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 applyCPUSnapshot(from: lines[i + 1], to: &liveSample)
@@ -685,11 +723,13 @@ final class SSHMonitorService {
             "=PSI_CPU=",
             "=PSI_MEMORY=",
             "=PSI_IO=",
-            "=CPU_STAT=",
             "=NET=",
             "=DISK_IO="
         ]
-        let missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
+        var missingMarkers = expectedMarkers.filter { !seenMarkers.contains($0) }
+        if !seenMarkers.contains("=CPU_STAT=") && !seenMarkers.contains("=CPU_USAGE=") {
+            missingMarkers.append("=CPU_STAT=/=CPU_USAGE=")
+        }
         if !missingMarkers.isEmpty {
             dynamic.diagnostics.append("Missing script sections: \(missingMarkers.joined(separator: ", "))")
         }
@@ -725,6 +765,16 @@ final class SSHMonitorService {
             dynamic.memAvailable = Int(available)
             dynamic.memUsage = total > 0 ? used / total : 0
         }
+    }
+
+    private static func applyCPUUsage(from line: String, to stats: inout ServerStats) {
+        guard let usage = parseCPUUsage(from: line) else { return }
+        stats.cpuUsage = usage
+    }
+
+    private static func applyCPUUsage(from line: String, to dynamic: inout ServerDynamicInfo) {
+        guard let usage = parseCPUUsage(from: line) else { return }
+        dynamic.cpuUsage = usage
     }
 
     private static func applyDiskValues(from line: String, to stats: inout ServerStats) {
@@ -1084,6 +1134,18 @@ final class SSHMonitorService {
         guard parts.count >= 3 else { return 0 }
         let pct = String(parts[2]).replacingOccurrences(of: "%", with: "")
         return (Double(pct) ?? 0) / 100.0
+    }
+
+    private static func parseCPUUsage(from line: String) -> Double? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "unknown", let value = Double(trimmed) else {
+            return nil
+        }
+
+        if value > 1 {
+            return min(max(value / 100.0, 0), 1)
+        }
+        return min(max(value, 0), 1)
     }
 
     private static func parseCPUCounters(from line: String) -> (total: Double, idle: Double)? {
