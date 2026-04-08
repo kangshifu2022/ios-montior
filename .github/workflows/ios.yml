@@ -55,4 +55,8 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="dd3688d7-0425-4667-a40b-b1c651e6a72a" \
-            CODE_SIGNING_ALLOWED_FOR_APPS=YES
+            CODE_SIGNING_ALLOWED_FOR_APPS=YES \
+            CLANG_ENABLE_CODE_COVERAGE=NO \
+            "CODE_SIGN_IDENTITY[sdk=iphoneos*]"="Apple Distribution" \
+            "CODE_SIGNING_REQUIRED[sdk=macosx*]"=NO \
+            "CODE_SIGN_IDENTITY[sdk=macosx*]"=""
