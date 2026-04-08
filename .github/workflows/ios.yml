@@ -49,8 +49,10 @@ jobs:
             -authenticationKeyPath $RUNNER_TEMP/AuthKey.p8 \
             -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} \
+            -skipPackagePluginValidation \
             SWIFT_STRICT_CONCURRENCY=minimal \
             OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="dd3688d7-0425-4667-a40b-b1c651e6a72a"
+            PROVISIONING_PROFILE_SPECIFIER="dd3688d7-0425-4667-a40b-b1c651e6a72a" \
+            CODE_SIGNING_ALLOWED_FOR_APPS=YES
