@@ -259,7 +259,7 @@ struct DevicesExperimentalView: View {
                         usesLiquidGlass: true
                     )
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .controlSize(.mini)
             } else {
                 Button {

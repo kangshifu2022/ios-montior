@@ -42,12 +42,14 @@ final class TerminalViewModel: ObservableObject {
     private var scrollbackFlushTask: Task<Void, Never>?
     private var connectionTimeoutTask: Task<Void, Never>?
     private var disconnectTask: Task<Void, Never>?
+    private var scrollbackReplayTask: Task<Void, Never>?
     private var activeConnectionAttemptID = 0
     private var isDisconnectingSession = false
     private var pendingConnectAfterDisconnect = false
 
     private static let maxScrollbackBytes = 96 * 1024
     private static let replayInspectionWindowBytes = 2048
+    private static let replayChunkBytes = 4096
     private static let connectionStageTimeoutNanoseconds: UInt64 = 15_000_000_000
 
     private struct BootstrapCommandOverride {
@@ -487,14 +489,17 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func attachOutputSink(_ sink: @escaping ([UInt8]) -> Void) {
+        scrollbackReplayTask?.cancel()
         outputSink = sink
         let replayBuffer = replayableScrollbackBuffer()
         if !replayBuffer.isEmpty {
-            sink(replayBuffer)
+            replayScrollback(replayBuffer, into: sink)
         }
     }
 
     func detachOutputSink() {
+        scrollbackReplayTask?.cancel()
+        scrollbackReplayTask = nil
         outputSink = nil
     }
 
@@ -846,6 +851,29 @@ final class TerminalViewModel: ObservableObject {
 
     private func requestKeyboardFocus() {
         keyboardFocusRequestID &+= 1
+    }
+
+    private func replayScrollback(_ replayBuffer: [UInt8], into sink: @escaping ([UInt8]) -> Void) {
+        guard !replayBuffer.isEmpty else { return }
+
+        scrollbackReplayTask = Task { @MainActor [weak self] in
+            var offset = 0
+
+            while offset < replayBuffer.count {
+                guard let self, !Task.isCancelled else { return }
+                guard self.outputSink != nil else { return }
+
+                let end = min(offset + Self.replayChunkBytes, replayBuffer.count)
+                sink(Array(replayBuffer[offset..<end]))
+                offset = end
+
+                if offset < replayBuffer.count {
+                    await Task.yield()
+                }
+            }
+
+            self?.scrollbackReplayTask = nil
+        }
     }
 
     private func updateConnectionStage(_ message: String) {

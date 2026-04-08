@@ -330,7 +330,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
         init(viewModel: TerminalViewModel) {
             self.viewModel = viewModel
         }
-
+        
+        @MainActor
         func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
             viewModel.send(bytes: Array(data))
         }
