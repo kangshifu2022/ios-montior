@@ -25,7 +25,9 @@ final class TerminalShortcutAccessoryView: UIInputView {
     }
 
     private final class ShortcutButton: UIButton {
-        private static let activationFeedbackDuration: TimeInterval = 0.5
+        private static let activationFeedbackHoldDuration: TimeInterval = 0.5
+        private static let standardAnimationDuration: TimeInterval = 0.12
+        private static let activationFadeOutDuration: TimeInterval = 0.32
         private static let activationScale = CGAffineTransform(scaleX: 1.04, y: 1.04)
         private static let highlightedScale = CGAffineTransform(scaleX: 1.06, y: 1.06)
 
@@ -80,16 +82,24 @@ final class TerminalShortcutAccessoryView: UIInputView {
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.isActivationFeedbackVisible = false
-                self.updateAppearance(animated: true)
+                self.updateAppearance(
+                    animated: true,
+                    duration: Self.activationFadeOutDuration,
+                    options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]
+                )
             }
             activationResetWorkItem = workItem
             DispatchQueue.main.asyncAfter(
-                deadline: .now() + Self.activationFeedbackDuration,
+                deadline: .now() + Self.activationFeedbackHoldDuration,
                 execute: workItem
             )
         }
 
-        private func updateAppearance(animated: Bool) {
+        private func updateAppearance(
+            animated: Bool,
+            duration: TimeInterval = Self.standardAnimationDuration,
+            options: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
+        ) {
             let updates = {
                 let palette = TerminalShortcutAccessoryView.keyboardPalette(for: self.traitCollection)
                 let showsActivationFeedback = self.isHighlighted || self.isActivationFeedbackVisible
@@ -141,9 +151,9 @@ final class TerminalShortcutAccessoryView: UIInputView {
             }
 
             UIView.animate(
-                withDuration: 0.12,
+                withDuration: duration,
                 delay: 0,
-                options: [.beginFromCurrentState, .allowUserInteraction],
+                options: options,
                 animations: updates
             )
         }

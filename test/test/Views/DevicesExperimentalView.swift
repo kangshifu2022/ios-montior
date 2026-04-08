@@ -5,6 +5,7 @@ struct DevicesExperimentalView: View {
     fileprivate static let cardGroupIndicatorWidth: CGFloat = 2.5
     fileprivate static let cardGroupIndicatorHeight: CGFloat = 11
     fileprivate static let detailedCardTopPadding: CGFloat = 12
+    fileprivate static let detailedCardCornerRadius: CGFloat = 25
 
     @ObservedObject var store: ServerStore
     @EnvironmentObject private var terminalWorkspace: TerminalWorkspace
@@ -399,7 +400,7 @@ struct DevicesExperimentalView: View {
             id: serverID,
             openCardID: $swipeActionServerID,
             palette: palette,
-            cornerRadius: showsDetailedCard ? 30 : 999,
+            cornerRadius: showsDetailedCard ? Self.detailedCardCornerRadius : 999,
             onEdit: {
                 editingServer = server
             },
@@ -468,10 +469,10 @@ struct DevicesExperimentalView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
+            RoundedRectangle(cornerRadius: DevicesExperimentalView.detailedCardCornerRadius, style: .continuous)
                 .stroke(palette.cardBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: DevicesExperimentalView.detailedCardCornerRadius, style: .continuous))
         .shadow(color: palette.cardShadow, radius: 18, x: 0, y: 10)
     }
 }
@@ -1004,10 +1005,10 @@ private struct ExperimentalServerCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.cardBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
+            RoundedRectangle(cornerRadius: DevicesExperimentalView.detailedCardCornerRadius, style: .continuous)
                 .stroke(palette.cardBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: DevicesExperimentalView.detailedCardCornerRadius, style: .continuous))
     }
 
     private var header: some View {
