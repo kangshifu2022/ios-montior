@@ -4,6 +4,7 @@ struct TerminalTmuxSessionPickerSheet: View {
     @ObservedObject var viewModel: TerminalViewModel
 
     @State private var pendingSelectedSession: TerminalRemoteTmuxSession?
+    @State private var pendingDeletedSession: TerminalRemoteTmuxSession?
 
     var body: some View {
         NavigationStack {
@@ -33,37 +34,58 @@ struct TerminalTmuxSessionPickerSheet: View {
                     }
 
                     ForEach(viewModel.remoteTmuxSessions) { session in
-                        Button {
-                            pendingSelectedSession = session
-                        } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(session.name)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundColor(.primary)
-                                        .lineLimit(1)
+                        HStack(spacing: 12) {
+                            Button {
+                                pendingSelectedSession = session
+                            } label: {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(session.name)
+                                            .font(.body.weight(.semibold))
+                                            .foregroundColor(.primary)
+                                            .lineLimit(1)
 
-                                    if !session.detailText.isEmpty {
-                                        Text(session.detailText)
-                                            .font(.footnote)
-                                            .foregroundColor(.secondary)
+                                        if !session.detailText.isEmpty {
+                                            Text(session.detailText)
+                                                .font(.footnote)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(sessionActionsLocked)
+
+                            Button(role: .destructive) {
+                                pendingDeletedSession = session
+                            } label: {
+                                Group {
+                                    if viewModel.deletingRemoteTmuxSessionName == session.name {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "trash")
+                                            .font(.body.weight(.semibold))
                                     }
                                 }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.secondary)
+                                .frame(width: 28, height: 28)
                             }
-                            .padding(.vertical, 4)
+                            .buttonStyle(.borderless)
+                            .disabled(sessionActionsLocked)
                         }
-                        .buttonStyle(.plain)
                     }
                 } header: {
                     Text("远端 tmux 会话")
                 } footer: {
-                    Text("选择后会结束当前终端，并重新连接到对应的 tmux 会话。")
+                    Text("点选会进入对应会话；右侧删除按钮会从服务器上移除该 tmux 会话。")
                 }
             }
             .navigationTitle("Tmux")
@@ -79,7 +101,7 @@ struct TerminalTmuxSessionPickerSheet: View {
                     Button("刷新") {
                         viewModel.refreshRemoteTmuxSessions()
                     }
-                    .disabled(viewModel.isRefreshingRemoteTmuxSessions)
+                    .disabled(sessionActionsLocked)
                 }
             }
         }
@@ -99,6 +121,23 @@ struct TerminalTmuxSessionPickerSheet: View {
         } message: {
             Text("将结束当前终端会话，并重新连接到 tmux 会话“\(pendingSelectedSessionName)”。当前未托管在 tmux 中的前台任务可能会中断。")
         }
+        .confirmationDialog(
+            "删除远端 tmux 会话",
+            isPresented: deleteSessionConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("删除会话", role: .destructive) {
+                guard let pendingDeletedSession else { return }
+                viewModel.deleteRemoteTmuxSession(named: pendingDeletedSession.name)
+                self.pendingDeletedSession = nil
+            }
+
+            Button("取消", role: .cancel) {
+                pendingDeletedSession = nil
+            }
+        } message: {
+            Text(deleteConfirmationMessage)
+        }
     }
 
     private var sessionSwitchConfirmationPresented: Binding<Bool> {
@@ -114,5 +153,32 @@ struct TerminalTmuxSessionPickerSheet: View {
 
     private var pendingSelectedSessionName: String {
         pendingSelectedSession?.name ?? "所选会话"
+    }
+
+    private var deleteSessionConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeletedSession != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingDeletedSession = nil
+                }
+            }
+        )
+    }
+
+    private var deleteConfirmationMessage: String {
+        guard let pendingDeletedSession else {
+            return "将从服务器上删除所选 tmux 会话。"
+        }
+
+        if viewModel.activePersistentSessionName == pendingDeletedSession.name {
+            return "将从服务器上删除 tmux 会话“\(pendingDeletedSession.name)”。如果这正是当前终端附着的会话，当前终端会被关闭。"
+        }
+
+        return "将从服务器上删除 tmux 会话“\(pendingDeletedSession.name)”。该操作会立即结束这个远端会话。"
+    }
+
+    private var sessionActionsLocked: Bool {
+        viewModel.isRefreshingRemoteTmuxSessions || viewModel.deletingRemoteTmuxSessionName != nil
     }
 }

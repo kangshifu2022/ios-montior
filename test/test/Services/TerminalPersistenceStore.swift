@@ -51,6 +51,19 @@ enum TerminalPersistenceStore {
         saveSessions(sessions)
     }
 
+    static func removePersistentSession(for serverID: UUID, sessionName: String) {
+        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSessionName.isEmpty else { return }
+
+        var sessions = loadSessions()
+        sessions.removeAll {
+            $0.serverID == serverID &&
+            $0.kind == .persistentTmux &&
+            $0.sessionName == trimmedSessionName
+        }
+        saveSessions(sessions)
+    }
+
     static func beginDirectSession(for server: ServerConfig) -> TerminalSavedSession {
         let now = Date()
         let record = TerminalSavedSession(

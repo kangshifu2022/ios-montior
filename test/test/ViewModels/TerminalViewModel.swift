@@ -19,6 +19,7 @@ final class TerminalViewModel: ObservableObject {
     @Published private(set) var latestSnapshot: TerminalSavedSession?
     @Published private(set) var remoteTmuxSessions: [TerminalRemoteTmuxSession] = []
     @Published private(set) var isRefreshingRemoteTmuxSessions = false
+    @Published private(set) var deletingRemoteTmuxSessionName: String?
     @Published private(set) var remoteTmuxStatusText: String?
 
     let server: ServerConfig
@@ -26,6 +27,7 @@ final class TerminalViewModel: ObservableObject {
     private let session: TerminalSession
     private var sessionTask: Task<Void, Never>?
     private var remoteTmuxFetchTask: Task<Void, Never>?
+    private var remoteTmuxDeleteTask: Task<Void, Never>?
     private var outputSink: (([UInt8]) -> Void)?
     private var terminalSize = TerminalSize.fallback
     private var bootstrapCommandOverride: BootstrapCommandOverride?
@@ -111,6 +113,13 @@ final class TerminalViewModel: ObservableObject {
 
     var isPersistentSession: Bool {
         activeSessionRecord?.kind == .persistentTmux
+    }
+
+    var activePersistentSessionName: String? {
+        guard activeSessionRecord?.kind == .persistentTmux else {
+            return nil
+        }
+        return activeSessionRecord?.sessionName
     }
 
     var hasSessionToSuspend: Bool {
@@ -279,6 +288,44 @@ final class TerminalViewModel: ObservableObject {
         suppressNextDisconnectDismiss = true
         disconnect(clearError: true)
         activate(record)
+    }
+
+    func deleteRemoteTmuxSession(named sessionName: String) {
+        guard deletingRemoteTmuxSessionName == nil else { return }
+
+        remoteTmuxDeleteTask?.cancel()
+        deletingRemoteTmuxSessionName = sessionName
+
+        let server = self.server
+        remoteTmuxDeleteTask = Task {
+            let result = await TerminalTmuxService.deleteSession(named: sessionName, config: server)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                self.deletingRemoteTmuxSessionName = nil
+                self.remoteTmuxDeleteTask = nil
+
+                switch result {
+                case .success(let deleteResult):
+                    self.remoteTmuxStatusText = deleteResult.notice
+                    self.remoteTmuxSessions.removeAll { $0.name == sessionName }
+                    TerminalPersistenceStore.removePersistentSession(
+                        for: self.server.id,
+                        sessionName: sessionName
+                    )
+                    if var activeSessionRecord = self.activeSessionRecord,
+                       activeSessionRecord.kind == .persistentTmux,
+                       activeSessionRecord.sessionName == sessionName {
+                        activeSessionRecord.allowsResume = false
+                        self.activeSessionRecord = activeSessionRecord
+                    }
+                    self.refreshSessionSummaries()
+                    self.refreshRemoteTmuxSessions()
+                case .failure(let error):
+                    self.remoteTmuxStatusText = error.message
+                }
+            }
+        }
     }
 
     func refreshRemoteTmuxSessionsIfNeeded() {
