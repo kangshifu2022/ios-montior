@@ -3,8 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var store: ServerStore
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
-    @AppStorage(TerminalDefaultConnectionMode.storageKey) private var terminalDefaultConnectionModeRawValue = TerminalDefaultConnectionMode.persistentTmux.rawValue
-    @AppStorage(TerminalRestorePolicy.storageKey) private var terminalRestorePolicyRawValue = TerminalRestorePolicy.askEveryTime.rawValue
+    @AppStorage(TerminalDefaultConnectionMode.storageKey) private var terminalDefaultConnectionModeRawValue = TerminalDefaultConnectionMode.directSSH.rawValue
+    @AppStorage(TerminalRestorePolicy.storageKey) private var terminalRestorePolicyRawValue = TerminalRestorePolicy.alwaysStartNew.rawValue
     @State private var showAddServer = false
     @State private var editingServer: ServerConfig? = nil
     
@@ -114,10 +114,10 @@ struct SettingsView: View {
     }
 
     private var selectedTerminalDefaultConnectionMode: TerminalDefaultConnectionMode {
-        TerminalDefaultConnectionMode(rawValue: terminalDefaultConnectionModeRawValue) ?? .persistentTmux
+        TerminalDefaultConnectionMode(rawValue: terminalDefaultConnectionModeRawValue) ?? .directSSH
     }
 
     private var selectedTerminalRestorePolicy: TerminalRestorePolicy {
-        TerminalRestorePolicy(rawValue: terminalRestorePolicyRawValue) ?? .askEveryTime
+        TerminalRestorePolicy(rawValue: terminalRestorePolicyRawValue) ?? .alwaysStartNew
     }
 }

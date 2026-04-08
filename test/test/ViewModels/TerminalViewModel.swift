@@ -10,6 +10,7 @@ final class TerminalViewModel: ObservableObject {
     @Published var lastError: String?
     @Published var shouldDismissTerminal = false
     @Published var isShowingLaunchSheet = false
+    @Published var isShowingTmuxSessionPicker = false
     @Published private(set) var keyboardFocusRequestID = 0
     @Published private(set) var recoverableSessions: [TerminalSavedSession] = []
     @Published private(set) var latestSnapshot: TerminalSavedSession?
@@ -24,8 +25,10 @@ final class TerminalViewModel: ObservableObject {
     private var remoteTmuxFetchTask: Task<Void, Never>?
     private var outputSink: (([UInt8]) -> Void)?
     private var terminalSize = TerminalSize.fallback
+    private var bootstrapCommandOverride: BootstrapCommandOverride?
     private var keepsSessionAlive = false
     private var exitRequestedByUser = false
+    private var suppressNextDisconnectDismiss = false
     private var hasPreparedLaunch = false
     private var activeSessionRecord: TerminalSavedSession?
     private var scrollbackBuffer = Data()
@@ -33,6 +36,11 @@ final class TerminalViewModel: ObservableObject {
 
     private static let maxScrollbackBytes = 96 * 1024
     private static let replayInspectionWindowBytes = 2048
+
+    private struct BootstrapCommandOverride {
+        let recordID: String
+        let command: String
+    }
 
     init(server: ServerConfig) {
         self.server = server
@@ -122,7 +130,7 @@ final class TerminalViewModel: ObservableObject {
             server: server,
             session: activeSessionRecord
         )
-        let bootstrapCommand = self.bootstrapCommand(for: activeSessionRecord)
+        let bootstrapCommand = self.connectBootstrapCommand(for: activeSessionRecord)
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
@@ -136,6 +144,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func startDirectSession() {
+        bootstrapCommandOverride = nil
         let record = TerminalPersistenceStore.beginDirectSession(for: server)
         TerminalDiagnosticsStore.record(
             "start direct ssh session",
@@ -147,6 +156,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func startNewPersistentSession() {
+        bootstrapCommandOverride = nil
         let record = TerminalPersistenceStore.createPersistentSession(for: server)
         TerminalDiagnosticsStore.record(
             "start new persistent tmux session",
@@ -158,6 +168,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func startPersistentSession(named requestedSessionName: String?) {
+        bootstrapCommandOverride = nil
         let record = TerminalPersistenceStore.createPersistentSession(
             for: server,
             preferredSessionName: requestedSessionName
@@ -172,6 +183,7 @@ final class TerminalViewModel: ObservableObject {
     }
 
     func resumePersistentSession(_ session: TerminalSavedSession) {
+        bootstrapCommandOverride = nil
         let record = TerminalPersistenceStore.markAttached(session)
         TerminalDiagnosticsStore.record(
             "resume persistent session from saved state",
@@ -179,6 +191,37 @@ final class TerminalViewModel: ObservableObject {
             server: server,
             session: record
         )
+        activate(record)
+    }
+
+    func presentTmuxSessionPicker() {
+        TerminalDiagnosticsStore.record(
+            "present tmux session picker",
+            category: "tmux-probe",
+            server: server,
+            session: activeSessionRecord
+        )
+        isShowingTmuxSessionPicker = true
+    }
+
+    func switchToRemoteTmuxSession(named sessionName: String) {
+        let record = TerminalPersistenceStore.createPersistentSession(
+            for: server,
+            preferredSessionName: sessionName
+        )
+        bootstrapCommandOverride = BootstrapCommandOverride(
+            recordID: record.id,
+            command: Self.attachExistingTmuxBootstrapCommand(for: sessionName)
+        )
+        TerminalDiagnosticsStore.record(
+            "switch to remote tmux session \(sessionName)",
+            category: "launch",
+            server: server,
+            session: record
+        )
+        isShowingTmuxSessionPicker = false
+        suppressNextDisconnectDismiss = true
+        disconnect(clearError: true)
         activate(record)
     }
 
@@ -226,6 +269,7 @@ final class TerminalViewModel: ObservableObject {
             session: activeSessionRecord
         )
         exitRequestedByUser = false
+        suppressNextDisconnectDismiss = true
         disconnect(clearError: true)
         connectIfNeeded()
     }
@@ -425,6 +469,7 @@ final class TerminalViewModel: ObservableObject {
         terminalTitle = nil
         shouldDismissTerminal = false
         isShowingLaunchSheet = false
+        isShowingTmuxSessionPicker = false
         activeSessionRecord = record
         scrollbackBuffer = record.scrollback
         scrollbackFlushTask?.cancel()
@@ -483,9 +528,10 @@ final class TerminalViewModel: ObservableObject {
             lastError = message
         case .disconnected:
             let endedGracefully = lastError == nil
+            let shouldDismissAfterDisconnect = !suppressNextDisconnectDismiss && (exitRequestedByUser || endedGracefully)
             TerminalDiagnosticsStore.record(
-                "event disconnected, exitRequested=\(exitRequestedByUser), graceful=\(endedGracefully)",
-                level: exitRequestedByUser || endedGracefully ? .info : .warning,
+                "event disconnected, exitRequested=\(exitRequestedByUser), graceful=\(endedGracefully), suppressDismiss=\(suppressNextDisconnectDismiss)",
+                level: shouldDismissAfterDisconnect || suppressNextDisconnectDismiss ? .info : .warning,
                 category: "event",
                 server: server,
                 session: activeSessionRecord
@@ -497,9 +543,10 @@ final class TerminalViewModel: ObservableObject {
 
             refreshSessionSummaries()
 
-            if exitRequestedByUser || endedGracefully {
+            if shouldDismissAfterDisconnect {
                 shouldDismissTerminal = true
             }
+            suppressNextDisconnectDismiss = false
             exitRequestedByUser = false
         }
     }
@@ -568,6 +615,15 @@ final class TerminalViewModel: ObservableObject {
         keyboardFocusRequestID &+= 1
     }
 
+    private func connectBootstrapCommand(for record: TerminalSavedSession) -> String? {
+        if let bootstrapCommandOverride,
+           bootstrapCommandOverride.recordID == record.id {
+            return bootstrapCommandOverride.command
+        }
+
+        return bootstrapCommand(for: record)
+    }
+
     private func replayableScrollbackBuffer() -> [UInt8] {
         guard !scrollbackBuffer.isEmpty else { return [] }
 
@@ -612,6 +668,22 @@ final class TerminalViewModel: ObservableObject {
         return """
         if command -v tmux >/dev/null 2>&1; then
           exec tmux new-session -A -s \(quotedSessionName)
+        else
+          printf '\\r\\n[iOS Monitor] tmux is not installed on this server. Continuing with a normal shell.\\r\\n'
+        fi
+
+        """
+    }
+
+    private static func attachExistingTmuxBootstrapCommand(for sessionName: String) -> String {
+        let quotedSessionName = Self.singleQuoted(sessionName)
+        return """
+        if command -v tmux >/dev/null 2>&1; then
+          if tmux has-session -t \(quotedSessionName) 2>/dev/null; then
+            exec tmux attach-session -t \(quotedSessionName)
+          else
+            printf '\\r\\n[iOS Monitor] The selected tmux session is no longer available on this server. Continuing with a normal shell.\\r\\n'
+          fi
         else
           printf '\\r\\n[iOS Monitor] tmux is not installed on this server. Continuing with a normal shell.\\r\\n'
         fi

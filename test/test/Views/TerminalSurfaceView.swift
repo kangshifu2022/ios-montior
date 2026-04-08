@@ -216,10 +216,14 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 terminalView?.pageDown()
             }),
             .init(
-                title: "< >",
-                accessibilityLabel: "脚本快捷键，暂未启用",
+                title: "Tmux",
+                accessibilityLabel: "查看远端 tmux 会话并重新连接",
+                style: .accent,
                 columnSpan: 2,
-                action: {}
+                action: {
+                    _ = consumeAccessoryModifiers()
+                    viewModel.presentTmuxSessionPicker()
+                }
             )
         ]
 

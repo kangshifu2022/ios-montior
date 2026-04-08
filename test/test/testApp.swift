@@ -10,6 +10,10 @@ import SwiftData
 
 @main
 struct testApp: App {
+    init() {
+        TerminalPersistenceStore.migrateLaunchPreferencesIfNeeded()
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,

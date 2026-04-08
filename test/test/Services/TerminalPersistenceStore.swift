@@ -3,15 +3,33 @@ import Foundation
 enum TerminalPersistenceStore {
     private static let sessionsKey = "terminal.savedSessions.v1"
     private static let maxSessionsPerServer = 8
+    private static let launchPreferenceMigrationKey = "terminal.launchPreferences.v2"
+
+    static func migrateLaunchPreferencesIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: launchPreferenceMigrationKey) else { return }
+
+        let storedConnectionMode = defaults.string(forKey: TerminalDefaultConnectionMode.storageKey)
+        if storedConnectionMode == nil || storedConnectionMode == TerminalDefaultConnectionMode.persistentTmux.rawValue {
+            defaults.set(TerminalDefaultConnectionMode.directSSH.rawValue, forKey: TerminalDefaultConnectionMode.storageKey)
+        }
+
+        let storedRestorePolicy = defaults.string(forKey: TerminalRestorePolicy.storageKey)
+        if storedRestorePolicy == nil || storedRestorePolicy == TerminalRestorePolicy.askEveryTime.rawValue {
+            defaults.set(TerminalRestorePolicy.alwaysStartNew.rawValue, forKey: TerminalRestorePolicy.storageKey)
+        }
+
+        defaults.set(true, forKey: launchPreferenceMigrationKey)
+    }
 
     static func defaultConnectionMode() -> TerminalDefaultConnectionMode {
         let rawValue = UserDefaults.standard.string(forKey: TerminalDefaultConnectionMode.storageKey)
-        return TerminalDefaultConnectionMode(rawValue: rawValue ?? "") ?? .persistentTmux
+        return TerminalDefaultConnectionMode(rawValue: rawValue ?? "") ?? .directSSH
     }
 
     static func restorePolicy() -> TerminalRestorePolicy {
         let rawValue = UserDefaults.standard.string(forKey: TerminalRestorePolicy.storageKey)
-        return TerminalRestorePolicy(rawValue: rawValue ?? "") ?? .askEveryTime
+        return TerminalRestorePolicy(rawValue: rawValue ?? "") ?? .alwaysStartNew
     }
 
     static func recoverableSessions(for server: ServerConfig) -> [TerminalSavedSession] {

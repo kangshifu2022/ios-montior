@@ -75,6 +75,11 @@ struct TerminalView: View {
                 viewModel.refreshRemoteTmuxSessionsIfNeeded()
             }
         }
+        .sheet(isPresented: $viewModel.isShowingTmuxSessionPicker) {
+            TerminalTmuxSessionPickerSheet(viewModel: viewModel)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .alert("终端错误", isPresented: errorPresented) {
             Button("知道了", role: .cancel) {
                 viewModel.clearError()
