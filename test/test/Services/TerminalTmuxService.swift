@@ -3,6 +3,8 @@ import Citadel
 import NIOCore
 import NIOSSH
 
+private let shellCompatibilityExecThreshold = 8 * 1024
+
 struct TerminalRemoteTmuxSnapshot: Sendable {
     var sessions: [TerminalRemoteTmuxSession]
     var notice: String?
@@ -155,10 +157,11 @@ private func execute(
         )
 
         do {
-            let output = try await client.executeCommand(
+            let output = try await runRemoteScript(
                 script,
+                with: client,
                 maxResponseSize: maxResponseSize,
-                mergeStreams: true
+                config: config
             )
             try? await client.close()
             return .success(String(buffer: output))
@@ -180,6 +183,47 @@ private func execute(
             server: config
         )
         return .failure(TerminalRemoteTmuxQueryError(message: describeTmuxError(error)))
+    }
+}
+
+private func runRemoteScript(
+    _ script: String,
+    with client: SSHClient,
+    maxResponseSize: Int,
+    config: ServerConfig
+) async throws -> ByteBuffer {
+    let prefersShellCompatibility = script.utf8.count >= shellCompatibilityExecThreshold
+
+    do {
+        return try await client.executeCommand(
+            script,
+            maxResponseSize: maxResponseSize,
+            mergeStreams: true,
+            inShell: prefersShellCompatibility
+        )
+    } catch {
+        let lowercased = String(describing: error).lowercased()
+        let shouldRetryInShell = lowercased.contains("tcpshutdown")
+            || lowercased.contains("channel closed")
+            || lowercased.contains("channelclosed")
+
+        guard !prefersShellCompatibility, shouldRetryInShell else {
+            throw error
+        }
+
+        TerminalDiagnosticsStore.record(
+            "tmux exec request closed unexpectedly; retrying in shell compatibility mode",
+            level: .info,
+            category: "tmux-probe",
+            server: config
+        )
+
+        return try await client.executeCommand(
+            script,
+            maxResponseSize: maxResponseSize,
+            mergeStreams: true,
+            inShell: true
+        )
     }
 }
 
@@ -442,6 +486,12 @@ private func describeTmuxError(_ error: Error) -> String {
 
     if lowercased.contains("authentication") || lowercased.contains("auth") {
         return "认证失败"
+    }
+    if lowercased.contains("tcpshutdown") {
+        return "服务器在执行命令时主动关闭了 SSH 会话"
+    }
+    if lowercased.contains("channel closed") || lowercased.contains("channelclosed") {
+        return "SSH 通道在执行命令时被意外关闭"
     }
     if lowercased.contains("timeout") {
         return "连接超时"
