@@ -125,7 +125,11 @@ final class TerminalViewModel: ObservableObject {
     }
 
     var hasSessionToSuspend: Bool {
-        activeSessionRecord != nil
+        activeSessionRecord != nil && (isConnected || isAwaitingTerminalOutput)
+    }
+
+    var shouldReuseWorkspaceSession: Bool {
+        activeSessionRecord != nil && (isConnected || isAwaitingTerminalOutput)
     }
 
     var connectionNoticeText: String? {

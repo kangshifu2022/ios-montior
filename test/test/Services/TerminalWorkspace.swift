@@ -22,6 +22,20 @@ final class TerminalWorkspace: ObservableObject {
 
     func presentTerminal(for server: ServerConfig) {
         if let existingSession = sessions.first(where: { $0.server.id == server.id }) {
+            guard existingSession.viewModel.shouldReuseWorkspaceSession else {
+                TerminalDiagnosticsStore.record(
+                    "discarding stale workspace session before presenting",
+                    level: .warning,
+                    category: "workspace",
+                    server: server
+                )
+                close(existingSession)
+                let session = TerminalWorkspaceSession(server: server)
+                sessions.append(session)
+                observeLifecycle(of: session)
+                presentedSession = session
+                return
+            }
             presentedSession = existingSession
             return
         }
