@@ -19,6 +19,17 @@ struct TerminalRemoteTmuxDeleteResult: Sendable {
     var notice: String?
 }
 
+struct TerminalRemoteTmuxCreateResult: Sendable {
+    enum Status: Sendable {
+        case created
+        case alreadyExists
+        case tmuxUnavailable
+    }
+
+    var status: Status
+    var notice: String?
+}
+
 struct TerminalRemoteTmuxQueryError: Error, Sendable {
     var message: String
 }
@@ -71,6 +82,43 @@ enum TerminalTmuxService {
             case .failure(let error):
                 TerminalDiagnosticsStore.record(
                     "tmux delete parse failed: \(error.message)",
+                    level: .warning,
+                    category: "tmux-probe",
+                    server: config
+                )
+            }
+            return parsed
+        case .failure(let error):
+            return .failure(error)
+        }
+    }
+
+    static func createSession(named sessionName: String, config: ServerConfig) async -> Result<TerminalRemoteTmuxCreateResult, TerminalRemoteTmuxQueryError> {
+        TerminalDiagnosticsStore.record(
+            "create remote tmux session \(sessionName)",
+            category: "tmux-probe",
+            server: config
+        )
+
+        let result = await execute(
+            config: config,
+            script: createSessionScript(for: sessionName),
+            maxResponseSize: 1 << 14
+        )
+
+        switch result {
+        case .success(let output):
+            let parsed = parseTmuxCreateResult(output, sessionName: sessionName)
+            switch parsed {
+            case .success(let createResult):
+                TerminalDiagnosticsStore.record(
+                    "tmux create completed, status=\(describe(createResult.status)), notice=\(createResult.notice ?? "none")",
+                    category: "tmux-probe",
+                    server: config
+                )
+            case .failure(let error):
+                TerminalDiagnosticsStore.record(
+                    "tmux create parse failed: \(error.message)",
                     level: .warning,
                     category: "tmux-probe",
                     server: config
@@ -268,6 +316,83 @@ private func parseTmuxDeleteResult(
     }
 }
 
+private func parseTmuxCreateResult(
+    _ output: String,
+    sessionName: String
+) -> Result<TerminalRemoteTmuxCreateResult, TerminalRemoteTmuxQueryError> {
+    let lines = output.components(separatedBy: .newlines)
+    var status = "unknown"
+    var messageLines: [String] = []
+    var index = 0
+
+    while index < lines.count {
+        let line = lines[index]
+
+        if line == "=TMUX_STATUS=", index + 1 < lines.count {
+            status = lines[index + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+            index += 2
+            continue
+        }
+
+        if line == "=TMUX_MESSAGE=" {
+            messageLines = Array(lines[(index + 1)...])
+            break
+        }
+
+        index += 1
+    }
+
+    let message = messageLines
+        .joined(separator: "\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let lowercasedOutput = output.lowercased()
+
+    switch status {
+    case "ok":
+        return .success(
+            TerminalRemoteTmuxCreateResult(
+                status: .created,
+                notice: "已新建远端 tmux 会话“\(sessionName)”。"
+            )
+        )
+    case "session_exists":
+        return .success(
+            TerminalRemoteTmuxCreateResult(
+                status: .alreadyExists,
+                notice: "tmux 会话“\(sessionName)”已存在，请换一个名称。"
+            )
+        )
+    case "missing_tmux":
+        return .success(
+            TerminalRemoteTmuxCreateResult(
+                status: .tmuxUnavailable,
+                notice: "服务器未安装 tmux，无法创建新会话。"
+            )
+        )
+    case "failed":
+        return .failure(
+            TerminalRemoteTmuxQueryError(
+                message: message.isEmpty ? "新建 tmux 会话失败" : message
+            )
+        )
+    default:
+        if lowercasedOutput.contains("duplicate session") || lowercasedOutput.contains("session already exists") {
+            return .success(
+                TerminalRemoteTmuxCreateResult(
+                    status: .alreadyExists,
+                    notice: "tmux 会话“\(sessionName)”已存在，请换一个名称。"
+                )
+            )
+        }
+
+        if !message.isEmpty {
+            return .failure(TerminalRemoteTmuxQueryError(message: message))
+        }
+
+        return .failure(TerminalRemoteTmuxQueryError(message: "未能识别新建 tmux 会话的返回结果。"))
+    }
+}
+
 private func parseTmuxSession(_ line: String) -> TerminalRemoteTmuxSession? {
     guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return nil
@@ -295,6 +420,17 @@ private func describe(_ status: TerminalRemoteTmuxDeleteResult.Status) -> String
         return "deleted"
     case .alreadyMissing:
         return "already-missing"
+    case .tmuxUnavailable:
+        return "tmux-unavailable"
+    }
+}
+
+private func describe(_ status: TerminalRemoteTmuxCreateResult.Status) -> String {
+    switch status {
+    case .created:
+        return "created"
+    case .alreadyExists:
+        return "already-exists"
     case .tmuxUnavailable:
         return "tmux-unavailable"
     }
@@ -363,6 +499,46 @@ private func deleteSessionScript(for sessionName: String) -> String {
       *"can't find session"*|*"no server running"*)
         echo "=TMUX_STATUS="
         echo "missing_session"
+        exit 0
+        ;;
+    esac
+
+    echo "=TMUX_STATUS="
+    echo "failed"
+    echo "=TMUX_MESSAGE="
+    printf '%s\n' "$OUTPUT"
+    exit 0
+    """
+}
+
+private func createSessionScript(for sessionName: String) -> String {
+    let quotedSessionName = singleQuoted(sessionName)
+    return """
+    if ! command -v tmux >/dev/null 2>&1; then
+      echo "=TMUX_STATUS="
+      echo "missing_tmux"
+      exit 0
+    fi
+
+    if tmux has-session -t \(quotedSessionName) 2>/dev/null; then
+      echo "=TMUX_STATUS="
+      echo "session_exists"
+      exit 0
+    fi
+
+    OUTPUT="$(tmux new-session -d -s \(quotedSessionName) 2>&1)"
+    STATUS=$?
+
+    if [ "$STATUS" -eq 0 ]; then
+      echo "=TMUX_STATUS="
+      echo "ok"
+      exit 0
+    fi
+
+    case "$OUTPUT" in
+      *"duplicate session"*|*"session already exists"*)
+        echo "=TMUX_STATUS="
+        echo "session_exists"
         exit 0
         ;;
     esac

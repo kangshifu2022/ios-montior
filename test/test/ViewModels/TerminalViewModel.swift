@@ -19,6 +19,7 @@ final class TerminalViewModel: ObservableObject {
     @Published private(set) var latestSnapshot: TerminalSavedSession?
     @Published private(set) var remoteTmuxSessions: [TerminalRemoteTmuxSession] = []
     @Published private(set) var isRefreshingRemoteTmuxSessions = false
+    @Published private(set) var creatingRemoteTmuxSessionName: String?
     @Published private(set) var deletingRemoteTmuxSessionName: String?
     @Published private(set) var remoteTmuxStatusText: String?
 
@@ -27,6 +28,7 @@ final class TerminalViewModel: ObservableObject {
     private let session: TerminalSession
     private var sessionTask: Task<Void, Never>?
     private var remoteTmuxFetchTask: Task<Void, Never>?
+    private var remoteTmuxCreateTask: Task<Void, Never>?
     private var remoteTmuxDeleteTask: Task<Void, Never>?
     private var outputSink: (([UInt8]) -> Void)?
     private var terminalSize = TerminalSize.fallback
@@ -290,6 +292,42 @@ final class TerminalViewModel: ObservableObject {
         activate(record)
     }
 
+    func createRemoteTmuxSession(named requestedSessionName: String) {
+        let sessionName = requestedSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sessionName.isEmpty, creatingRemoteTmuxSessionName == nil else { return }
+
+        remoteTmuxFetchTask?.cancel()
+        remoteTmuxFetchTask = nil
+        isRefreshingRemoteTmuxSessions = false
+        remoteTmuxCreateTask?.cancel()
+        creatingRemoteTmuxSessionName = sessionName
+
+        let server = self.server
+        remoteTmuxCreateTask = Task {
+            let result = await TerminalTmuxService.createSession(named: sessionName, config: server)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                self.creatingRemoteTmuxSessionName = nil
+                self.remoteTmuxCreateTask = nil
+
+                switch result {
+                case .success(let createResult):
+                    self.remoteTmuxStatusText = createResult.notice
+
+                    switch createResult.status {
+                    case .created:
+                        self.switchToRemoteTmuxSession(named: sessionName)
+                    case .alreadyExists, .tmuxUnavailable:
+                        break
+                    }
+                case .failure(let error):
+                    self.remoteTmuxStatusText = error.message
+                }
+            }
+        }
+    }
+
     func deleteRemoteTmuxSession(named sessionName: String) {
         guard deletingRemoteTmuxSessionName == nil else { return }
 
@@ -392,7 +430,10 @@ final class TerminalViewModel: ObservableObject {
         exitRequestedByUser = false
         remoteTmuxFetchTask?.cancel()
         remoteTmuxFetchTask = nil
+        remoteTmuxCreateTask?.cancel()
+        remoteTmuxCreateTask = nil
         isRefreshingRemoteTmuxSessions = false
+        creatingRemoteTmuxSessionName = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         connectionStageText = nil

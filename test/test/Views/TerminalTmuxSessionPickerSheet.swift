@@ -3,6 +3,7 @@ import SwiftUI
 struct TerminalTmuxSessionPickerSheet: View {
     @ObservedObject var viewModel: TerminalViewModel
 
+    @State private var newSessionName = ""
     @State private var pendingSelectedSession: TerminalRemoteTmuxSession?
     @State private var pendingDeletedSession: TerminalRemoteTmuxSession?
 
@@ -62,7 +63,7 @@ struct TerminalTmuxSessionPickerSheet: View {
                                 .padding(.vertical, 4)
                             }
                             .buttonStyle(.plain)
-                            .disabled(sessionActionsLocked)
+                            .disabled(remoteSessionActionsLocked)
 
                             Button(role: .destructive) {
                                 pendingDeletedSession = session
@@ -79,13 +80,56 @@ struct TerminalTmuxSessionPickerSheet: View {
                                 .frame(width: 28, height: 28)
                             }
                             .buttonStyle(.borderless)
-                            .disabled(sessionActionsLocked)
+                            .disabled(remoteSessionActionsLocked)
                         }
                     }
                 } header: {
                     Text("远端 tmux 会话")
                 } footer: {
                     Text("点选会进入对应会话；右侧删除按钮会从服务器上移除该 tmux 会话。")
+                }
+
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("手动输入新的 tmux 会话名", text: $newSessionName)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .disabled(createSessionActionsLocked)
+                            .submitLabel(.go)
+                            .onSubmit {
+                                guard let normalizedNewSessionName else { return }
+                                viewModel.createRemoteTmuxSession(named: normalizedNewSessionName)
+                            }
+
+                        Button {
+                            guard let normalizedNewSessionName else { return }
+                            viewModel.createRemoteTmuxSession(named: normalizedNewSessionName)
+                        } label: {
+                            HStack(spacing: 10) {
+                                if viewModel.creatingRemoteTmuxSessionName != nil {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("新建并连接 tmux 会话")
+                                        .foregroundColor(.primary)
+                                    Text("名称必填；如果名称已存在，会提示你换一个。")
+                                        .font(.footnote)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(normalizedNewSessionName == nil || createSessionActionsLocked)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("新建 tmux 会话")
+                } footer: {
+                    Text("会话名不能为空；创建成功后会结束当前终端并连接到这个新会话。")
                 }
             }
             .navigationTitle("Tmux")
@@ -101,7 +145,7 @@ struct TerminalTmuxSessionPickerSheet: View {
                     Button("刷新") {
                         viewModel.refreshRemoteTmuxSessions()
                     }
-                    .disabled(sessionActionsLocked)
+                    .disabled(remoteSessionActionsLocked)
                 }
             }
         }
@@ -178,7 +222,19 @@ struct TerminalTmuxSessionPickerSheet: View {
         return "将从服务器上删除 tmux 会话“\(pendingDeletedSession.name)”。该操作会立即结束这个远端会话。"
     }
 
-    private var sessionActionsLocked: Bool {
-        viewModel.isRefreshingRemoteTmuxSessions || viewModel.deletingRemoteTmuxSessionName != nil
+    private var remoteSessionActionsLocked: Bool {
+        viewModel.isRefreshingRemoteTmuxSessions ||
+        viewModel.creatingRemoteTmuxSessionName != nil ||
+        viewModel.deletingRemoteTmuxSessionName != nil
+    }
+
+    private var createSessionActionsLocked: Bool {
+        viewModel.creatingRemoteTmuxSessionName != nil ||
+        viewModel.deletingRemoteTmuxSessionName != nil
+    }
+
+    private var normalizedNewSessionName: String? {
+        let trimmed = newSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

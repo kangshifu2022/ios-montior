@@ -53,7 +53,52 @@ struct AddServerView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("基本信息")) {
+                Section(header: Text("连接信息")) {
+                    HStack {
+                        Text("主机")
+                        Spacer()
+                        TextField("IP 地址或域名", text: $host)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.secondary)
+                            .autocapitalization(.none)
+                            .keyboardType(.URL)
+                    }
+                    HStack {
+                        Text("端口")
+                        Spacer()
+                        TextField("22", text: $port)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.secondary)
+                            .keyboardType(.numberPad)
+                    }
+                    HStack {
+                        Text("用户名")
+                        Spacer()
+                        TextField("root", text: $username)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.secondary)
+                            .autocapitalization(.none)
+                    }
+                    HStack {
+                        Text("密码")
+                        Spacer()
+                        if showPassword {
+                            TextField("密码", text: $password)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundColor(.secondary)
+                                .autocapitalization(.none)
+                        } else {
+                            SecureField("密码", text: $password)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        Button(action: { showPassword.toggle() }) {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                Section(header: Text("名称与分组")) {
                     HStack {
                         Text("名称")
                         Spacer()
@@ -103,51 +148,6 @@ struct AddServerView: View {
                                     }
                                 }
                             }
-                        }
-                    }
-                    HStack {
-                        Text("主机")
-                        Spacer()
-                        TextField("IP 地址或域名", text: $host)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundColor(.secondary)
-                            .autocapitalization(.none)
-                            .keyboardType(.URL)
-                    }
-                    HStack {
-                        Text("端口")
-                        Spacer()
-                        TextField("22", text: $port)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundColor(.secondary)
-                            .keyboardType(.numberPad)
-                    }
-                }
-                
-                Section(header: Text("认证方式")) {
-                    HStack {
-                        Text("用户名")
-                        Spacer()
-                        TextField("root", text: $username)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundColor(.secondary)
-                            .autocapitalization(.none)
-                    }
-                    HStack {
-                        Text("密码")
-                        Spacer()
-                        if showPassword {
-                            TextField("密码", text: $password)
-                                .multilineTextAlignment(.trailing)
-                                .foregroundColor(.secondary)
-                                .autocapitalization(.none)
-                        } else {
-                            SecureField("密码", text: $password)
-                                .multilineTextAlignment(.trailing)
-                        }
-                        Button(action: { showPassword.toggle() }) {
-                            Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .foregroundColor(.secondary)
                         }
                     }
                 }
