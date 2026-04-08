@@ -336,9 +336,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
             viewModel.send(bytes: Array(data))
         }
 
-        func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-            pushTerminalSize(from: source, columns: newCols, rows: newRows)
-        }
+    func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
+    Task { @MainActor in
+    pushTerminalSize(from: source, columns: newCols, rows: newRows)
+    }
+    }
 
         @MainActor
         func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {
