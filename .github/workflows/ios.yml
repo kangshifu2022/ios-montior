@@ -40,12 +40,14 @@ jobs:
 
       - name: Build
         run: |
+          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > $RUNNER_TEMP/AuthKey.p8
           xcodebuild build \
             -project test/test.xcodeproj \
             -scheme test \
             -destination "generic/platform=iOS" \
-            -provisioningProfile "dd3688d7-0425-4667-a40b-b1c651e6a72a" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath $RUNNER_TEMP/AuthKey.p8 \
+            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} \
             SWIFT_STRICT_CONCURRENCY=minimal \
-            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
-            PROVISIONING_PROFILE="dd3688d7-0425-4667-a40b-b1c651e6a72a" \
-            CODE_SIGNING_ALLOWED=YES
+            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal"
