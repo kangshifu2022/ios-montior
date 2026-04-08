@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ==============================
-      # 自动签名（App Store Connect API）
+      # 1. Archive（自动签名）
       # ==============================
       - name: Build Archive (Auto Signing)
         run: |
@@ -31,7 +31,7 @@ jobs:
             -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
       # ==============================
-      # 导出 IPA
+      # 2. Export IPA（自动签名，关键修复点）
       # ==============================
       - name: Export IPA
         run: |
@@ -45,13 +45,7 @@ jobs:
               <string>ad-hoc</string>
 
               <key>signingStyle</key>
-              <string>manual</string>
-
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.wenchaoliu.test</key>
-                  <string>test</string>
-              </dict>
+              <string>automatic</string>
           </dict>
           </plist>
           EOF
@@ -62,7 +56,7 @@ jobs:
             -exportPath $RUNNER_TEMP/build
 
       # ==============================
-      # 上传 IPA
+      # 3. 上传 IPA
       # ==============================
       - name: Upload IPA
         uses: actions/upload-artifact@v4
