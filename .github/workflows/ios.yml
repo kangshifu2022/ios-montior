@@ -28,7 +28,7 @@ jobs:
           echo "P12_PASSWORD=$P12_PASSWORD"
           security import cert.p12 \
             -k build.keychain \
-            -P "$P12_PASSWORD" \
+            -P "$(echo -n "$P12_PASSWORD")" \
             -A \
             -T /usr/bin/codesign \
             -T /usr/bin/security
