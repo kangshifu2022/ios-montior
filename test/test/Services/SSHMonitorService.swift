@@ -17,6 +17,7 @@ final class SSHMonitorService {
         switch await execute(
             config: config,
             script: fullStatsScript,
+            requestKind: "full-static",
             connectionDiagnostics: [
                 "failure stage: connect",
                 "ssh stack: Citadel",
@@ -34,6 +35,7 @@ final class SSHMonitorService {
             switch await execute(
                 config: config,
                 script: dynamicStatsScript,
+                requestKind: "full-dynamic",
                 connectionDiagnostics: [
                     "failure stage: connect",
                     "ssh stack: Citadel",
@@ -80,6 +82,7 @@ final class SSHMonitorService {
         switch await execute(
             config: config,
             script: dynamicStatsScript,
+            requestKind: "dynamic",
             connectionDiagnostics: [
                 "failure stage: connect",
                 "ssh stack: Citadel",
@@ -109,6 +112,7 @@ final class SSHMonitorService {
         switch await execute(
             config: config,
             script: remoteAlertStatusScript,
+            requestKind: "remote-alert-status",
             connectionDiagnostics: [
                 "failure stage: connect",
                 "ssh stack: Citadel",
@@ -143,6 +147,7 @@ final class SSHMonitorService {
             switch await execute(
                 config: config,
                 script: command,
+                requestKind: requestKind,
                 connectionDiagnostics: [
                     "failure stage: connect",
                     "ssh stack: Citadel",
@@ -170,6 +175,7 @@ final class SSHMonitorService {
         switch await execute(
             config: config,
             script: makeRemoteAlertRemovalScript(),
+            requestKind: "remote-alert-remove",
             connectionDiagnostics: [
                 "failure stage: connect",
                 "ssh stack: Citadel",
@@ -194,6 +200,7 @@ final class SSHMonitorService {
         switch await execute(
             config: config,
             script: remoteAlertInstalledTestScript,
+            requestKind: "remote-alert-test",
             connectionDiagnostics: [
                 "failure stage: connect",
                 "ssh stack: Citadel",
@@ -367,6 +374,7 @@ final class SSHMonitorService {
     private static func execute(
         config: ServerConfig,
         script: String,
+        requestKind: String,
         connectionDiagnostics: [String],
         executeDiagnostics: [String]
     ) async -> Result<String, SSHCommandFailure> {
@@ -399,6 +407,13 @@ final class SSHMonitorService {
             } catch {
                 try? await client.close()
                 let message = String(describing: error)
+                recordFailure(
+                    stage: "execute",
+                    requestKind: requestKind,
+                    friendlyMessage: describe(errorMessage: message),
+                    rawMessage: message,
+                    config: config
+                )
                 return .failure(
                     SSHCommandFailure(
                         statusMessage: describe(errorMessage: message),
@@ -409,6 +424,13 @@ final class SSHMonitorService {
             }
         } catch {
             let message = String(describing: error)
+            recordFailure(
+                stage: "connect",
+                requestKind: requestKind,
+                friendlyMessage: describe(errorMessage: message),
+                rawMessage: message,
+                config: config
+            )
             return .failure(
                 SSHCommandFailure(
                     statusMessage: describe(errorMessage: message),
@@ -1178,6 +1200,25 @@ final class SSHMonitorService {
             return "host key validation failed"
         }
         return message
+    }
+
+    private static func recordFailure(
+        stage: String,
+        requestKind: String,
+        friendlyMessage: String,
+        rawMessage: String,
+        config: ServerConfig
+    ) {
+        let trimmedRawMessage = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldIncludeRawMessage = !trimmedRawMessage.isEmpty && trimmedRawMessage != friendlyMessage
+        let rawSuffix = shouldIncludeRawMessage ? " | raw=\(trimmedRawMessage)" : ""
+
+        ServerMonitorDiagnosticsStore.record(
+            "SSH \(requestKind) \(stage) failed: \(friendlyMessage)\(rawSuffix)",
+            level: .warning,
+            category: "ssh-\(stage)",
+            server: config
+        )
     }
 
     // MARK: - Router / Connected Devices

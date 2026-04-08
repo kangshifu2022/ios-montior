@@ -366,7 +366,8 @@ final class ServerStore: ObservableObject {
                     let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
                         serverID: id,
                         incoming: ServerDynamicInfo(stats: stats),
-                        now: receivedAt
+                        now: receivedAt,
+                        requestKind: "full"
                     )
                     dynamicInfoByServerID[id] = resolvedDynamicInfo
                     recordMetricSample(for: id, dynamicInfo: resolvedDynamicInfo, capturedAt: receivedAt)
@@ -376,7 +377,8 @@ final class ServerStore: ObservableObject {
                     let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
                         serverID: id,
                         incoming: dynamic,
-                        now: receivedAt
+                        now: receivedAt,
+                        requestKind: "dynamic"
                     )
                     dynamicInfoByServerID[id] = resolvedDynamicInfo
                     recordMetricSample(for: id, dynamicInfo: resolvedDynamicInfo, capturedAt: receivedAt)
@@ -545,29 +547,50 @@ final class ServerStore: ObservableObject {
     private func resolvedDynamicInfoUpdate(
         serverID: UUID,
         incoming: ServerDynamicInfo,
-        now: Date
+        now: Date,
+        requestKind: String
     ) -> ServerDynamicInfo {
+        let previousDynamicInfo = dynamicInfoByServerID[serverID]
+        let previousFailureCount = consecutiveDynamicFailureCounts[serverID] ?? 0
+
         if incoming.isOnline {
             consecutiveDynamicFailureCounts[serverID] = 0
             lastSuccessfulDynamicRefreshDates[serverID] = now
             var resolvedIncoming = incoming
             applyDerivedMetrics(
                 to: &resolvedIncoming,
-                previous: dynamicInfoByServerID[serverID],
+                previous: previousDynamicInfo,
                 capturedAt: now
+            )
+            recordOnlineStateChange(
+                serverID: serverID,
+                requestKind: requestKind,
+                previous: previousDynamicInfo,
+                incoming: resolvedIncoming,
+                previousFailureCount: previousFailureCount
             )
             return resolvedIncoming
         }
 
-        let nextFailureCount = (consecutiveDynamicFailureCounts[serverID] ?? 0) + 1
+        let nextFailureCount = previousFailureCount + 1
         consecutiveDynamicFailureCounts[serverID] = nextFailureCount
 
-        guard shouldDelayOfflineTransition(
+        let delayedOfflineTransition = shouldDelayOfflineTransition(
             serverID: serverID,
             failureCount: nextFailureCount,
             now: now
-        ),
-        let currentDynamicInfo = dynamicInfoByServerID[serverID] else {
+        )
+
+        guard delayedOfflineTransition,
+              let currentDynamicInfo = previousDynamicInfo else {
+            recordOfflineTransition(
+                serverID: serverID,
+                requestKind: requestKind,
+                previous: previousDynamicInfo,
+                incoming: incoming,
+                failureCount: nextFailureCount,
+                now: now
+            )
             return incoming
         }
 
@@ -578,7 +601,133 @@ final class ServerStore: ObservableObject {
         if !incoming.rawOutput.isEmpty {
             preservedDynamicInfo.rawOutput = incoming.rawOutput
         }
+        recordDelayedOfflineTransition(
+            serverID: serverID,
+            requestKind: requestKind,
+            incoming: incoming,
+            failureCount: nextFailureCount,
+            now: now
+        )
         return preservedDynamicInfo
+    }
+
+    private func recordOnlineStateChange(
+        serverID: UUID,
+        requestKind: String,
+        previous: ServerDynamicInfo?,
+        incoming: ServerDynamicInfo,
+        previousFailureCount: Int
+    ) {
+        if previousFailureCount > 0 {
+            logMonitorEvent(
+                category: "recovered",
+                level: .info,
+                serverID: serverID,
+                message: "\(requestKind) refresh recovered after \(previousFailureCount) consecutive failure(s); status=\(incoming.statusMessage)"
+            )
+        } else if previous?.isOnline != true {
+            logMonitorEvent(
+                category: "recovered",
+                level: .info,
+                serverID: serverID,
+                message: "\(requestKind) refresh brought device online; status=\(incoming.statusMessage)"
+            )
+        }
+
+        guard incoming.statusMessage != "connected" else {
+            if let previous,
+               previous.isOnline,
+               previous.statusMessage != "connected" {
+                logMonitorEvent(
+                    category: "dynamic-refresh",
+                    level: .info,
+                    serverID: serverID,
+                    message: "\(requestKind) refresh returned to full data from status=\(previous.statusMessage)"
+                )
+            }
+            return
+        }
+
+        if previous?.statusMessage != incoming.statusMessage || previous?.isOnline != true {
+            logMonitorEvent(
+                category: "dynamic-refresh",
+                level: .warning,
+                serverID: serverID,
+                message: "\(requestKind) refresh succeeded with status=\(incoming.statusMessage)\(diagnosticSuffix(for: incoming))"
+            )
+        }
+    }
+
+    private func recordDelayedOfflineTransition(
+        serverID: UUID,
+        requestKind: String,
+        incoming: ServerDynamicInfo,
+        failureCount: Int,
+        now: Date
+    ) {
+        guard failureCount == 1 else { return }
+
+        logMonitorEvent(
+            category: "offline-grace",
+            level: .warning,
+            serverID: serverID,
+            message: "\(requestKind) refresh failed but device remains online during grace window; failureCount=\(failureCount), lastSuccessAge=\(formattedLastSuccessAge(for: serverID, now: now)), reason=\(incoming.statusMessage)\(diagnosticSuffix(for: incoming))"
+        )
+    }
+
+    private func recordOfflineTransition(
+        serverID: UUID,
+        requestKind: String,
+        previous: ServerDynamicInfo?,
+        incoming: ServerDynamicInfo,
+        failureCount: Int,
+        now: Date
+    ) {
+        let wasOnline = previous?.isOnline == true
+        guard wasOnline || previous == nil else { return }
+
+        let level: ServerMonitorDiagnosticLevel = wasOnline ? .error : .warning
+        let message: String
+
+        if wasOnline {
+            message = "\(requestKind) refresh marked device offline; failureCount=\(failureCount), lastSuccessAge=\(formattedLastSuccessAge(for: serverID, now: now)), reason=\(incoming.statusMessage)\(diagnosticSuffix(for: incoming))"
+        } else {
+            message = "\(requestKind) refresh failed before device reached online state; failureCount=\(failureCount), reason=\(incoming.statusMessage)\(diagnosticSuffix(for: incoming))"
+        }
+
+        logMonitorEvent(
+            category: "offline-transition",
+            level: level,
+            serverID: serverID,
+            message: message
+        )
+    }
+
+    private func logMonitorEvent(
+        category: String,
+        level: ServerMonitorDiagnosticLevel,
+        serverID: UUID,
+        message: String
+    ) {
+        ServerMonitorDiagnosticsStore.record(
+            message,
+            level: level,
+            category: category,
+            server: latestConfig(for: serverID)
+        )
+    }
+
+    private func formattedLastSuccessAge(for serverID: UUID, now: Date) -> String {
+        guard let lastSuccess = lastSuccessfulDynamicRefreshDates[serverID] ?? lastDynamicRefreshDates[serverID] else {
+            return "n/a"
+        }
+
+        return String(format: "%.1fs", max(0, now.timeIntervalSince(lastSuccess)))
+    }
+
+    private func diagnosticSuffix(for dynamicInfo: ServerDynamicInfo) -> String {
+        guard !dynamicInfo.diagnostics.isEmpty else { return "" }
+        return " | diagnostics=\(dynamicInfo.diagnostics.joined(separator: " ; "))"
     }
 
     private func applyDerivedMetrics(

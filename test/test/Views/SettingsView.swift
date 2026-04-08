@@ -68,6 +68,10 @@ struct SettingsView: View {
                     NavigationLink("终端诊断日志") {
                         TerminalDiagnosticsView()
                     }
+
+                    NavigationLink("监控诊断日志") {
+                        ServerMonitorDiagnosticsView()
+                    }
                 }
 
                 Section(header: Text("服务器管理")) {
