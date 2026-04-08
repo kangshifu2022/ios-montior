@@ -226,11 +226,14 @@ final class SSHMonitorService {
     echo "=HOSTNAME="; (hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)
     echo "=CPU_INFO="; (if [ -r /proc/cpuinfo ]; then awk -F: '/model name|Hardware|system type|machine/ {gsub(/^[ \\t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model 2>/dev/null || uname -m 2>/dev/null || echo unknown; else uname -m 2>/dev/null || echo unknown; fi)
     echo "=CPU_CORES="; (if [ -r /proc/cpuinfo ]; then awk '/^processor/ {n++} END {print (n > 0 ? n : 1)}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then sysctl -n hw.logicalcpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1; else getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1; fi)
-    echo "=CPU_FREQ="; (if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf "%.0f MHz\\n", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null; elif [ -r /proc/cpuinfo ]; then awk -F: '/cpu MHz/ {gsub(/^[ \\t]+/, "", $2); printf "%.0f MHz\\n", $2; found=1; exit} /clock/ {gsub(/^[ \\t]+/, "", $2); print $2; found=1; exit} END {if (!found) print "unknown"}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then sysctl -n hw.cpufrequency 2>/dev/null | awk '{if ($1 > 0) printf "%.0f MHz\\n", $1 / 1000000; else print "unknown"}' || echo "unknown"; else echo "unknown"; fi)
+    echo "=CPU_FREQ="; (if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf "%.0f MHz\\n", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null; elif [ -r /proc/cpuinfo ]; then awk -F: '/cpu MHz/ {gsub(/^[ \\t]+/, "", $2); printf "%.0f MHz\\n", $2; found=1; exit} /clock/ {gsub(/^[ \\t]+/, "", $2); print $2; found=1; exit} END {if (!found) print "unknown"}' /proc/cpuinfo 2>/dev/null; elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then freq=$(sysctl -n hw.cpufrequency 2>/dev/null || true); if [ -n "$freq" ] && [ "$freq" -gt 0 ] 2>/dev/null; then awk -v freq="$freq" 'BEGIN {printf "%.0f MHz\\n", freq / 1000000}'; else brand=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true); perf=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || true); eff=$(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null || true); if printf '%s' "$brand" | grep -Eq '^Apple M[0-9]'; then if [ -n "$perf" ] && [ "$perf" -gt 0 ] 2>/dev/null && [ -n "$eff" ] && [ "$eff" -gt 0 ] 2>/dev/null; then printf '%s / %sP + %sE\\n' "$brand" "$perf" "$eff"; else printf '%s\\n' "$brand"; fi; else echo "unknown"; fi; fi; else echo "unknown"; fi)
     exit 0
     """
 
     private static let dynamicStatsScript = """
+    if [ -n "${ZSH_VERSION:-}" ]; then
+      setopt nonomatch 2>/dev/null || true
+    fi
     rds() {
       for m in /overlay /; do
         s=""
@@ -359,12 +362,12 @@ final class SSHMonitorService {
           if (total <= 0) {
             print "0 0 0"
           } else {
-            printf "%.0f %.0f %.0f\n", total / 1048576, available / 1048576, used / 1048576
+            printf "%.0f %.0f %.0f\\n", total / 1048576, available / 1048576, used / 1048576
           }
         }
       '
     }
-    echo "=UPTIME="; (cat /proc/uptime 2>/dev/null | awk '{print $1}' || uptime 2>/dev/null || echo 0)
+    echo "=UPTIME="; (if [ -r /proc/uptime ]; then awk '{print $1}' /proc/uptime 2>/dev/null; else uptime 2>/dev/null || echo 0; fi)
     echo "=WIFI_PHY_BANDS="; (if command -v iw >/dev/null 2>&1 && [ -d /sys/class/ieee80211 ]; then found=""; for p in /sys/class/ieee80211/phy*; do [ -d "$p" ] || continue; phy=$(basename "$p"); band=$(iw phy "$phy" info 2>/dev/null | awk '/Band 1:/{band="24g"} /Band 2:/{band="5g"} /Band 3:/{band="6g"} END{if(band) print band}'); [ -n "$band" ] || band="unknown"; printf "%s,%s;" "$phy" "$band"; found=1; done; if [ -n "$found" ]; then echo; else echo "none"; fi; else echo "none"; fi)
     echo "=TEMP_SENSORS="; (found=""; for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/temp}; label=$(cat "$d/type" 2>/dev/null); [ -n "$label" ] || label=$(basename "$d"); label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; d=${f%/*}; phy=$(printf '%s' "$f" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; for f in /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; d=${f%/*}; resolved=$(readlink -f "$d" 2>/dev/null); v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; b=$(basename "$f"); sensor=${b%_input}; label=$(cat "$d/${sensor}_label" 2>/dev/null); [ -n "$label" ] || label=$(cat "$d/name" 2>/dev/null); [ -n "$label" ] || label="$sensor"; phy=$(printf '%s' "$resolved" | awk 'match($0,/phy[0-9]+/){print substr($0, RSTART, RLENGTH); exit}'); [ -n "$phy" ] && label="$label-$phy"; label=$(printf '%s' "$label" | tr ';,' '__'); printf "%s,%s;" "$label" "$v"; found=1; done; if [ -n "$found" ]; then echo; else echo "unavailable"; fi)
     echo "=CPU_TEMP="; (found=""; for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); [ -n "$v" ] || continue; type_file="${f%/temp}/type"; type=$(cat "$type_file" 2>/dev/null); case "$type" in *cpu*|*CPU*|*pkg*|*x86_pkg_temp*|*soc*|*SoC*|*cpu-thermal*) echo "$v"; found=1; break ;; esac; done; if [ -z "$found" ]; then for f in /sys/class/thermal/thermal_zone*/temp /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$f" ] || continue; v=$(cat "$f" 2>/dev/null); case "$v" in ''|*[!0-9.]* ) continue ;; esac; echo "$v"; found=1; break; done; fi; [ -n "$found" ] || echo "unknown")
@@ -373,7 +376,7 @@ final class SSHMonitorService {
     echo "=DISK_OVERLAY="; (df -kP /overlay 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f %.0f %s %s\\n", $2/1024, $3/1024, $4/1024, $5, $6; found=1} END {if (!found) print "none"}')
     echo "=NSS_LOAD="; (if [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi 2>/dev/null; elif [ -r /sys/kernel/debug/qca-nss-drv/stats/cpu_load ]; then awk '/^Core / {core=$2; gsub(":", "", core); next} /^[[:space:]]*[0-9]+%/ && core != "" {min=$1; avg=$2; max=$3; gsub(/%/, "", min); gsub(/%/, "", avg); gsub(/%/, "", max); printf "%s,%s,%s,%s;", core, min, avg, max; found=1; core=""} END {if (!found) print "unavailable"; else print ""}' /sys/kernel/debug/qca-nss-drv/stats/cpu_load 2>/dev/null; else echo "unavailable"; fi)
     echo "=NSS_FREQ="; (if [ -r /proc/sys/dev/nss/clock/current_freq ]; then awk '{v=$1+0; if (v > 1000000) printf "%.0f\\n", v/1000000; else if (v > 1000) printf "%.0f\\n", v/1000; else printf "%.0f\\n", v; found=1} END {if (!found) print "unknown"}' /proc/sys/dev/nss/clock/current_freq 2>/dev/null; else echo "unknown"; fi)
-    echo "=LOADAVG="; (awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null || uptime 2>/dev/null | awk -F'load average: ' 'NF > 1 {gsub(/,/, "", $2); split($2, a, " "); if (length(a) >= 3) print a[1], a[2], a[3]}' || echo "0 0 0")
+    echo "=LOADAVG="; (if [ -r /proc/loadavg ]; then awk '{print $1, $2, $3}' /proc/loadavg 2>/dev/null; else uptime 2>/dev/null | awk -F'load average: ' 'NF > 1 {gsub(/,/, "", $2); split($2, a, " "); if (length(a) >= 3) print a[1], a[2], a[3]}'; fi || echo "0 0 0")
     echo "=PSI_CPU="; (if [ -r /proc/pressure/cpu ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/cpu 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_MEMORY="; (if [ -r /proc/pressure/memory ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/memory 2>/dev/null; echo; else echo "unavailable"; fi)
     echo "=PSI_IO="; (if [ -r /proc/pressure/io ]; then awk 'BEGIN{ORS=";"} {gsub(/;/, "", $0); print}' /proc/pressure/io 2>/dev/null; echo; else echo "unavailable"; fi)
@@ -556,9 +559,14 @@ final class SSHMonitorService {
             } else if line == "=CPU_CORES=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 stats.cpuCores = Int(lines[i + 1].trimmingCharacters(in: .whitespaces)) ?? 0
-            } else if line == "=CPU_FREQ=" && i + 1 < lines.count {
+            } else if line == "=CPU_FREQ=" {
                 seenMarkers.insert(line)
-                stats.cpuFrequency = lines[i + 1].trimmingCharacters(in: .whitespaces)
+                if let cpuFrequency = markerValue(after: i, in: lines) {
+                    stats.cpuFrequency = cpuFrequency
+                } else {
+                    stats.cpuFrequency = "unknown"
+                    stats.diagnostics.append("cpu frequency marker had no value")
+                }
             } else if line == "=WIFI_PHY_BANDS=" && i + 1 < lines.count {
                 seenMarkers.insert(line)
                 wifiPhyBands = parseWiFiPhyBands(from: lines[i + 1])
@@ -678,6 +686,17 @@ final class SSHMonitorService {
         }
 
         return stats
+    }
+
+    private static func markerValue(after markerIndex: Int, in lines: [String]) -> String? {
+        guard markerIndex + 1 < lines.count else { return nil }
+        let candidate = lines[markerIndex + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty, !isMarkerLine(candidate) else { return nil }
+        return candidate
+    }
+
+    private static func isMarkerLine(_ line: String) -> Bool {
+        line.hasPrefix("=") && line.hasSuffix("=")
     }
 
     private static func parseDynamicInfo(output: String) -> ServerDynamicInfo {
@@ -817,6 +836,7 @@ final class SSHMonitorService {
             let total = Double(parts[0]) ?? 0
             let available = Double(parts[1]) ?? 0
             let used = Double(parts[2]) ?? 0
+            dynamic.memTotal = Int(total)
             dynamic.memAvailable = Int(available)
             dynamic.memUsage = total > 0 ? used / total : 0
         }

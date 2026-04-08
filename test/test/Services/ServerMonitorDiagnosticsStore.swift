@@ -5,9 +5,9 @@ enum ServerMonitorDiagnosticsStore {
         Notification.Name("serverMonitorDiagnosticsDidChange")
     }
 
-    nonisolated(unsafe) private static let maxEntries = 500
-    nonisolated(unsafe) private static let queue = DispatchQueue(label: "server.monitor.diagnostics.store")
-    nonisolated(unsafe) private static let storageKey = "server.monitor.diagnostics.entries.v1"
+    nonisolated private static let maxEntries = 500
+    nonisolated private static let queue = DispatchQueue(label: "server.monitor.diagnostics.store")
+    nonisolated private static let storageKey = "server.monitor.diagnostics.entries.v1"
 
     nonisolated static func record(
         _ message: String,

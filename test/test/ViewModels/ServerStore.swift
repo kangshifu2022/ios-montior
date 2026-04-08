@@ -557,6 +557,17 @@ final class ServerStore: ObservableObject {
             consecutiveDynamicFailureCounts[serverID] = 0
             lastSuccessfulDynamicRefreshDates[serverID] = now
             var resolvedIncoming = incoming
+            if (resolvedIncoming.memTotal ?? 0) <= 0,
+               let previousDynamicInfo,
+               (previousDynamicInfo.memTotal ?? 0) > 0 {
+                resolvedIncoming.memTotal = previousDynamicInfo.memTotal
+                if resolvedIncoming.memAvailable <= 0 {
+                    resolvedIncoming.memAvailable = previousDynamicInfo.memAvailable
+                }
+                if resolvedIncoming.memUsage <= 0 {
+                    resolvedIncoming.memUsage = previousDynamicInfo.memUsage
+                }
+            }
             applyDerivedMetrics(
                 to: &resolvedIncoming,
                 previous: previousDynamicInfo,

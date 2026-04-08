@@ -109,6 +109,7 @@ struct ServerDynamicInfo: Codable, Sendable {
     var statusMessage: String = ""
     var diagnostics: [String] = []
     var rawOutput: String = ""
+    var memTotal: Int? = nil
     var memAvailable: Int = 0
     var uptime: String = ""
     var cpuUsage: Double = 0
@@ -140,6 +141,7 @@ struct ServerDynamicInfo: Codable, Sendable {
         statusMessage = stats.statusMessage
         diagnostics = stats.diagnostics
         rawOutput = stats.rawOutput
+        memTotal = stats.memTotal
         memAvailable = stats.memAvailable
         uptime = stats.uptime
         cpuUsage = stats.cpuUsage
@@ -223,6 +225,9 @@ struct ServerStats: Codable, Sendable {
             statusMessage = dynamicInfo.statusMessage
             diagnostics = dynamicInfo.diagnostics
             rawOutput = dynamicInfo.rawOutput
+            if let dynamicMemTotal = dynamicInfo.memTotal, dynamicMemTotal > 0 {
+                memTotal = dynamicMemTotal
+            }
             memAvailable = dynamicInfo.memAvailable
             uptime = dynamicInfo.uptime
             cpuUsage = dynamicInfo.cpuUsage
