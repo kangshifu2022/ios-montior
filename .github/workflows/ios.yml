@@ -20,7 +20,8 @@ jobs:
           xcodebuild build-for-testing \
             -project test/test.xcodeproj \
             -scheme test \
-            -destination "platform=iOS Simulator,name=iPhone 16"
+            -destination "platform=iOS Simulator,name=iPhone 16" \
+            SWIFT_STRICT_CONCURRENCY=minimal
 
       - name: Test
         run: |
