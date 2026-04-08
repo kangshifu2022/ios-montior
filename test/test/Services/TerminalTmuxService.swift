@@ -3,8 +3,6 @@ import Citadel
 import NIOCore
 import NIOSSH
 
-private let shellCompatibilityExecThreshold = 8 * 1024
-
 struct TerminalRemoteTmuxSnapshot: Sendable {
     var sessions: [TerminalRemoteTmuxSession]
     var notice: String?
@@ -192,39 +190,19 @@ private func runRemoteScript(
     maxResponseSize: Int,
     config: ServerConfig
 ) async throws -> ByteBuffer {
-    let prefersShellCompatibility = script.utf8.count >= shellCompatibilityExecThreshold
+    TerminalDiagnosticsStore.record(
+        "tmux command executing via shell compatibility mode",
+        level: .info,
+        category: "tmux-probe",
+        server: config
+    )
 
-    do {
-        return try await client.executeCommand(
-            script,
-            maxResponseSize: maxResponseSize,
-            mergeStreams: true,
-            inShell: prefersShellCompatibility
-        )
-    } catch {
-        let lowercased = String(describing: error).lowercased()
-        let shouldRetryInShell = lowercased.contains("tcpshutdown")
-            || lowercased.contains("channel closed")
-            || lowercased.contains("channelclosed")
-
-        guard !prefersShellCompatibility, shouldRetryInShell else {
-            throw error
-        }
-
-        TerminalDiagnosticsStore.record(
-            "tmux exec request closed unexpectedly; retrying in shell compatibility mode",
-            level: .info,
-            category: "tmux-probe",
-            server: config
-        )
-
-        return try await client.executeCommand(
-            script,
-            maxResponseSize: maxResponseSize,
-            mergeStreams: true,
-            inShell: true
-        )
-    }
+    return try await client.executeCommand(
+        script,
+        maxResponseSize: maxResponseSize,
+        mergeStreams: true,
+        inShell: true
+    )
 }
 
 private func parseTmuxSnapshot(_ output: String) -> TerminalRemoteTmuxSnapshot {

@@ -9,10 +9,6 @@ final class SSHMonitorService {
         let rawOutput: String
     }
 
-    // Dropbear defaults MAX_CMD_LEN to 9000 bytes for SSH exec requests.
-    // Leave headroom and switch long scripts to shell mode before we hit that cap.
-    private static let shellCompatibilityExecThreshold = 8 * 1024
-
     struct RemoteAlertOperationError: Error, Sendable {
         let message: String
     }
@@ -543,45 +539,19 @@ final class SSHMonitorService {
         config: ServerConfig,
         requestKind: String
     ) async throws -> ByteBuffer {
-        let prefersShellCompatibility = shouldUseShellCompatibilityMode(for: script)
+        ServerMonitorDiagnosticsStore.record(
+            "SSH \(requestKind) executing via shell compatibility mode",
+            level: .info,
+            category: "ssh-execute",
+            server: config
+        )
 
-        do {
-            return try await client.executeCommand(
-                script,
-                maxResponseSize: maxResponseSize,
-                mergeStreams: true,
-                inShell: prefersShellCompatibility
-            )
-        } catch {
-            guard !prefersShellCompatibility, shouldRetryInShell(after: error) else {
-                throw error
-            }
-
-            ServerMonitorDiagnosticsStore.record(
-                "SSH \(requestKind) exec request closed unexpectedly; retrying in shell compatibility mode",
-                level: .info,
-                category: "ssh-execute",
-                server: config
-            )
-
-            return try await client.executeCommand(
-                script,
-                maxResponseSize: maxResponseSize,
-                mergeStreams: true,
-                inShell: true
-            )
-        }
-    }
-
-    private static func shouldUseShellCompatibilityMode(for script: String) -> Bool {
-        script.utf8.count >= shellCompatibilityExecThreshold
-    }
-
-    private static func shouldRetryInShell(after error: Error) -> Bool {
-        let lowercased = String(describing: error).lowercased()
-        return lowercased.contains("tcpshutdown")
-            || lowercased.contains("channel closed")
-            || lowercased.contains("channelclosed")
+        return try await client.executeCommand(
+            script,
+            maxResponseSize: maxResponseSize,
+            mergeStreams: true,
+            inShell: true
+        )
     }
 
     private static func parseStaticInfo(output: String, config: ServerConfig) -> ServerStaticInfo {
