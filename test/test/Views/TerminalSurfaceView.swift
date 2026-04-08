@@ -220,9 +220,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 accessibilityLabel: "查看远端 tmux 会话并重新连接",
                 style: .accent,
                 columnSpan: 2,
-                action: {
+                action: { [weak scrollbackView] in
                     _ = consumeAccessoryModifiers()
-                    viewModel.presentTmuxSessionPicker()
+                    _ = scrollbackView?.resignFirstResponder()
+                    DispatchQueue.main.async {
+                        viewModel.presentTmuxSessionPicker()
+                    }
                 }
             )
         ]

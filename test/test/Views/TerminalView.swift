@@ -94,12 +94,10 @@ struct TerminalView: View {
                 viewModel.refreshRemoteTmuxSessionsIfNeeded()
             }
         }
-        .sheet(isPresented: $viewModel.isShowingTmuxSessionPicker, onDismiss: {
+        .fullScreenCover(isPresented: $viewModel.isShowingTmuxSessionPicker, onDismiss: {
             viewModel.restoreTerminalKeyboardFocus()
         }) {
             TerminalTmuxSessionPickerSheet(viewModel: viewModel)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
         }
         .onChange(of: viewModel.isShowingTmuxSessionPicker) { _, isPresented in
             guard isPresented else { return }
