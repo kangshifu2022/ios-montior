@@ -1,16 +1,13 @@
 name: iOS starter workflow
-
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-
 jobs:
   build:
     name: Build and Test
     runs-on: macos-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,38 +22,23 @@ jobs:
           security unlock-keychain -p "temp123" $KEYCHAIN_PATH
           security import $CERT_PATH -P "${{ secrets.CERTIFICATES_P12_PASSWORD }}" \
             -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -s -k "temp123" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
-
-      - name: Install provisioning profile
-        run: |
-          PP_PATH=$RUNNER_TEMP/profile.mobileprovision
-          echo "${{ secrets.PROVISIONING_PROFILE_BASE64 }}" | base64 --decode -o $PP_PATH
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/dd3688d7-0425-4667-a40b-b1c651e6a72a.mobileprovision
-          
-      - name: Check provisioning profiles
-        run: |
-          ls ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: Build
         run: |
           echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > $RUNNER_TEMP/AuthKey.p8
-          xcodebuild build \
+          xcodebuild archive \
             -project test/test.xcodeproj \
             -scheme test \
-            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/test.xcarchive \
             -allowProvisioningUpdates \
             -authenticationKeyPath $RUNNER_TEMP/AuthKey.p8 \
             -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} \
-            -skipPackagePluginValidation \
             SWIFT_STRICT_CONCURRENCY=minimal \
             OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="dd3688d7-0425-4667-a40b-b1c651e6a72a" \
-            CODE_SIGNING_ALLOWED_FOR_APPS=YES \
-            CLANG_ENABLE_CODE_COVERAGE=NO \
-            "CODE_SIGN_IDENTITY[sdk=iphoneos*]"="Apple Distribution" \
-            "CODE_SIGNING_REQUIRED[sdk=macosx*]"=NO \
-            "CODE_SIGN_IDENTITY[sdk=macosx*]"=""
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=UV3V49Y5ZZ
