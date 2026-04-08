@@ -272,7 +272,7 @@ struct DevicesExperimentalView: View {
                         usesLiquidGlass: true
                     )
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .controlSize(.mini)
             }
         } else {

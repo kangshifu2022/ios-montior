@@ -340,6 +340,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             pushTerminalSize(from: source, columns: newCols, rows: newRows)
         }
 
+        @MainActor
         func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {
             viewModel.updateTerminalTitle(title)
         }
@@ -361,6 +362,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
         func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
 
+        @MainActor
         func pushTerminalSize(from source: SwiftTerm.TerminalView, columns: Int, rows: Int) {
             let scale = source.window?.screen.scale ?? UIScreen.main.scale
             let pixelWidth = Int(source.bounds.width * scale)
