@@ -330,6 +330,10 @@ final class TerminalViewModel: ObservableObject {
         connectIfNeeded()
     }
 
+    func restoreTerminalKeyboardFocus() {
+        requestKeyboardFocus()
+    }
+
     func disconnect(clearError: Bool = false) {
         TerminalDiagnosticsStore.record(
             "disconnect requested, clearError=\(clearError)",

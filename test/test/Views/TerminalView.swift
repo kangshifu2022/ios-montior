@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct TerminalView: View {
     let server: ServerConfig
@@ -93,10 +94,21 @@ struct TerminalView: View {
                 viewModel.refreshRemoteTmuxSessionsIfNeeded()
             }
         }
-        .sheet(isPresented: $viewModel.isShowingTmuxSessionPicker) {
+        .sheet(isPresented: $viewModel.isShowingTmuxSessionPicker, onDismiss: {
+            viewModel.restoreTerminalKeyboardFocus()
+        }) {
             TerminalTmuxSessionPickerSheet(viewModel: viewModel)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .onChange(of: viewModel.isShowingTmuxSessionPicker) { _, isPresented in
+            guard isPresented else { return }
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
         }
         .alert("终端错误", isPresented: errorPresented) {
             Button("知道了", role: .cancel) {
