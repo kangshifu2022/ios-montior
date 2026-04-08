@@ -97,7 +97,7 @@ final class TerminalShortcutAccessoryView: UIInputView {
 
         private func updateAppearance(
             animated: Bool,
-            duration: TimeInterval = Self.standardAnimationDuration,
+            duration: TimeInterval,
             options: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
         ) {
             let updates = {
@@ -155,6 +155,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
                 delay: 0,
                 options: options,
                 animations: updates
+            )
+        }
+
+        private func updateAppearance(animated: Bool) {
+            updateAppearance(
+                animated: animated,
+                duration: Self.standardAnimationDuration
             )
         }
     }
