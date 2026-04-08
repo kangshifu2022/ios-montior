@@ -33,6 +33,10 @@ jobs:
           echo "${{ secrets.PROVISIONING_PROFILE_BASE64 }}" | base64 --decode -o $PP_PATH
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/dd3688d7-0425-4667-a40b-b1c651e6a72a.mobileprovision
+          
+      - name: Check provisioning profiles
+        run: |
+          ls ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: Build
         run: |
