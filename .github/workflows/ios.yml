@@ -21,7 +21,8 @@ jobs:
             -project test/test.xcodeproj \
             -scheme test \
             -destination "platform=iOS Simulator,name=iPhone 16" \
-            SWIFT_STRICT_CONCURRENCY=minimal
+            SWIFT_STRICT_CONCURRENCY=minimal \
+            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal"
 
       - name: Test
         run: |
