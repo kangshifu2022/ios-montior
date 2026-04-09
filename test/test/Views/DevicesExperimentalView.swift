@@ -867,6 +867,18 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
                                 .onTapGesture {
                                     closeActions()
                                 }
+                                .simultaneousGesture(
+                                    DragGesture(minimumDistance: 8, coordinateSpace: .local)
+                                        .onEnded { value in
+                                            let horizontalDistance = value.translation.width
+                                            let verticalDistance = abs(value.translation.height)
+                                            guard horizontalDistance > 24,
+                                                  horizontalDistance > verticalDistance * 1.1 else {
+                                                return
+                                            }
+                                            closeActions()
+                                        }
+                                )
 
                             Color.clear
                                 .frame(width: Layout.totalActionWidth)
