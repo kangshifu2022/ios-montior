@@ -1,7 +1,7 @@
 name: "iOS Build Pipeline"
 
 on:
-  workflow_dispatch: # 手动触发
+  workflow_dispatch:
 
 jobs:
   build_ipa:
@@ -11,7 +11,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 第一步：安装证书和描述文件
       - name: Install Apple Certificate and Provisioning Profile
         env:
           P12_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -33,12 +32,16 @@ jobs:
           security import $CERT_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12
           security list-keychain -d user -s $KEYCHAIN_PATH
 
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          # 提取 Provisioning Profile 的 UUID (这是关键)
+          UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i $PP_PATH))
+          echo "PP_UUID=$UUID" >> $GITHUB_ENV
 
-      # 第二步：归档 (Archive)
-      # 关键修改：增加 AD_HOC_CODE_SIGNING_ALLOWED 和 DEVELOPMENT_TEAM 覆盖
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+
       - name: xcodebuild Archive
+        env:
+          PP_UUID: ${{ env.PP_UUID }}
         run: |
           xcodebuild archive \
             -project test/test.xcodeproj \
@@ -50,11 +53,9 @@ jobs:
             -skipPackagePluginValidation \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="test_adhoc" \
-            DEVELOPMENT_TEAM="UV3V49Y5ZZ" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            PROVISIONING_PROFILE=$PP_UUID \
+            DEVELOPMENT_TEAM="UV3V49Y5ZZ"
 
-      # 第三步：导出 IPA (Export)
       - name: xcodebuild Export IPA
         run: |
           xcodebuild -exportArchive \
@@ -62,7 +63,6 @@ jobs:
             -exportOptionsPlist ExportOptions.plist \
             -exportPath $RUNNER_TEMP/build/ipa
 
-      # 第四步：上传产物
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
