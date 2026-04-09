@@ -11,7 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 第一步：解码并安装证书和描述文件
+      # 第一步：安装证书和描述文件
       - name: Install Apple Certificate and Provisioning Profile
         env:
           P12_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -37,7 +37,7 @@ jobs:
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
 
       # 第二步：归档 (Archive)
-      # 显式指定手动签名、描述文件名称和签名身份
+      # 关键修改：增加 AD_HOC_CODE_SIGNING_ALLOWED 和 DEVELOPMENT_TEAM 覆盖
       - name: xcodebuild Archive
         run: |
           xcodebuild archive \
@@ -47,9 +47,12 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation \
             CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="test_adhoc" \
-            CODE_SIGN_IDENTITY="Apple Distribution"
+            DEVELOPMENT_TEAM="UV3V49Y5ZZ" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       # 第三步：导出 IPA (Export)
       - name: xcodebuild Export IPA
