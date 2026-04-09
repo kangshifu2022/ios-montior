@@ -611,6 +611,12 @@ private struct ExperimentalHorizontalPanState {
 // UIKit pan recognition lets us reject vertical drags before the card gesture begins,
 // so the outer ScrollView keeps first access to normal up/down scrolling.
 private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
+    private final class PassthroughView: UIView {
+        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            false
+        }
+    }
+
     let onChanged: (ExperimentalHorizontalPanState) -> Void
     let onEnded: (ExperimentalHorizontalPanState) -> Void
 
@@ -619,7 +625,7 @@ private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+        let view = PassthroughView(frame: .zero)
         view.backgroundColor = .clear
         view.isOpaque = false
 
@@ -788,7 +794,6 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
                 onChanged: handleSwipePanChanged,
                 onEnded: handleSwipePanEnded
             )
-            .allowsHitTesting(false)
         }
         .onChange(of: openCardID) { _, newValue in
             if newValue != id {
