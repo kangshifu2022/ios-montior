@@ -30,13 +30,21 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
           security import $CERT_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # 提取 UUID
+          
+          # 获取 UUID 并安装
           UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i $PP_PATH))
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-          echo "安装描述文件成功，UUID: $UUID"
+          echo "PP_UUID=$UUID" >> $GITHUB_ENV
+
+      # 关键步骤：动态创建 xcconfig，实现精准签名注入
+      - name: Create Signing Config
+        run: |
+          echo "CODE_SIGN_STYLE = Manual" > signing.xcconfig
+          echo "CODE_SIGN_IDENTITY = Apple Distribution" >> signing.xcconfig
+          echo "DEVELOPMENT_TEAM = UV3V49Y5ZZ" >> signing.xcconfig
+          echo "PROVISIONING_PROFILE_SPECIFIER = test_adhoc" >> signing.xcconfig
+          echo "AD_HOC_CODE_SIGNING_ALLOWED = YES" >> signing.xcconfig
 
       - name: xcodebuild Archive
         run: |
@@ -47,12 +55,9 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            -xcconfig signing.xcconfig \
             -skipPackagePluginValidation \
-            -skipMacroValidation \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="test_adhoc" \
-            DEVELOPMENT_TEAM="UV3V49Y5ZZ"
+            -skipMacroValidation
 
       - name: xcodebuild Export IPA
         run: |
