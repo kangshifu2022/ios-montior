@@ -1,7 +1,7 @@
 name: "iOS Build Pipeline"
 
 on:
-  workflow_dispatch: # 手动触发，方便调试
+  workflow_dispatch: # 手动触发
 
 jobs:
   build_ipa:
@@ -19,30 +19,25 @@ jobs:
           PROV_BASE64: ${{ secrets.BUILD_PROVISIONING_PROFILE_BASE64 }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          # 定义临时路径
           CERT_PATH=$RUNNER_TEMP/build_certificate.p12
           PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          # 1. 解码 Secrets
           echo -n "$P12_BASE64" | base64 --decode -o $CERT_PATH
           echo -n "$PROV_BASE64" | base64 --decode -o $PP_PATH
 
-          # 2. 创建并解锁临时钥匙串
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-          # 3. 导入 P12 证书
           security import $CERT_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12
           security list-keychain -d user -s $KEYCHAIN_PATH
 
-          # 4. 安装描述文件到系统指定目录
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
 
       # 第二步：归档 (Archive)
-      # 注意：由于你的 .xcodeproj 在 test 目录下，此处路径必须带上 test/
+      # 显式指定手动签名、描述文件名称和签名身份
       - name: xcodebuild Archive
         run: |
           xcodebuild archive \
@@ -51,10 +46,12 @@ jobs:
             -archivePath $RUNNER_TEMP/test.xcarchive \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS'
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="test_adhoc" \
+            CODE_SIGN_IDENTITY="Apple Distribution"
 
       # 第三步：导出 IPA (Export)
-      # 引用你根目录下的 ExportOptions.plist
       - name: xcodebuild Export IPA
         run: |
           xcodebuild -exportArchive \
@@ -62,7 +59,7 @@ jobs:
             -exportOptionsPlist ExportOptions.plist \
             -exportPath $RUNNER_TEMP/build/ipa
 
-      # 第四步：上传产物到 GitHub 后台
+      # 第四步：上传产物
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
