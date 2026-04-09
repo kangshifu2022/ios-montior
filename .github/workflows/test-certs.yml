@@ -74,15 +74,15 @@ jobs:
           case "$VERIFY_RESULT" in
             success)
               TITLE="iOS 证书校验成功"
-              BODY=$'证书和描述文件校验完成。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Verify: ${VERIFY_RESULT}"
+              printf -v BODY '证书和描述文件校验完成。\n分支: %s\nRun: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
               ;;
             cancelled)
               TITLE="iOS 证书校验已取消"
-              BODY=$'证书校验被取消。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Verify: ${VERIFY_RESULT}"
+              printf -v BODY '证书校验被取消。\n分支: %s\nRun: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
               ;;
             *)
               TITLE="iOS 证书校验失败"
-              BODY=$'证书或描述文件校验失败。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Verify: ${VERIFY_RESULT}"
+              printf -v BODY '证书或描述文件校验失败。\n分支: %s\nRun: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
               ;;
           esac
 
