@@ -425,44 +425,33 @@ jobs:
     steps:
       - name: Send Bark notification
         env:
-          BARK_PUSH_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/
+          SUCCESS_BARK_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/构建成功?sound=minuet
+          FAILURE_BARK_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/构建失败?level=critical&volume=10
           BUILD_RESULT: ${{ needs.build-ipa.result }}
           DEPLOY_RESULT: ${{ needs.deploy-install-page.result }}
           PAGE_URL: ${{ needs.deploy-install-page.outputs.page_url }}
         run: |
-          if [[ -z "${BARK_PUSH_URL:-}" ]]; then
-            echo "BARK_PUSH_URL is not set; skipping Bark notification."
+          if [[ -z "${SUCCESS_BARK_URL:-}" || -z "${FAILURE_BARK_URL:-}" ]]; then
+            echo "Bark URLs are not fully set; skipping Bark notification."
             exit 0
           fi
 
-          BARK_PUSH_URL="${BARK_PUSH_URL%/}"
           REF_NAME="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
 
-          if [[ "$BUILD_RESULT" == "success" ]]; then
-            case "$DEPLOY_RESULT" in
-              success)
-                TITLE="iOS Ad Hoc 构建成功"
-                printf -v BODY 'IPA 构建成功，安装页已发布。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
-                ;;
-              skipped)
-                TITLE="iOS Ad Hoc 构建成功"
-                printf -v BODY 'IPA 构建成功，安装页未发布。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
-                ;;
-              cancelled)
-                TITLE="iOS 安装页发布已取消"
-                printf -v BODY 'IPA 已构建，但安装页发布被取消。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
-                ;;
-              *)
-                TITLE="iOS 安装页发布失败"
-                printf -v BODY 'IPA 已构建，但安装页发布失败。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
-                ;;
-            esac
-          elif [[ "$BUILD_RESULT" == "cancelled" ]]; then
-            TITLE="iOS Ad Hoc 构建已取消"
-            printf -v BODY 'IPA 构建被取消。\n分支: %s\nBuild: #%s\nBuild 结果: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
+          if [[ "$BUILD_RESULT" == "success" && ( "$DEPLOY_RESULT" == "success" || "$DEPLOY_RESULT" == "skipped" ) ]]; then
+            NOTIFY_URL="$SUCCESS_BARK_URL"
+
+            if [[ "$DEPLOY_RESULT" == "success" ]]; then
+              printf -v BODY 'iOS Ad Hoc 工作流成功。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+            else
+              printf -v BODY 'iOS Ad Hoc 构建成功，安装页按预期跳过。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+            fi
+          elif [[ "$BUILD_RESULT" == "cancelled" || "$DEPLOY_RESULT" == "cancelled" ]]; then
+            NOTIFY_URL="$FAILURE_BARK_URL"
+            printf -v BODY 'iOS Ad Hoc 工作流未完成。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
           else
-            TITLE="iOS Ad Hoc 构建失败"
-            printf -v BODY 'IPA 构建失败。\n分支: %s\nBuild: #%s\nBuild 结果: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
+            NOTIFY_URL="$FAILURE_BARK_URL"
+            printf -v BODY 'iOS Ad Hoc 工作流失败。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
           fi
 
           CURL_ARGS=(
@@ -470,9 +459,8 @@ jobs:
             --silent
             --show-error
             -X POST
-            "$BARK_PUSH_URL"
+            "$NOTIFY_URL"
             -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8'
-            --data-urlencode "title=${TITLE}"
             --data-urlencode "body=${BODY}"
             --data-urlencode "group=GitHub Actions"
           )

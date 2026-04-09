@@ -59,35 +59,27 @@ jobs:
     steps:
       - name: Send Bark notification
         env:
-          BARK_PUSH_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/
+          SUCCESS_BARK_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/推送铃声?sound=minuet
+          FAILURE_BARK_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/重要警告?level=critical&volume=5
           VERIFY_RESULT: ${{ needs.verify.result }}
         run: |
-          if [[ -z "${BARK_PUSH_URL:-}" ]]; then
-            echo "BARK_PUSH_URL is not set; skipping Bark notification."
+          if [[ -z "${SUCCESS_BARK_URL:-}" || -z "${FAILURE_BARK_URL:-}" ]]; then
+            echo "Bark URLs are not fully set; skipping Bark notification."
             exit 0
           fi
 
-          BARK_PUSH_URL="${BARK_PUSH_URL%/}"
           REF_NAME="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
 
-          case "$VERIFY_RESULT" in
-            success)
-              TITLE="iOS 证书校验成功"
-              printf -v BODY '证书和描述文件校验完成。\n分支: %s\nBuild: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
-              ;;
-            cancelled)
-              TITLE="iOS 证书校验已取消"
-              printf -v BODY '证书校验被取消。\n分支: %s\nBuild: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
-              ;;
-            *)
-              TITLE="iOS 证书校验失败"
-              printf -v BODY '证书或描述文件校验失败。\n分支: %s\nBuild: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
-              ;;
-          esac
+          if [[ "$VERIFY_RESULT" == "success" ]]; then
+            NOTIFY_URL="$SUCCESS_BARK_URL"
+            printf -v BODY 'iOS 证书校验成功。\n分支: %s\nBuild: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
+          else
+            NOTIFY_URL="$FAILURE_BARK_URL"
+            printf -v BODY 'iOS 证书校验失败。\n分支: %s\nBuild: #%s\nVerify: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$VERIFY_RESULT"
+          fi
 
           curl --fail --silent --show-error \
-            -X POST "$BARK_PUSH_URL" \
+            -X POST "$NOTIFY_URL" \
             -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8' \
-            --data-urlencode "title=${TITLE}" \
             --data-urlencode "body=${BODY}" \
             --data-urlencode "group=GitHub Actions"
