@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct DevicesExperimentalView: View {
@@ -597,6 +598,124 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     }
 }
 
+private struct ExperimentalHorizontalPanState {
+    let translation: CGSize
+    let velocity: CGSize
+}
+
+// UIKit pan recognition lets us reject vertical drags before the card gesture begins,
+// so the outer ScrollView keeps first access to normal up/down scrolling.
+private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
+    let onChanged: (ExperimentalHorizontalPanState) -> Void
+    let onEnded: (ExperimentalHorizontalPanState) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChanged: onChanged, onEnded: onEnded)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isOpaque = false
+
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: view.superview)
+        }
+
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onChanged = onChanged
+        context.coordinator.onEnded = onEnded
+
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: uiView.superview)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onChanged: (ExperimentalHorizontalPanState) -> Void
+        var onEnded: (ExperimentalHorizontalPanState) -> Void
+
+        private weak var installedView: UIView?
+        private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
+            let gestureRecognizer = UIPanGestureRecognizer(
+                target: self,
+                action: #selector(handlePanStateChange(_:))
+            )
+            gestureRecognizer.delegate = self
+            gestureRecognizer.cancelsTouchesInView = false
+            gestureRecognizer.delaysTouchesBegan = false
+            gestureRecognizer.maximumNumberOfTouches = 1
+            return gestureRecognizer
+        }()
+
+        init(
+            onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
+            onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
+        ) {
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+        }
+
+        func attach(to view: UIView?) {
+            guard let view else { return }
+            guard installedView !== view else { return }
+            detach()
+            view.addGestureRecognizer(panGestureRecognizer)
+            installedView = view
+        }
+
+        func detach() {
+            installedView?.removeGestureRecognizer(panGestureRecognizer)
+            installedView = nil
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
+                return true
+            }
+
+            let velocity = gestureRecognizer.velocity(in: gestureRecognizer.view)
+            if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
+                return abs(velocity.x) > abs(velocity.y)
+            }
+
+            let translation = gestureRecognizer.translation(in: gestureRecognizer.view)
+            return abs(translation.x) > abs(translation.y)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
+        @objc
+        private func handlePanStateChange(_ gestureRecognizer: UIPanGestureRecognizer) {
+            let state = ExperimentalHorizontalPanState(
+                translation: gestureRecognizer.translation(in: gestureRecognizer.view),
+                velocity: gestureRecognizer.velocity(in: gestureRecognizer.view)
+            )
+
+            switch gestureRecognizer.state {
+            case .began, .changed:
+                onChanged(state)
+            case .ended, .cancelled, .failed:
+                onEnded(state)
+            default:
+                break
+            }
+        }
+    }
+}
+
 private struct ExperimentalSwipeActionCard<Content: View>: View {
     private enum Layout {
         static var actionWidth: CGFloat { 62 }
@@ -659,7 +778,13 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .simultaneousGesture(swipeGesture)
+        .overlay {
+            ExperimentalHorizontalPanGestureOverlay(
+                onChanged: handleSwipePanChanged,
+                onEnded: handleSwipePanEnded
+            )
+            .allowsHitTesting(false)
+        }
         .onChange(of: openCardID) { _, newValue in
             if newValue != id {
                 dragOffset = 0
@@ -735,29 +860,29 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         .shadow(color: background.opacity(0.22), radius: 10, x: 0, y: 5)
     }
 
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .local)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                dragOffset = value.translation.width
-            }
-            .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+    private func handleSwipePanChanged(_ state: ExperimentalHorizontalPanState) {
+        dragOffset = state.translation.width
+    }
 
-                let projectedOffset = baseOffset + value.predictedEndTranslation.width
-                let revealedEnough = projectedOffset <= (-Layout.totalActionWidth * 0.55)
-                let closingEnough = projectedOffset >= (-Layout.totalActionWidth * 0.35)
+    private func handleSwipePanEnded(_ state: ExperimentalHorizontalPanState) {
+        let projectedOffset = baseOffset + projectedTranslationWidth(for: state)
+        let revealedEnough = projectedOffset <= (-Layout.totalActionWidth * 0.55)
+        let closingEnough = projectedOffset >= (-Layout.totalActionWidth * 0.35)
 
-                if revealedEnough {
-                    openActions()
-                } else if closingEnough {
-                    closeActions()
-                } else if openCardID == id {
-                    openActions()
-                } else {
-                    closeActions()
-                }
-            }
+        if revealedEnough {
+            openActions()
+        } else if closingEnough {
+            closeActions()
+        } else if openCardID == id {
+            openActions()
+        } else {
+            closeActions()
+        }
+    }
+
+    private func projectedTranslationWidth(for state: ExperimentalHorizontalPanState) -> CGFloat {
+        let projectedVelocityContribution = state.velocity.width * 0.12
+        return state.translation.width + projectedVelocityContribution
     }
 
     private func openActions() {
