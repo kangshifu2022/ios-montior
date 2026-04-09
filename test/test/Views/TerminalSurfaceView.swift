@@ -151,7 +151,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
                 sendShortcutBytes(payload)
             }),
-            .init(title: "hungup", style: .accent, action: {
+            .init(title: "hgup", style: .accent, action: {
                 let modifiers = consumeAccessoryModifiers()
                 viewModel.suspendTerminal()
                 if modifiers.alt || modifiers.shift {

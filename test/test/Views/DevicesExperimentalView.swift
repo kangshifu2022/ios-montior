@@ -205,7 +205,7 @@ struct DevicesExperimentalView: View {
                 .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
                 Text("概览")
                     .font(.system(size: 38, weight: .black, design: .rounded))
                     .foregroundColor(palette.primaryText)
@@ -213,7 +213,7 @@ struct DevicesExperimentalView: View {
 
                 Spacer(minLength: 0)
 
-                buildBadge
+                buildLabel
             }
 
             if !availableGroupNames.isEmpty {
@@ -234,20 +234,11 @@ struct DevicesExperimentalView: View {
         }
     }
 
-    private var buildBadge: some View {
-        Text("Build \(appBuildNumber)")
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-            .foregroundColor(palette.secondaryText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(palette.subcardBackground)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(palette.cardBorder.opacity(palette.isDark ? 1 : 0.9), lineWidth: 1)
-            )
+    private var buildLabel: some View {
+        Text("build\(appBuildNumber)")
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundColor(palette.secondaryText.opacity(0.92))
+            .padding(.top, 5)
             .accessibilityLabel("构建号 \(appBuildNumber)")
     }
 
@@ -283,89 +274,47 @@ struct DevicesExperimentalView: View {
         isSelected: Bool,
         groupAccentColor: Color?
     ) -> some View {
-        if #available(iOS 26.0, *) {
-            if isSelected {
-                Button {
-                    handleGroupTagTap(groupName)
-                } label: {
-                    groupTabLabel(
-                        groupName: groupName,
-                        isSelected: isSelected,
-                        groupAccentColor: groupAccentColor,
-                        usesLiquidGlass: true
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.mini)
-            } else {
-                Button {
-                    handleGroupTagTap(groupName)
-                } label: {
-                    groupTabLabel(
-                        groupName: groupName,
-                        isSelected: isSelected,
-                        groupAccentColor: groupAccentColor,
-                        usesLiquidGlass: true
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-            }
-        } else {
-            Button {
-                handleGroupTagTap(groupName)
-            } label: {
-                groupTabLabel(
-                    groupName: groupName,
-                    isSelected: isSelected,
-                    groupAccentColor: groupAccentColor,
-                    usesLiquidGlass: false
-                )
-            }
-            .buttonStyle(.plain)
+        Button {
+            handleGroupTagTap(groupName)
+        } label: {
+            groupTabLabel(
+                groupName: groupName,
+                isSelected: isSelected,
+                groupAccentColor: groupAccentColor
+            )
         }
+        .buttonStyle(.plain)
     }
 
-    @ViewBuilder
     private func groupTabLabel(
         groupName: String,
         isSelected: Bool,
-        groupAccentColor: Color?,
-        usesLiquidGlass: Bool
+        groupAccentColor: Color?
     ) -> some View {
-        let label = HStack(spacing: 6) {
+        HStack(spacing: 4) {
             if let groupAccentColor {
                 ExperimentalGroupIndicatorLine(
                     color: groupAccentColor,
                     width: 2.5,
-                    height: 9
+                    height: 8
                 )
             }
 
             Text(groupName)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundColor(
-                    usesLiquidGlass
-                        ? (isSelected ? palette.primaryText : palette.secondaryText)
-                        : (isSelected ? selectedGroupTabTextColor : palette.secondaryText)
-                )
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(isSelected ? selectedGroupTabTextColor : palette.secondaryText)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2)
-
-        if usesLiquidGlass {
-            label
-        } else {
-            label
-                .background(
-                    Capsule()
-                        .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
-                )
-        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 0)
+        .background(
+            Capsule()
+                .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)
+        )
+        .overlay(
+            Capsule()
+                .stroke(isSelected ? selectedGroupTabBorderColor : palette.cardBorder, lineWidth: 1)
+        )
     }
 
     private func handleGroupTagTap(_ groupName: String) {
@@ -390,13 +339,11 @@ struct DevicesExperimentalView: View {
     }
 
     private var selectedGroupTabBackground: Color {
-        palette.isDark
-            ? Color.white.opacity(0.16)
-            : Color.black.opacity(0.82)
+        palette.cardBackground
     }
 
     private var selectedGroupTabTextColor: Color {
-        .white
+        palette.primaryText
     }
 
     private var selectedGroupTabBorderColor: Color {
