@@ -615,6 +615,7 @@ private struct ExperimentalHorizontalPanState {
 // before SwiftUI's card gesture competes with the outer ScrollView.
 private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
     private enum PanAxis {
+        case undecided
         case horizontal
         case vertical
     }
@@ -659,19 +660,21 @@ private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         private enum Layout {
-            static let minimumVelocity: CGFloat = 45
-            static let minimumTranslation: CGFloat = 4
+            static let axisDecisionDistance: CGFloat = 8
+            static let axisDominanceRatio: CGFloat = 1.12
         }
 
         var onChanged: (ExperimentalHorizontalPanState) -> Void
         var onEnded: (ExperimentalHorizontalPanState) -> Void
 
         private weak var installedView: UIView?
-        private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
-            let gestureRecognizer = UIPanGestureRecognizer(
+        private lazy var panGestureRecognizer: HorizontalPanGestureRecognizer = {
+            let gestureRecognizer = HorizontalPanGestureRecognizer(
                 target: self,
                 action: #selector(handlePanStateChange(_:))
             )
+            gestureRecognizer.axisDecisionDistance = Layout.axisDecisionDistance
+            gestureRecognizer.axisDominanceRatio = Layout.axisDominanceRatio
             gestureRecognizer.delegate = self
             gestureRecognizer.cancelsTouchesInView = false
             gestureRecognizer.delaysTouchesBegan = false
@@ -701,15 +704,7 @@ private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
-                return true
-            }
-
-            guard let axis = resolvedPanAxis(for: gestureRecognizer) else {
-                return false
-            }
-
-            return axis == .horizontal
+            true
         }
 
         func gestureRecognizer(
@@ -735,48 +730,48 @@ private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
                 break
             }
         }
+    }
 
-        private func resolvedPanAxis(for gestureRecognizer: UIPanGestureRecognizer) -> PanAxis? {
-            let velocity = gestureRecognizer.velocity(in: gestureRecognizer.view)
-            if let axis = resolvedPanAxis(
-                width: velocity.x,
-                height: velocity.y,
-                minimumMagnitude: Layout.minimumVelocity
-            ) {
-                return axis
-            }
+    private final class HorizontalPanGestureRecognizer: UIPanGestureRecognizer {
+        var axisDecisionDistance: CGFloat = 8
+        var axisDominanceRatio: CGFloat = 1.12
 
-            let translation = gestureRecognizer.translation(in: gestureRecognizer.view)
-            return resolvedPanAxis(
-                width: translation.x,
-                height: translation.y,
-                minimumMagnitude: Layout.minimumTranslation
-            )
+        private var axisLock: PanAxis = .undecided
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            axisLock = .undecided
+            super.touchesBegan(touches, with: event)
         }
 
-        private func resolvedPanAxis(
-            width: CGFloat,
-            height: CGFloat,
-            minimumMagnitude: CGFloat
-        ) -> PanAxis? {
-            let absWidth = abs(width)
-            let absHeight = abs(height)
-
-            guard max(absWidth, absHeight) >= minimumMagnitude else {
-                return nil
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+            if state == .failed || state == .cancelled {
+                return
             }
 
-            // Bias toward horizontal starts so slow diagonal swipes can still enter
-            // the card recognizer, while clearly vertical drags keep going to ScrollView.
-            if absWidth >= absHeight {
-                return .horizontal
+            if axisLock == .undecided {
+                let translation = self.translation(in: view)
+                let absWidth = abs(translation.x)
+                let absHeight = abs(translation.y)
+
+                if max(absWidth, absHeight) >= axisDecisionDistance {
+                    if absHeight > absWidth * axisDominanceRatio {
+                        axisLock = .vertical
+                        state = .failed
+                        return
+                    }
+
+                    if absWidth > absHeight {
+                        axisLock = .horizontal
+                    }
+                }
             }
 
-            if absHeight > absWidth {
-                return .vertical
-            }
+            super.touchesMoved(touches, with: event)
+        }
 
-            return nil
+        override func reset() {
+            axisLock = .undecided
+            super.reset()
         }
     }
 }
