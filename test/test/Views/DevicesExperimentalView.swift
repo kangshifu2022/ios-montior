@@ -616,6 +616,8 @@ private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRec
 
     var onChanged: ((ExperimentalHorizontalPanState) -> Void)?
     var onEnded: ((ExperimentalHorizontalPanState) -> Void)?
+    var onTap: (() -> Void)?
+    var isTapEnabled = false
 
     private(set) weak var hostedView: UIView?
 
@@ -630,12 +632,21 @@ private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRec
         gestureRecognizer.maximumNumberOfTouches = 1
         return gestureRecognizer
     }()
+    private lazy var tapGestureRecognizer: UITapGestureRecognizer = {
+        let gestureRecognizer = UITapGestureRecognizer(
+            target: self,
+            action: #selector(handleTap))
+        gestureRecognizer.delegate = self
+        gestureRecognizer.cancelsTouchesInView = false
+        return gestureRecognizer
+    }()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
         isOpaque = false
         addGestureRecognizer(panGestureRecognizer)
+        addGestureRecognizer(tapGestureRecognizer)
     }
 
     @available(*, unavailable)
@@ -656,6 +667,10 @@ private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRec
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === tapGestureRecognizer {
+            return isTapEnabled
+        }
+
         guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
             return true
         }
@@ -673,7 +688,15 @@ private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRec
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
+        if gestureRecognizer is UITapGestureRecognizer || otherGestureRecognizer is UITapGestureRecognizer {
+            return false
+        }
         true
+    }
+
+    @objc
+    private func handleTap() {
+        onTap?()
     }
 
     @objc
@@ -700,6 +723,8 @@ private final class ExperimentalHorizontalPanCoordinator {
 
     init(
         rootView: AnyView,
+        isTapEnabled: Bool,
+        onTap: @escaping () -> Void,
         onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
         onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
     ) {
@@ -707,8 +732,22 @@ private final class ExperimentalHorizontalPanCoordinator {
         hostingController.view.backgroundColor = .clear
         hostingController.view.isOpaque = false
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        self.isTapEnabled = isTapEnabled
+        self.onTap = onTap
         self.onChanged = onChanged
         self.onEnded = onEnded
+    }
+
+    var isTapEnabled: Bool {
+        didSet {
+            containerView?.isTapEnabled = isTapEnabled
+        }
+    }
+
+    var onTap: () -> Void {
+        didSet {
+            containerView?.onTap = onTap
+        }
     }
 
     var onChanged: (ExperimentalHorizontalPanState) -> Void {
@@ -725,6 +764,8 @@ private final class ExperimentalHorizontalPanCoordinator {
 
     func makeContainerView() -> ExperimentalHorizontalPanContainerView {
         let container = ExperimentalHorizontalPanContainerView()
+        container.isTapEnabled = isTapEnabled
+        container.onTap = onTap
         container.onChanged = onChanged
         container.onEnded = onEnded
         container.installHostedView(hostingController.view)
@@ -734,10 +775,14 @@ private final class ExperimentalHorizontalPanCoordinator {
 
     func update(
         rootView: AnyView,
+        isTapEnabled: Bool,
+        onTap: @escaping () -> Void,
         onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
         onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
     ) {
         hostingController.rootView = rootView
+        self.isTapEnabled = isTapEnabled
+        self.onTap = onTap
         self.onChanged = onChanged
         self.onEnded = onEnded
         containerView?.setNeedsLayout()
@@ -763,12 +808,16 @@ private final class ExperimentalHorizontalPanCoordinator {
 
 private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable {
     let content: Content
+    let isTapEnabled: Bool
+    let onTap: () -> Void
     let onChanged: (ExperimentalHorizontalPanState) -> Void
     let onEnded: (ExperimentalHorizontalPanState) -> Void
 
     func makeCoordinator() -> ExperimentalHorizontalPanCoordinator {
         ExperimentalHorizontalPanCoordinator(
             rootView: AnyView(content),
+            isTapEnabled: isTapEnabled,
+            onTap: onTap,
             onChanged: onChanged,
             onEnded: onEnded
         )
@@ -781,6 +830,8 @@ private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable
     func updateUIView(_ uiView: ExperimentalHorizontalPanContainerView, context: Context) {
         context.coordinator.update(
             rootView: AnyView(content),
+            isTapEnabled: isTapEnabled,
+            onTap: onTap,
             onChanged: onChanged,
             onEnded: onEnded
         )
@@ -855,37 +906,16 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
             ExperimentalHorizontalPanHost(
                 content: content()
                     .allowsHitTesting(openCardID != id),
+                isTapEnabled: openCardID == id,
+                onTap: {
+                    if openCardID == id {
+                        closeActions()
+                    }
+                },
                 onChanged: handleSwipePanChanged,
                 onEnded: handleSwipePanEnded
             )
                 .offset(x: contentOffset)
-                .overlay {
-                    if openCardID == id {
-                        HStack(spacing: 0) {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    closeActions()
-                                }
-                                .simultaneousGesture(
-                                    DragGesture(minimumDistance: 8, coordinateSpace: .local)
-                                        .onEnded { value in
-                                            let horizontalDistance = value.translation.width
-                                            let verticalDistance = abs(value.translation.height)
-                                            guard horizontalDistance > 24,
-                                                  horizontalDistance > verticalDistance * 1.1 else {
-                                                return
-                                            }
-                                            closeActions()
-                                        }
-                                )
-
-                            Color.clear
-                                .frame(width: Layout.totalActionWidth)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
