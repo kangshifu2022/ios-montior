@@ -691,9 +691,7 @@ private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable
     }
 
     final class ContainerView: UIView, UIGestureRecognizerDelegate {
-        private enum Layout {
-            static let axisDominanceRatio: CGFloat = 1.08
-        }
+        private let axisDominanceRatio: CGFloat = 1.08
 
         var onChanged: ((ExperimentalHorizontalPanState) -> Void)?
         var onEnded: ((ExperimentalHorizontalPanState) -> Void)?
@@ -734,21 +732,21 @@ private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable
             }
         }
 
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
                 return true
             }
 
             let velocity = gestureRecognizer.velocity(in: self)
             if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
-                return abs(velocity.x) > abs(velocity.y) * Layout.axisDominanceRatio
+                return abs(velocity.x) > abs(velocity.y) * axisDominanceRatio
             }
 
             let translation = gestureRecognizer.translation(in: self)
-            return abs(translation.x) > abs(translation.y) * Layout.axisDominanceRatio
+            return abs(translation.x) > abs(translation.y) * axisDominanceRatio
         }
 
-        func gestureRecognizer(
+        override func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
