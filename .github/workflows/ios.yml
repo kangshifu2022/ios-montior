@@ -19,11 +19,19 @@ env:
 
 jobs:
   build-ipa:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.3'
+
+      - name: Verify Xcode version
+        run: xcodebuild -version
 
       - name: Set build paths
         run: |
@@ -384,6 +392,8 @@ jobs:
     needs: build-ipa
     if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       pages: write
       id-token: write
@@ -405,3 +415,61 @@ jobs:
             echo ""
             echo "Install URL: ${{ steps.deployment.outputs.page_url }}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    needs:
+      - build-ipa
+      - deploy-install-page
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Bark notification
+        env:
+          BARK_PUSH_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/
+          BUILD_RESULT: ${{ needs.build-ipa.result }}
+          DEPLOY_RESULT: ${{ needs.deploy-install-page.result }}
+          PAGE_URL: ${{ needs.deploy-install-page.outputs.page_url }}
+        run: |
+          if [[ -z "${BARK_PUSH_URL:-}" ]]; then
+            echo "BARK_PUSH_URL is not set; skipping Bark notification."
+            exit 0
+          fi
+
+          BARK_PUSH_URL="${BARK_PUSH_URL%/}"
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          REF_NAME="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+
+          if [[ "$BUILD_RESULT" == "success" ]]; then
+            case "$DEPLOY_RESULT" in
+              success)
+                TITLE="iOS Ad Hoc 构建成功"
+                BODY=$'IPA 构建成功，安装页已发布。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Build: ${BUILD_RESULT}"$'\n'"Deploy: ${DEPLOY_RESULT}"$'\n'"安装页: ${PAGE_URL}"
+                ;;
+              skipped)
+                TITLE="iOS Ad Hoc 构建成功"
+                BODY=$'IPA 构建成功，安装页未发布。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Build: ${BUILD_RESULT}"$'\n'"Deploy: ${DEPLOY_RESULT}"
+                ;;
+              cancelled)
+                TITLE="iOS 安装页发布已取消"
+                BODY=$'IPA 已构建，但安装页发布被取消。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Build: ${BUILD_RESULT}"$'\n'"Deploy: ${DEPLOY_RESULT}"
+                ;;
+              *)
+                TITLE="iOS 安装页发布失败"
+                BODY=$'IPA 已构建，但安装页发布失败。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Build: ${BUILD_RESULT}"$'\n'"Deploy: ${DEPLOY_RESULT}"
+                ;;
+            esac
+          elif [[ "$BUILD_RESULT" == "cancelled" ]]; then
+            TITLE="iOS Ad Hoc 构建已取消"
+            BODY=$'IPA 构建被取消。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Build: ${BUILD_RESULT}"
+          else
+            TITLE="iOS Ad Hoc 构建失败"
+            BODY=$'IPA 构建失败。'"$'\n'"分支: ${REF_NAME}"$'\n'"Run: #${GITHUB_RUN_NUMBER}"$'\n'"Build: ${BUILD_RESULT}"
+          fi
+
+          curl --fail --silent --show-error \
+            -X POST "$BARK_PUSH_URL" \
+            -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8' \
+            --data-urlencode "title=${TITLE}" \
+            --data-urlencode "body=${BODY}" \
+            --data-urlencode "group=GitHub Actions" \
+            --data-urlencode "url=${RUN_URL}"
