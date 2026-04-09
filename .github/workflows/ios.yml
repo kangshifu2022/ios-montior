@@ -137,12 +137,7 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
             clean archive \
-            CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$PROJECT_BUNDLE_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
 
       - name: Export IPA
@@ -156,7 +151,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ios-adhoc-ipa
-          path: ${{ env.EXPORT_PATH }}/*.ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
           if-no-files-found: error
 
       - name: Cleanup signing assets
