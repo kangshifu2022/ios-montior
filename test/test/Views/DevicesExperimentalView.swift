@@ -601,6 +601,11 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
 private struct ExperimentalHorizontalPanState {
     let translation: CGSize
     let velocity: CGSize
+
+    init(translation: CGPoint, velocity: CGPoint) {
+        self.translation = CGSize(width: translation.x, height: translation.y)
+        self.velocity = CGSize(width: velocity.x, height: velocity.y)
+    }
 }
 
 // UIKit pan recognition lets us reject vertical drags before the card gesture begins,
