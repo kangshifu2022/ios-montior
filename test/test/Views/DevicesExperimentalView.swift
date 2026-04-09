@@ -746,7 +746,7 @@ private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable
             return abs(translation.x) > abs(translation.y) * axisDominanceRatio
         }
 
-        override func gestureRecognizer(
+        func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
