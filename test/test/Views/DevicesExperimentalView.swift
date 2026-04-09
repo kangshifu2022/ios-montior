@@ -691,7 +691,7 @@ private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRec
         if gestureRecognizer is UITapGestureRecognizer || otherGestureRecognizer is UITapGestureRecognizer {
             return false
         }
-        true
+        return true
     }
 
     @objc
