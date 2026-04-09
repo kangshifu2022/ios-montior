@@ -659,7 +659,7 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .highPriorityGesture(swipeGesture)
+        .simultaneousGesture(swipeGesture)
         .onChange(of: openCardID) { _, newValue in
             if newValue != id {
                 dragOffset = 0
