@@ -32,23 +32,13 @@ jobs:
           security import $CERT_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12
           security list-keychain -d user -s $KEYCHAIN_PATH
 
+          # 提取 UUID
           UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i $PP_PATH))
-          echo "PP_UUID=$UUID" >> $GITHUB_ENV
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-
-      # 【新增】强力清除工程中的签名残留，解决三方库冲突
-      - name: Fix Signing for SPM
-        run: |
-          sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' test/test.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' test/test.xcodeproj/project.pbxproj
-          # 清除所有具体的 Profile 指定，让命令行参数接管
-          sed -i '' '/PROVISIONING_PROFILE =/d' test/test.xcodeproj/project.pbxproj
-          sed -i '' '/PROVISIONING_PROFILE_SPECIFIER =/d' test/test.xcodeproj/project.pbxproj
+          echo "安装描述文件成功，UUID: $UUID"
 
       - name: xcodebuild Archive
-        env:
-          PP_UUID: ${{ env.PP_UUID }}
         run: |
           xcodebuild archive \
             -project test/test.xcodeproj \
@@ -58,9 +48,10 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE=$PP_UUID \
+            PROVISIONING_PROFILE_SPECIFIER="test_adhoc" \
             DEVELOPMENT_TEAM="UV3V49Y5ZZ"
 
       - name: xcodebuild Export IPA
