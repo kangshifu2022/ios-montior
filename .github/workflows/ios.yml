@@ -20,6 +20,8 @@ env:
 jobs:
   build-ipa:
     runs-on: macos-15
+    outputs:
+      app_version: ${{ steps.resolve_project_settings.outputs.app_version }}
 
     steps:
       - name: Checkout
@@ -89,6 +91,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Resolve project settings
+        id: resolve_project_settings
         run: |
           BUILD_SETTINGS="$(xcodebuild -showBuildSettings -project "$PROJECT_PATH" -target "$SCHEME" -configuration Release -destination "generic/platform=iOS")"
           PROJECT_BUNDLE_ID="$(printf '%s\n' "$BUILD_SETTINGS" | awk -F ' = ' '/PRODUCT_BUNDLE_IDENTIFIER = / && $2 != "NO" {print $2; exit}')"
@@ -118,6 +121,7 @@ jobs:
           echo "PROJECT_BUNDLE_ID=$PROJECT_BUNDLE_ID" >> "$GITHUB_ENV"
           echo "APP_TITLE=$APP_TITLE" >> "$GITHUB_ENV"
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Swift packages
         run: |
@@ -428,6 +432,7 @@ jobs:
           SUCCESS_BARK_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/构建成功?sound=minuet
           FAILURE_BARK_URL: https://api.day.app/7Gm7m5C7aYeiiZBxhP6koK/构建失败?level=critical&volume=10
           BUILD_RESULT: ${{ needs.build-ipa.result }}
+          APP_VERSION: ${{ needs.build-ipa.outputs.app_version }}
           DEPLOY_RESULT: ${{ needs.deploy-install-page.result }}
           PAGE_URL: ${{ needs.deploy-install-page.outputs.page_url }}
         run: |
@@ -437,21 +442,22 @@ jobs:
           fi
 
           REF_NAME="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          APP_VERSION="${APP_VERSION:-unknown}"
 
           if [[ "$BUILD_RESULT" == "success" && ( "$DEPLOY_RESULT" == "success" || "$DEPLOY_RESULT" == "skipped" ) ]]; then
             NOTIFY_URL="$SUCCESS_BARK_URL"
 
             if [[ "$DEPLOY_RESULT" == "success" ]]; then
-              printf -v BODY 'iOS Ad Hoc 工作流成功。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+              printf -v BODY 'iOS Ad Hoc 工作流成功。\n分支: %s\n版本: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$APP_VERSION" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
             else
-              printf -v BODY 'iOS Ad Hoc 构建成功，安装页按预期跳过。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+              printf -v BODY 'iOS Ad Hoc 构建成功，安装页按预期跳过。\n分支: %s\n版本: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$APP_VERSION" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
             fi
           elif [[ "$BUILD_RESULT" == "cancelled" || "$DEPLOY_RESULT" == "cancelled" ]]; then
             NOTIFY_URL="$FAILURE_BARK_URL"
-            printf -v BODY 'iOS Ad Hoc 工作流未完成。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+            printf -v BODY 'iOS Ad Hoc 工作流未完成。\n分支: %s\n版本: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$APP_VERSION" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
           else
             NOTIFY_URL="$FAILURE_BARK_URL"
-            printf -v BODY 'iOS Ad Hoc 工作流失败。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+            printf -v BODY 'iOS Ad Hoc 工作流失败。\n分支: %s\n版本: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$APP_VERSION" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
           fi
 
           CURL_ARGS=(
