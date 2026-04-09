@@ -128,6 +128,11 @@ jobs:
 
           echo "EXPORT_OPTIONS_PLIST=$EXPORT_OPTIONS_PLIST" >> "$GITHUB_ENV"
 
+      - name: Configure signing for app target
+        run: |
+          perl -0pi -e 's/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = '"$TEAM_ID"';/g' "$PROJECT_PATH/project.pbxproj"
+          perl -0pi -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;\n\t\t\t\tCODE_SIGN_IDENTITY = Apple Distribution;\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = '"$PROFILE_NAME"';/g' "$PROJECT_PATH/project.pbxproj"
+
       - name: Archive app
         run: |
           xcodebuild \
@@ -137,7 +142,6 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
             clean archive \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
 
       - name: Export IPA
