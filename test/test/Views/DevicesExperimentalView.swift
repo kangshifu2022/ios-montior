@@ -853,12 +853,12 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
             }
 
             ExperimentalHorizontalPanHost(
-                content: content(),
+                content: content()
+                    .allowsHitTesting(openCardID != id),
                 onChanged: handleSwipePanChanged,
                 onEnded: handleSwipePanEnded
             )
                 .offset(x: contentOffset)
-                .allowsHitTesting(openCardID != id)
                 .overlay {
                     if openCardID == id {
                         HStack(spacing: 0) {
