@@ -436,7 +436,6 @@ jobs:
           fi
 
           BARK_PUSH_URL="${BARK_PUSH_URL%/}"
-          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           REF_NAME="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
 
           if [[ "$BUILD_RESULT" == "success" ]]; then
@@ -466,10 +465,20 @@ jobs:
             printf -v BODY 'IPA 构建失败。\n分支: %s\nRun: #%s\nBuild: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
           fi
 
-          curl --fail --silent --show-error \
-            -X POST "$BARK_PUSH_URL" \
-            -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8' \
-            --data-urlencode "title=${TITLE}" \
-            --data-urlencode "body=${BODY}" \
-            --data-urlencode "group=GitHub Actions" \
-            --data-urlencode "url=${RUN_URL}"
+          CURL_ARGS=(
+            --fail
+            --silent
+            --show-error
+            -X POST
+            "$BARK_PUSH_URL"
+            -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8'
+            --data-urlencode "title=${TITLE}"
+            --data-urlencode "body=${BODY}"
+            --data-urlencode "group=GitHub Actions"
+          )
+
+          if [[ -n "${PAGE_URL:-}" && "$DEPLOY_RESULT" == "success" ]]; then
+            CURL_ARGS+=(--data-urlencode "url=${PAGE_URL}")
+          fi
+
+          curl "${CURL_ARGS[@]}"

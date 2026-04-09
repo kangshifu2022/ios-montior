@@ -68,7 +68,6 @@ jobs:
           fi
 
           BARK_PUSH_URL="${BARK_PUSH_URL%/}"
-          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           REF_NAME="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
 
           case "$VERIFY_RESULT" in
@@ -91,5 +90,4 @@ jobs:
             -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8' \
             --data-urlencode "title=${TITLE}" \
             --data-urlencode "body=${BODY}" \
-            --data-urlencode "group=GitHub Actions" \
-            --data-urlencode "url=${RUN_URL}"
+            --data-urlencode "group=GitHub Actions"
