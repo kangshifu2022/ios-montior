@@ -11,6 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 第一步：安装证书和描述文件
       - name: Install Apple Certificate and Provisioning Profile
         env:
           P12_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -32,13 +33,22 @@ jobs:
           security import $CERT_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12
           security list-keychain -d user -s $KEYCHAIN_PATH
 
-          # 提取 Provisioning Profile 的 UUID (这是关键)
+          # 提取 UUID
           UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i $PP_PATH))
           echo "PP_UUID=$UUID" >> $GITHUB_ENV
 
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
 
+      # 第二步：针对 SPM 依赖的签名进行“暴力手术”
+      # 强制所有包不签名，防止 Crypto 等库报错
+      - name: Disable SPM Signing
+        run: |
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+
+      # 第三步：归档 (Archive)
+      # 这里不再传入 PROVISIONING_PROFILE 环境变量，而是直接通过命令覆盖
       - name: xcodebuild Archive
         env:
           PP_UUID: ${{ env.PP_UUID }}
@@ -50,12 +60,14 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -skipPackagePluginValidation \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE=$PP_UUID \
-            DEVELOPMENT_TEAM="UV3V49Y5ZZ"
+            DEVELOPMENT_TEAM="UV3V49Y5ZZ" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation
 
+      # 第四步：导出 IPA
       - name: xcodebuild Export IPA
         run: |
           xcodebuild -exportArchive \
@@ -63,6 +75,7 @@ jobs:
             -exportOptionsPlist ExportOptions.plist \
             -exportPath $RUNNER_TEMP/build/ipa
 
+      # 第五步：上传产物
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
