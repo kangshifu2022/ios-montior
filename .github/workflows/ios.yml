@@ -442,27 +442,27 @@ jobs:
             case "$DEPLOY_RESULT" in
               success)
                 TITLE="iOS Ad Hoc 构建成功"
-                printf -v BODY 'IPA 构建成功，安装页已发布。\n分支: %s\nRun: #%s\nBuild: %s\nDeploy: %s\n安装页: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT" "$PAGE_URL"
+                printf -v BODY 'IPA 构建成功，安装页已发布。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s\n安装页: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT" "$PAGE_URL"
                 ;;
               skipped)
                 TITLE="iOS Ad Hoc 构建成功"
-                printf -v BODY 'IPA 构建成功，安装页未发布。\n分支: %s\nRun: #%s\nBuild: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+                printf -v BODY 'IPA 构建成功，安装页未发布。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
                 ;;
               cancelled)
                 TITLE="iOS 安装页发布已取消"
-                printf -v BODY 'IPA 已构建，但安装页发布被取消。\n分支: %s\nRun: #%s\nBuild: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+                printf -v BODY 'IPA 已构建，但安装页发布被取消。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
                 ;;
               *)
                 TITLE="iOS 安装页发布失败"
-                printf -v BODY 'IPA 已构建，但安装页发布失败。\n分支: %s\nRun: #%s\nBuild: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
+                printf -v BODY 'IPA 已构建，但安装页发布失败。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
                 ;;
             esac
           elif [[ "$BUILD_RESULT" == "cancelled" ]]; then
             TITLE="iOS Ad Hoc 构建已取消"
-            printf -v BODY 'IPA 构建被取消。\n分支: %s\nRun: #%s\nBuild: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
+            printf -v BODY 'IPA 构建被取消。\n分支: %s\nBuild: #%s\nBuild 结果: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
           else
             TITLE="iOS Ad Hoc 构建失败"
-            printf -v BODY 'IPA 构建失败。\n分支: %s\nRun: #%s\nBuild: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
+            printf -v BODY 'IPA 构建失败。\n分支: %s\nBuild: #%s\nBuild 结果: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT"
           fi
 
           CURL_ARGS=(

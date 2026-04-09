@@ -58,6 +58,19 @@ struct DevicesExperimentalView: View {
         .pro
     }
 
+    private var appBuildNumber: String {
+        if let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+           !build.isEmpty {
+            return build
+        }
+
+        if let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? NSNumber {
+            return build.stringValue
+        }
+
+        return "--"
+    }
+
     private var availableGroupNames: [String] {
         var groups = [ServerConfig.allGroupName]
         var seenGroups = Set(groups)
@@ -192,10 +205,16 @@ struct DevicesExperimentalView: View {
                 .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
             }
 
-            Text("概览")
-                .font(.system(size: 38, weight: .black, design: .rounded))
-                .foregroundColor(palette.primaryText)
-                .tracking(-0.6)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("概览")
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .foregroundColor(palette.primaryText)
+                    .tracking(-0.6)
+
+                Spacer(minLength: 0)
+
+                buildBadge
+            }
 
             if !availableGroupNames.isEmpty {
                 groupTabs
@@ -213,6 +232,23 @@ struct DevicesExperimentalView: View {
         case .compact:
             return "list.bullet"
         }
+    }
+
+    private var buildBadge: some View {
+        Text("Build \(appBuildNumber)")
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .foregroundColor(palette.secondaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(palette.subcardBackground)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(palette.cardBorder.opacity(palette.isDark ? 1 : 0.9), lineWidth: 1)
+            )
+            .accessibilityLabel("构建号 \(appBuildNumber)")
     }
 
     private var homeCardViewToggleAccessibilityLabel: String {
