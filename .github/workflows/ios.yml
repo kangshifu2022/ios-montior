@@ -6,6 +6,10 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: ios-adhoc-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -391,3 +395,11 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Write deployment summary
+        run: |
+          {
+            echo "## iOS Install Page"
+            echo ""
+            echo "Install URL: ${{ steps.deployment.outputs.page_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"

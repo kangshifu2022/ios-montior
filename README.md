@@ -40,6 +40,20 @@ base64 -w 0 profile.mobileprovision
 
 The workflow runs on pushes to `master` and also supports manual triggering from the GitHub Actions UI. The exported IPA artifact is uploaded under the name `ios-adhoc-ipa`.
 
+## Stable Baseline
+
+The current known-good CI and installation baseline is tagged as `adhoc-pages-stable-20260409`. That tag represents the first version confirmed to:
+
+1. Archive and export an Ad Hoc IPA in GitHub Actions.
+2. Publish an install page through GitHub Pages.
+3. Install successfully from Safari on iPhone.
+
+## Certificate Truth Test
+
+[`test-certs.yml`](/root/ios-montior/.github/workflows/test-certs.yml) is intentionally kept as a minimal certificate and provisioning-profile verifier. Its purpose is to answer one narrow question: are the stored secrets valid and importable on a macOS runner.
+
+Use that workflow before blaming `p12` content, password, or provisioning-profile secrets. If `test-certs.yml` passes, certificate input data is not the primary problem and the bug is elsewhere in the build or signing workflow.
+
 ## Direct Install Link
 
 After a successful build, the workflow also deploys a GitHub Pages install site. The default install URL for this repository is:
