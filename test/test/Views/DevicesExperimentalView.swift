@@ -605,11 +605,13 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
 
 private struct ExperimentalSwipeActionCard<Content: View>: View {
     private enum Layout {
-        static var actionWidth: CGFloat { 74 }
-        static var actionSpacing: CGFloat { 1 }
+        static var actionWidth: CGFloat { 62 }
+        static var actionSpacing: CGFloat { 8 }
+        static var actionHorizontalInset: CGFloat { 10 }
+        static var minimumActionHeight: CGFloat { 34 }
 
         static var totalActionWidth: CGFloat {
-            (actionWidth * 2) + actionSpacing
+            (actionWidth * 2) + actionSpacing + (actionHorizontalInset * 2)
         }
     }
 
@@ -672,54 +674,71 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
     }
 
     private var swipeActions: some View {
-        HStack(spacing: Layout.actionSpacing) {
-            swipeActionButton(
-                title: "编辑",
-                systemImage: "square.and.pencil",
-                background: Color(red: 0.23, green: 0.49, blue: 0.94),
-                action: {
-                    closeActions(animated: false)
-                    onEdit()
-                }
-            )
+        GeometryReader { proxy in
+            let actionHeight = max(Layout.minimumActionHeight, proxy.size.height / 3)
 
-            swipeActionButton(
-                title: "删除",
-                systemImage: "trash",
-                background: Color(red: 0.86, green: 0.22, blue: 0.20),
-                action: {
-                    closeActions(animated: false)
-                    onDelete()
-                }
-            )
+            HStack(spacing: Layout.actionSpacing) {
+                swipeActionButton(
+                    title: "编辑",
+                    systemImage: "square.and.pencil",
+                    background: Color(red: 0.23, green: 0.49, blue: 0.94),
+                    height: actionHeight,
+                    action: {
+                        closeActions(animated: false)
+                        onEdit()
+                    }
+                )
+
+                swipeActionButton(
+                    title: "删除",
+                    systemImage: "trash",
+                    background: Color(red: 0.86, green: 0.22, blue: 0.20),
+                    height: actionHeight,
+                    action: {
+                        closeActions(animated: false)
+                        onDelete()
+                    }
+                )
+            }
+            .padding(.horizontal, Layout.actionHorizontalInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
         .frame(width: Layout.totalActionWidth)
-        .frame(maxHeight: .infinity)
-        .background(palette.subcardBackground)
     }
 
     private func swipeActionButton(
         title: String,
         systemImage: String,
         background: Color,
+        height: CGFloat,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            VStack(spacing: 6) {
+            VStack(spacing: 3) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
 
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: min(16, height * 0.34), style: .continuous))
         }
         .buttonStyle(.plain)
         .frame(width: Layout.actionWidth)
-        .frame(maxHeight: .infinity)
-        .background(background)
+        .frame(height: height)
+        .background(
+            RoundedRectangle(cornerRadius: min(16, height * 0.34), style: .continuous)
+                .fill(background)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: min(16, height * 0.34), style: .continuous)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.8)
+        )
+        .shadow(color: background.opacity(0.22), radius: 10, x: 0, y: 5)
     }
 
     private var swipeGesture: some Gesture {

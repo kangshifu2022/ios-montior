@@ -442,7 +442,7 @@ jobs:
             case "$DEPLOY_RESULT" in
               success)
                 TITLE="iOS Ad Hoc 构建成功"
-                printf -v BODY 'IPA 构建成功，安装页已发布。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s\n安装页: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT" "$PAGE_URL"
+                printf -v BODY 'IPA 构建成功，安装页已发布。\n分支: %s\nBuild: #%s\nBuild 结果: %s\nDeploy: %s' "$REF_NAME" "$GITHUB_RUN_NUMBER" "$BUILD_RESULT" "$DEPLOY_RESULT"
                 ;;
               skipped)
                 TITLE="iOS Ad Hoc 构建成功"
