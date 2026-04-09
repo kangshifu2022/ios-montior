@@ -57,8 +57,8 @@ final class TerminalWorkspace: ObservableObject {
     }
 
     func close(_ session: TerminalWorkspaceSession) {
-        session.viewModel.disconnect(clearError: true)
         remove(session)
+        session.viewModel.disconnect(clearError: true)
     }
 
     func closeSessions(forServerID serverID: UUID) {

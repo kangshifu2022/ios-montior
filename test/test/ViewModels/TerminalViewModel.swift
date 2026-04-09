@@ -9,6 +9,7 @@ final class TerminalViewModel: ObservableObject {
     @Published var terminalTitle: String?
     @Published var lastError: String?
     @Published var shouldDismissTerminal = false
+    @Published var shouldSuspendTerminal = false
     @Published var isShowingLaunchSheet = false
     @Published var isShowingTmuxSessionPicker = false
     @Published private(set) var isAwaitingTerminalOutput = false
@@ -204,6 +205,7 @@ final class TerminalViewModel: ObservableObject {
         lastConnectionIssueText = nil
         pendingConnectAfterDisconnect = false
         shouldDismissTerminal = false
+        shouldSuspendTerminal = false
         keepsSessionAlive = true
         isConnected = false
         isConnecting = true
@@ -565,6 +567,16 @@ final class TerminalViewModel: ObservableObject {
         shouldDismissTerminal = true
     }
 
+    func suspendTerminal() {
+        TerminalDiagnosticsStore.record(
+            "suspend terminal requested",
+            category: "connection",
+            server: server,
+            session: activeSessionRecord
+        )
+        shouldSuspendTerminal = true
+    }
+
     func sendHome() {
         send(bytes: [27, 91, 72])
     }
@@ -599,6 +611,10 @@ final class TerminalViewModel: ObservableObject {
 
     func acknowledgeDismissRequest() {
         shouldDismissTerminal = false
+    }
+
+    func acknowledgeSuspendRequest() {
+        shouldSuspendTerminal = false
     }
 
     func updateTerminalTitle(_ title: String?) {
@@ -658,6 +674,7 @@ final class TerminalViewModel: ObservableObject {
         connectionStageText = nil
         terminalTitle = nil
         shouldDismissTerminal = false
+        shouldSuspendTerminal = false
         isShowingLaunchSheet = false
         isShowingTmuxSessionPicker = false
         isConnected = false

@@ -151,9 +151,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
                 sendShortcutBytes(payload)
             }),
-            .init(title: "Exit", style: .accent, action: {
+            .init(title: "hungup", style: .accent, action: {
                 let modifiers = consumeAccessoryModifiers()
-                viewModel.closeTerminal()
+                viewModel.suspendTerminal()
                 if modifiers.alt || modifiers.shift {
                     scrollbackView?.accessoryAltModifier = false
                     scrollbackView?.accessoryShiftModifier = false

@@ -65,6 +65,11 @@ struct TerminalView: View {
             closeTerminalView()
             viewModel.acknowledgeDismissRequest()
         }
+        .onChange(of: viewModel.shouldSuspendTerminal) { _, shouldSuspend in
+            guard shouldSuspend else { return }
+            suspendTerminalView()
+            viewModel.acknowledgeSuspendRequest()
+        }
         .sheet(isPresented: $viewModel.isShowingLaunchSheet) {
             TerminalLaunchSheet(
                 server: server,
@@ -119,7 +124,7 @@ struct TerminalView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            Button(action: suspendOrCloseTerminal) {
+            Button(action: closeTerminalView) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(width: 32, height: 32)
@@ -127,7 +132,7 @@ struct TerminalView: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(viewModel.hasSessionToSuspend ? "挂起终端" : "关闭终端")
+            .accessibilityLabel("关闭终端")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(viewModel.displayTitle)
@@ -167,7 +172,7 @@ struct TerminalView: View {
         }
     }
 
-    private func suspendOrCloseTerminal() {
+    private func suspendTerminalView() {
         guard viewModel.hasSessionToSuspend, let onSuspend else {
             closeTerminalView()
             return
