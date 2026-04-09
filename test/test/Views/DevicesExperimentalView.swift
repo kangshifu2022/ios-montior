@@ -116,7 +116,7 @@ struct DevicesExperimentalView: View {
             .refreshable {
                 await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
             }
-            .background(palette.pageBackground.ignoresSafeArea())
+            .background(palette.pageBackground)
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $selectedServer) { config in
                 DeviceDetailView(config: config, store: store)
