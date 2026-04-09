@@ -172,6 +172,7 @@ jobs:
           name: ios-adhoc-ipa
           path: ${{ runner.temp }}/ipa/*.ipa
           if-no-files-found: error
+          retention-days: 1
 
       - name: Prepare install site
         env:
@@ -364,6 +365,7 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: ${{ runner.temp }}/install-site
+          retention-days: 1
 
       - name: Cleanup signing assets
         if: ${{ always() }}
