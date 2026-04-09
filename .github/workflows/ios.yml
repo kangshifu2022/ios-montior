@@ -194,6 +194,7 @@ jobs:
         run: |
           shopt -s nullglob
           LOG_FILES=("$XCODEBUILD_LOG_DIR"/*.log)
+          PATTERN='error:|failed:|warning:|DevicesExperimentalView\.swift:'
 
           if (( ${#LOG_FILES[@]} == 0 )); then
             echo "No xcodebuild logs found in $XCODEBUILD_LOG_DIR"
@@ -201,7 +202,11 @@ jobs:
           fi
 
           echo "Relevant xcodebuild lines:"
-          rg -n -C 2 "error:|failed:|warning:|DevicesExperimentalView\\.swift:" "${LOG_FILES[@]}" || true
+          if command -v rg >/dev/null 2>&1; then
+            rg -n -C 2 "$PATTERN" "${LOG_FILES[@]}" || true
+          else
+            grep -nE -C 2 "$PATTERN" "${LOG_FILES[@]}" || true
+          fi
 
       - name: Upload xcodebuild logs
         if: always()
