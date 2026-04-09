@@ -611,20 +611,159 @@ private struct ExperimentalHorizontalPanState {
     }
 }
 
+private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRecognizerDelegate {
+    private let axisDominanceRatio: CGFloat = 1.08
+
+    var onChanged: ((ExperimentalHorizontalPanState) -> Void)?
+    var onEnded: ((ExperimentalHorizontalPanState) -> Void)?
+
+    private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
+        let gestureRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(handlePanStateChange(_:))
+        )
+        gestureRecognizer.delegate = self
+        gestureRecognizer.cancelsTouchesInView = false
+        gestureRecognizer.delaysTouchesBegan = false
+        gestureRecognizer.maximumNumberOfTouches = 1
+        return gestureRecognizer
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        addGestureRecognizer(panGestureRecognizer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func installHostedView(_ hostedView: UIView) {
+        if hostedView.superview !== self {
+            addSubview(hostedView)
+            NSLayoutConstraint.activate([
+                hostedView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                hostedView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                hostedView.topAnchor.constraint(equalTo: topAnchor),
+                hostedView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            ])
+        }
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
+            return true
+        }
+
+        let velocity = gestureRecognizer.velocity(in: self)
+        if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
+            return abs(velocity.x) > abs(velocity.y) * axisDominanceRatio
+        }
+
+        let translation = gestureRecognizer.translation(in: self)
+        return abs(translation.x) > abs(translation.y) * axisDominanceRatio
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+
+    @objc
+    private func handlePanStateChange(_ gestureRecognizer: UIPanGestureRecognizer) {
+        let state = ExperimentalHorizontalPanState(
+            translation: gestureRecognizer.translation(in: self),
+            velocity: gestureRecognizer.velocity(in: self)
+        )
+
+        switch gestureRecognizer.state {
+        case .began, .changed:
+            onChanged?(state)
+        case .ended, .cancelled, .failed:
+            onEnded?(state)
+        default:
+            break
+        }
+    }
+}
+
+private final class ExperimentalHorizontalPanCoordinator {
+    private let hostingController: UIHostingController<AnyView>
+    private weak var containerView: ExperimentalHorizontalPanContainerView?
+
+    init(
+        rootView: AnyView,
+        onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
+        onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
+    ) {
+        hostingController = UIHostingController(rootView: rootView)
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.isOpaque = false
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        self.onChanged = onChanged
+        self.onEnded = onEnded
+    }
+
+    var onChanged: (ExperimentalHorizontalPanState) -> Void {
+        didSet {
+            containerView?.onChanged = onChanged
+        }
+    }
+
+    var onEnded: (ExperimentalHorizontalPanState) -> Void {
+        didSet {
+            containerView?.onEnded = onEnded
+        }
+    }
+
+    func makeContainerView() -> ExperimentalHorizontalPanContainerView {
+        let container = ExperimentalHorizontalPanContainerView()
+        container.onChanged = onChanged
+        container.onEnded = onEnded
+        container.installHostedView(hostingController.view)
+        containerView = container
+        return container
+    }
+
+    func update(
+        rootView: AnyView,
+        onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
+        onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
+    ) {
+        hostingController.rootView = rootView
+        self.onChanged = onChanged
+        self.onEnded = onEnded
+    }
+
+    func detach() {
+        hostingController.view.removeFromSuperview()
+        containerView = nil
+    }
+}
+
 private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable {
     let content: Content
     let onChanged: (ExperimentalHorizontalPanState) -> Void
     let onEnded: (ExperimentalHorizontalPanState) -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(rootView: AnyView(content), onChanged: onChanged, onEnded: onEnded)
+    func makeCoordinator() -> ExperimentalHorizontalPanCoordinator {
+        ExperimentalHorizontalPanCoordinator(
+            rootView: AnyView(content),
+            onChanged: onChanged,
+            onEnded: onEnded
+        )
     }
 
-    func makeUIView(context: Context) -> ContainerView {
+    func makeUIView(context: Context) -> ExperimentalHorizontalPanContainerView {
         context.coordinator.makeContainerView()
     }
 
-    func updateUIView(_ uiView: ContainerView, context: Context) {
+    func updateUIView(_ uiView: ExperimentalHorizontalPanContainerView, context: Context) {
         context.coordinator.update(
             rootView: AnyView(content),
             onChanged: onChanged,
@@ -632,143 +771,11 @@ private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable
         )
     }
 
-    static func dismantleUIView(_ uiView: ContainerView, coordinator: Coordinator) {
+    static func dismantleUIView(
+        _ uiView: ExperimentalHorizontalPanContainerView,
+        coordinator: ExperimentalHorizontalPanCoordinator
+    ) {
         coordinator.detach()
-    }
-
-    final class Coordinator {
-        private let hostingController: UIHostingController<AnyView>
-        private weak var containerView: ContainerView?
-
-        init(
-            rootView: AnyView,
-            onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
-            onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
-        ) {
-            hostingController = UIHostingController(rootView: rootView)
-            hostingController.view.backgroundColor = .clear
-            hostingController.view.isOpaque = false
-            hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-            self.onChanged = onChanged
-            self.onEnded = onEnded
-        }
-
-        var onChanged: (ExperimentalHorizontalPanState) -> Void {
-            didSet {
-                containerView?.onChanged = onChanged
-            }
-        }
-
-        var onEnded: (ExperimentalHorizontalPanState) -> Void {
-            didSet {
-                containerView?.onEnded = onEnded
-            }
-        }
-
-        func makeContainerView() -> ContainerView {
-            let container = ContainerView()
-            container.onChanged = onChanged
-            container.onEnded = onEnded
-            container.installHostedView(hostingController.view)
-            containerView = container
-            return container
-        }
-
-        func update(
-            rootView: AnyView,
-            onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
-            onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
-        ) {
-            hostingController.rootView = rootView
-            self.onChanged = onChanged
-            self.onEnded = onEnded
-        }
-
-        func detach() {
-            hostingController.view.removeFromSuperview()
-            containerView = nil
-        }
-    }
-
-    final class ContainerView: UIView, UIGestureRecognizerDelegate {
-        private let axisDominanceRatio: CGFloat = 1.08
-
-        var onChanged: ((ExperimentalHorizontalPanState) -> Void)?
-        var onEnded: ((ExperimentalHorizontalPanState) -> Void)?
-
-        private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
-            let gestureRecognizer = UIPanGestureRecognizer(
-                target: self,
-                action: #selector(handlePanStateChange(_:))
-            )
-            gestureRecognizer.delegate = self
-            gestureRecognizer.cancelsTouchesInView = false
-            gestureRecognizer.delaysTouchesBegan = false
-            gestureRecognizer.maximumNumberOfTouches = 1
-            return gestureRecognizer
-        }()
-
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            backgroundColor = .clear
-            isOpaque = false
-            addGestureRecognizer(panGestureRecognizer)
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-
-        func installHostedView(_ hostedView: UIView) {
-            if hostedView.superview !== self {
-                addSubview(hostedView)
-                NSLayoutConstraint.activate([
-                    hostedView.leadingAnchor.constraint(equalTo: leadingAnchor),
-                    hostedView.trailingAnchor.constraint(equalTo: trailingAnchor),
-                    hostedView.topAnchor.constraint(equalTo: topAnchor),
-                    hostedView.bottomAnchor.constraint(equalTo: bottomAnchor)
-                ])
-            }
-        }
-
-        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
-                return true
-            }
-
-            let velocity = gestureRecognizer.velocity(in: self)
-            if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
-                return abs(velocity.x) > abs(velocity.y) * axisDominanceRatio
-            }
-
-            let translation = gestureRecognizer.translation(in: self)
-            return abs(translation.x) > abs(translation.y) * axisDominanceRatio
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            true
-        }
-
-        @objc
-        private func handlePanStateChange(_ gestureRecognizer: UIPanGestureRecognizer) {
-            let state = ExperimentalHorizontalPanState(
-                translation: gestureRecognizer.translation(in: self),
-                velocity: gestureRecognizer.velocity(in: self)
-            )
-
-            switch gestureRecognizer.state {
-            case .began, .changed:
-                onChanged?(state)
-            case .ended, .cancelled, .failed:
-                onEnded?(state)
-            default:
-                break
-            }
-        }
     }
 }
 
