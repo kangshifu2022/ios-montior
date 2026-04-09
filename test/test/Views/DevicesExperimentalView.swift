@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct DevicesExperimentalView: View {
     fileprivate static let cardGroupIndicatorWidth: CGFloat = 2.5
@@ -19,6 +20,13 @@ struct DevicesExperimentalView: View {
     @State private var showsExpandedGroupTags = false
     @State private var draggedServerID: UUID?
     @State private var swipeActionServerID: UUID?
+
+    private struct HomeLayout {
+        let usesTwoColumnCards: Bool
+        let hidesTabBar: Bool
+        let cardSpacing: CGFloat
+        let cardColumns: [GridItem]
+    }
 
     private var selectedTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
@@ -106,87 +114,130 @@ struct DevicesExperimentalView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    pageHeader
+        GeometryReader { proxy in
+            let layout = homeLayout(for: proxy.size)
 
-                    if store.servers.isEmpty {
-                        emptyState
-                    } else {
-                        LazyVStack(spacing: homeCardView == .detailed ? 20 : 10) {
-                            ForEach(filteredServers) { server in
-                                reorderableCard(for: server)
-                            }
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 18) {
+                        pageHeader
+
+                        if store.servers.isEmpty {
+                            emptyState
+                        } else {
+                            cardsSection(layout: layout)
+                                .animation(.spring(response: 0.28, dampingFraction: 0.84), value: filteredServers)
+                                .onDrop(of: [UTType.text], delegate: ExperimentalServerListDropDelegate(draggedServerID: $draggedServerID))
                         }
-                        .animation(.spring(response: 0.28, dampingFraction: 0.84), value: filteredServers)
-                        .onDrop(of: [UTType.text], delegate: ExperimentalServerListDropDelegate(draggedServerID: $draggedServerID))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 18)
+                }
+                .refreshable {
+                    await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
+                }
+                .background(palette.pageBackground)
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(item: $selectedServer) { config in
+                    DeviceDetailView(config: config, store: store)
+                }
+                .sheet(item: $editingServer) { server in
+                    AddServerView(store: store, editingServer: server)
+                }
+                .alert("删除设备", isPresented: deleteConfirmationPresented) {
+                    Button("删除", role: .destructive) {
+                        confirmDeletePendingServer()
+                    }
+
+                    Button("取消", role: .cancel) {
+                        pendingDeletionServer = nil
+                    }
+                } message: {
+                    Text("确认删除“\(pendingDeletionServerDisplayName)”？删除后会移除这台设备的配置、监控缓存和本地终端会话数据。")
+                }
+                .fullScreenCover(item: $terminalWorkspace.presentedSession) { session in
+                    TerminalView(
+                        server: session.server,
+                        viewModel: session.viewModel,
+                        onSuspend: {
+                            terminalWorkspace.suspend(session)
+                        },
+                        onClose: {
+                            terminalWorkspace.close(session)
+                        }
+                    )
+                }
+                .onChange(of: selectedServer?.id) { _, _ in
+                    draggedServerID = nil
+                    swipeActionServerID = nil
+                }
+                .onChange(of: editingServer?.id) { _, _ in
+                    draggedServerID = nil
+                    swipeActionServerID = nil
+                }
+                .onChange(of: terminalWorkspace.presentedSession?.id) { _, _ in
+                    draggedServerID = nil
+                    swipeActionServerID = nil
+                }
+                .task(id: store.servers.map(\.id)) {
+                    triggerHomeRefresh()
+
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        guard !Task.isCancelled else { break }
+                        triggerHomeRefresh(forceDynamic: true)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 18)
-            }
-            .refreshable {
-                await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
-            }
-            .background(palette.pageBackground)
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(item: $selectedServer) { config in
-                DeviceDetailView(config: config, store: store)
-            }
-            .sheet(item: $editingServer) { server in
-                AddServerView(store: store, editingServer: server)
-            }
-            .alert("删除设备", isPresented: deleteConfirmationPresented) {
-                Button("删除", role: .destructive) {
-                    confirmDeletePendingServer()
+                .onDisappear {
+                    draggedServerID = nil
+                    swipeActionServerID = nil
                 }
-
-                Button("取消", role: .cancel) {
-                    pendingDeletionServer = nil
-                }
-            } message: {
-                Text("确认删除“\(pendingDeletionServerDisplayName)”？删除后会移除这台设备的配置、监控缓存和本地终端会话数据。")
-            }
-            .fullScreenCover(item: $terminalWorkspace.presentedSession) { session in
-                TerminalView(
-                    server: session.server,
-                    viewModel: session.viewModel,
-                    onSuspend: {
-                        terminalWorkspace.suspend(session)
-                    },
-                    onClose: {
-                        terminalWorkspace.close(session)
-                    }
-                )
-            }
-            .onChange(of: selectedServer?.id) { _, _ in
-                draggedServerID = nil
-                swipeActionServerID = nil
-            }
-            .onChange(of: editingServer?.id) { _, _ in
-                draggedServerID = nil
-                swipeActionServerID = nil
-            }
-            .onChange(of: terminalWorkspace.presentedSession?.id) { _, _ in
-                draggedServerID = nil
-                swipeActionServerID = nil
-            }
-            .task(id: store.servers.map(\.id)) {
-                triggerHomeRefresh()
-
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    guard !Task.isCancelled else { break }
-                    triggerHomeRefresh(forceDynamic: true)
-                }
-            }
-            .onDisappear {
-                draggedServerID = nil
-                swipeActionServerID = nil
+                .toolbar(layout.hidesTabBar ? .hidden : .visible, for: .tabBar)
             }
         }
         .preferredColorScheme(preferredColorScheme)
+    }
+
+    private func homeLayout(for size: CGSize) -> HomeLayout {
+        let usesLandscapeMonitorMode = UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
+        let cardSpacing = homeCardView == .detailed ? 20.0 : 10.0
+        let cardColumns: [GridItem]
+
+        if usesLandscapeMonitorMode {
+            cardColumns = [
+                GridItem(.flexible(), spacing: 16, alignment: .top),
+                GridItem(.flexible(), spacing: 16, alignment: .top)
+            ]
+        } else {
+            cardColumns = [
+                GridItem(.flexible(), spacing: 0, alignment: .top)
+            ]
+        }
+
+        return HomeLayout(
+            usesTwoColumnCards: usesLandscapeMonitorMode,
+            hidesTabBar: usesLandscapeMonitorMode,
+            cardSpacing: cardSpacing,
+            cardColumns: cardColumns
+        )
+    }
+
+    @ViewBuilder
+    private func cardsSection(layout: HomeLayout) -> some View {
+        if layout.usesTwoColumnCards {
+            LazyVGrid(columns: layout.cardColumns, alignment: .leading, spacing: layout.cardSpacing) {
+                ForEach(filteredServers) { server in
+                    reorderableCard(for: server)
+                }
+            }
+        } else {
+            LazyVStack(spacing: layout.cardSpacing) {
+                ForEach(filteredServers) { server in
+                    reorderableCard(for: server)
+                }
+            }
+        }
     }
 
     private var pageHeader: some View {
@@ -205,16 +256,15 @@ struct DevicesExperimentalView: View {
                 .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
             }
 
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: 3) {
                 Text("概览")
                     .font(.system(size: 38, weight: .black, design: .rounded))
                     .foregroundColor(palette.primaryText)
                     .tracking(-0.6)
 
-                Spacer(minLength: 0)
-
                 buildLabel
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if !availableGroupNames.isEmpty {
                 groupTabs
@@ -238,7 +288,7 @@ struct DevicesExperimentalView: View {
         Text("build\(appBuildNumber)")
             .font(.system(size: 10, weight: .semibold, design: .monospaced))
             .foregroundColor(palette.secondaryText.opacity(0.92))
-            .padding(.top, 5)
+            .padding(.top, 4)
             .accessibilityLabel("构建号 \(appBuildNumber)")
     }
 
@@ -306,7 +356,7 @@ struct DevicesExperimentalView: View {
                 .lineLimit(1)
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 0)
+        .padding(.vertical, 1)
         .background(
             Capsule()
                 .fill(isSelected ? selectedGroupTabBackground : groupTabBackground)

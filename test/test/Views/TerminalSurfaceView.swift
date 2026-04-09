@@ -151,7 +151,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 let payload: [UInt8] = modifiers.alt ? [27, 27] : [27]
                 sendShortcutBytes(payload)
             }),
-            .init(title: "hgup", style: .accent, action: {
+            .init(title: "HgUp", action: {
                 let modifiers = consumeAccessoryModifiers()
                 viewModel.suspendTerminal()
                 if modifiers.alt || modifiers.shift {
@@ -218,7 +218,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
             .init(
                 title: "Tmux",
                 accessibilityLabel: "查看远端 tmux 会话并重新连接",
-                style: .accent,
                 columnSpan: 2,
                 action: { [weak scrollbackView] in
                     _ = consumeAccessoryModifiers()
