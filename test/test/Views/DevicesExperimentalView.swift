@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct DevicesExperimentalView: View {
@@ -600,6 +601,179 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     }
 }
 
+private struct ExperimentalHorizontalPanState {
+    let translation: CGSize
+    let velocity: CGSize
+
+    init(translation: CGPoint, velocity: CGPoint) {
+        self.translation = CGSize(width: translation.x, height: translation.y)
+        self.velocity = CGSize(width: velocity.x, height: velocity.y)
+    }
+}
+
+private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable {
+    let content: Content
+    let onChanged: (ExperimentalHorizontalPanState) -> Void
+    let onEnded: (ExperimentalHorizontalPanState) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(rootView: AnyView(content), onChanged: onChanged, onEnded: onEnded)
+    }
+
+    func makeUIView(context: Context) -> ContainerView {
+        context.coordinator.makeContainerView()
+    }
+
+    func updateUIView(_ uiView: ContainerView, context: Context) {
+        context.coordinator.update(
+            rootView: AnyView(content),
+            onChanged: onChanged,
+            onEnded: onEnded
+        )
+    }
+
+    static func dismantleUIView(_ uiView: ContainerView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        private let hostingController: UIHostingController<AnyView>
+        private weak var containerView: ContainerView?
+
+        init(
+            rootView: AnyView,
+            onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
+            onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
+        ) {
+            hostingController = UIHostingController(rootView: rootView)
+            hostingController.view.backgroundColor = .clear
+            hostingController.view.isOpaque = false
+            hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+        }
+
+        var onChanged: (ExperimentalHorizontalPanState) -> Void {
+            didSet {
+                containerView?.onChanged = onChanged
+            }
+        }
+
+        var onEnded: (ExperimentalHorizontalPanState) -> Void {
+            didSet {
+                containerView?.onEnded = onEnded
+            }
+        }
+
+        func makeContainerView() -> ContainerView {
+            let container = ContainerView()
+            container.onChanged = onChanged
+            container.onEnded = onEnded
+            container.installHostedView(hostingController.view)
+            containerView = container
+            return container
+        }
+
+        func update(
+            rootView: AnyView,
+            onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
+            onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
+        ) {
+            hostingController.rootView = rootView
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+        }
+
+        func detach() {
+            hostingController.view.removeFromSuperview()
+            containerView = nil
+        }
+    }
+
+    final class ContainerView: UIView, UIGestureRecognizerDelegate {
+        private enum Layout {
+            static let axisDominanceRatio: CGFloat = 1.08
+        }
+
+        var onChanged: ((ExperimentalHorizontalPanState) -> Void)?
+        var onEnded: ((ExperimentalHorizontalPanState) -> Void)?
+
+        private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
+            let gestureRecognizer = UIPanGestureRecognizer(
+                target: self,
+                action: #selector(handlePanStateChange(_:))
+            )
+            gestureRecognizer.delegate = self
+            gestureRecognizer.cancelsTouchesInView = false
+            gestureRecognizer.delaysTouchesBegan = false
+            gestureRecognizer.maximumNumberOfTouches = 1
+            return gestureRecognizer
+        }()
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isOpaque = false
+            addGestureRecognizer(panGestureRecognizer)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        func installHostedView(_ hostedView: UIView) {
+            if hostedView.superview !== self {
+                addSubview(hostedView)
+                NSLayoutConstraint.activate([
+                    hostedView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                    hostedView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                    hostedView.topAnchor.constraint(equalTo: topAnchor),
+                    hostedView.bottomAnchor.constraint(equalTo: bottomAnchor)
+                ])
+            }
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
+                return true
+            }
+
+            let velocity = gestureRecognizer.velocity(in: self)
+            if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
+                return abs(velocity.x) > abs(velocity.y) * Layout.axisDominanceRatio
+            }
+
+            let translation = gestureRecognizer.translation(in: self)
+            return abs(translation.x) > abs(translation.y) * Layout.axisDominanceRatio
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
+        @objc
+        private func handlePanStateChange(_ gestureRecognizer: UIPanGestureRecognizer) {
+            let state = ExperimentalHorizontalPanState(
+                translation: gestureRecognizer.translation(in: self),
+                velocity: gestureRecognizer.velocity(in: self)
+            )
+
+            switch gestureRecognizer.state {
+            case .began, .changed:
+                onChanged?(state)
+            case .ended, .cancelled, .failed:
+                onEnded?(state)
+            default:
+                break
+            }
+        }
+    }
+}
+
 private struct ExperimentalSwipeActionCard<Content: View>: View {
     private enum PanAxisLock {
         case undecided
@@ -612,7 +786,6 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         static var actionSpacing: CGFloat { 8 }
         static var actionHorizontalInset: CGFloat { 10 }
         static var minimumActionHeight: CGFloat { 34 }
-        static var gestureMinimumDistance: CGFloat { 12 }
         static var axisDecisionDistance: CGFloat { 12 }
         static var axisDominanceRatio: CGFloat { 1.12 }
 
@@ -645,19 +818,17 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         contentOffset < -0.5
     }
 
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: Layout.gestureMinimumDistance, coordinateSpace: .local)
-            .onChanged(handleSwipePanChanged)
-            .onEnded(handleSwipePanEnded)
-    }
-
     var body: some View {
         ZStack(alignment: .trailing) {
             if shouldShowSwipeActions {
                 swipeActions
             }
 
-            content()
+            ExperimentalHorizontalPanHost(
+                content: content(),
+                onChanged: handleSwipePanChanged,
+                onEnded: handleSwipePanEnded
+            )
                 .offset(x: contentOffset)
                 .allowsHitTesting(openCardID != id)
                 .overlay {
@@ -678,7 +849,6 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .simultaneousGesture(swipeGesture)
         .onChange(of: openCardID) { _, newValue in
             if newValue != id {
                 dragOffset = 0
@@ -755,13 +925,13 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         .shadow(color: background.opacity(0.22), radius: 10, x: 0, y: 5)
     }
 
-    private func handleSwipePanChanged(_ value: DragGesture.Value) {
+    private func handleSwipePanChanged(_ state: ExperimentalHorizontalPanState) {
         if panAxisLock == .vertical {
             return
         }
 
         if panAxisLock == .undecided {
-            let axisLock = resolvedPanAxisLock(for: value)
+            let axisLock = resolvedPanAxisLock(for: state)
             guard axisLock != .undecided else {
                 return
             }
@@ -773,24 +943,24 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
             }
         }
 
-        dragOffset = clampedDragOffset(for: value.translation.width)
+        dragOffset = clampedDragOffset(for: state.translation.width)
     }
 
-    private func handleSwipePanEnded(_ value: DragGesture.Value) {
+    private func handleSwipePanEnded(_ state: ExperimentalHorizontalPanState) {
         defer {
             dragOffset = 0
             panAxisLock = .undecided
         }
 
         if panAxisLock == .undecided {
-            panAxisLock = resolvedPanAxisLock(for: value)
+            panAxisLock = resolvedPanAxisLock(for: state)
         }
 
         guard panAxisLock == .horizontal else {
             return
         }
 
-        let projectedOffset = resolvedContentOffset(for: projectedTranslationWidth(for: value))
+        let projectedOffset = resolvedContentOffset(for: projectedTranslationWidth(for: state))
         let revealedEnough = projectedOffset <= (-Layout.totalActionWidth * 0.55)
         let closingEnough = projectedOffset >= (-Layout.totalActionWidth * 0.35)
 
@@ -814,26 +984,27 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         return min(0, max(-Layout.totalActionWidth, proposedOffset))
     }
 
-    private func projectedTranslationWidth(for value: DragGesture.Value) -> CGFloat {
-        value.predictedEndTranslation.width
+    private func projectedTranslationWidth(for state: ExperimentalHorizontalPanState) -> CGFloat {
+        let projectedVelocityContribution = state.velocity.width * 0.12
+        return state.translation.width + projectedVelocityContribution
     }
 
-    private func resolvedPanAxisLock(for value: DragGesture.Value) -> PanAxisLock {
-        let absWidth = abs(value.translation.width)
-        let absHeight = abs(value.translation.height)
+    private func resolvedPanAxisLock(for state: ExperimentalHorizontalPanState) -> PanAxisLock {
+        let absWidth = abs(state.translation.width)
+        let absHeight = abs(state.translation.height)
 
         if max(absWidth, absHeight) < Layout.axisDecisionDistance {
-            let projectedAbsWidth = abs(value.predictedEndTranslation.width)
-            let projectedAbsHeight = abs(value.predictedEndTranslation.height)
-            guard max(projectedAbsWidth, projectedAbsHeight) >= 18 else {
+            let absVelocityWidth = abs(state.velocity.width)
+            let absVelocityHeight = abs(state.velocity.height)
+            guard max(absVelocityWidth, absVelocityHeight) >= 140 else {
                 return .undecided
             }
 
-            if projectedAbsWidth > projectedAbsHeight * Layout.axisDominanceRatio {
+            if absVelocityWidth > absVelocityHeight * Layout.axisDominanceRatio {
                 return .horizontal
             }
 
-            if projectedAbsHeight > projectedAbsWidth * Layout.axisDominanceRatio {
+            if absVelocityHeight > absVelocityWidth * Layout.axisDominanceRatio {
                 return .vertical
             }
 
