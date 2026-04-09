@@ -202,10 +202,23 @@ jobs:
           fi
 
           echo "Relevant xcodebuild lines:"
+          MATCHED=0
           if command -v rg >/dev/null 2>&1; then
-            rg -n -C 2 "$PATTERN" "${LOG_FILES[@]}" || true
+            if rg -n -C 2 "$PATTERN" "${LOG_FILES[@]}"; then
+              MATCHED=1
+            fi
           else
-            grep -nE -C 2 "$PATTERN" "${LOG_FILES[@]}" || true
+            if grep -nE -C 2 "$PATTERN" "${LOG_FILES[@]}"; then
+              MATCHED=1
+            fi
+          fi
+
+          if (( MATCHED == 0 )); then
+            echo "No explicit error markers matched. Showing tail of xcodebuild logs:"
+            for log_file in "${LOG_FILES[@]}"; do
+              echo "----- ${log_file} (last 120 lines) -----"
+              tail -n 120 "$log_file" || true
+            done
           fi
 
       - name: Upload xcodebuild logs
