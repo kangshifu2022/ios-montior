@@ -6,6 +6,9 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   PROJECT_PATH: test/test.xcodeproj
   SCHEME: test
@@ -77,11 +80,17 @@ jobs:
         run: |
           BUILD_SETTINGS="$(xcodebuild -showBuildSettings -project "$PROJECT_PATH" -target "$SCHEME" -configuration Release -destination "generic/platform=iOS")"
           PROJECT_BUNDLE_ID="$(printf '%s\n' "$BUILD_SETTINGS" | awk -F ' = ' '/PRODUCT_BUNDLE_IDENTIFIER = / && $2 != "NO" {print $2; exit}')"
+          APP_TITLE="$(printf '%s\n' "$BUILD_SETTINGS" | awk -F ' = ' '/PRODUCT_NAME = / {print $2; exit}')"
+          APP_VERSION="$(printf '%s\n' "$BUILD_SETTINGS" | awk -F ' = ' '/MARKETING_VERSION = / {print $2; exit}')"
 
           if [[ -z "$PROJECT_BUNDLE_ID" ]]; then
             echo "Failed to resolve PRODUCT_BUNDLE_IDENTIFIER from project settings."
             exit 1
           fi
+
+          APP_TITLE="${APP_TITLE%\"}"
+          APP_TITLE="${APP_TITLE#\"}"
+          APP_VERSION="${APP_VERSION:-$GITHUB_RUN_NUMBER}"
 
           if [[ "$PROFILE_BUNDLE_ID" == *"*" ]]; then
             PROFILE_PREFIX="${PROFILE_BUNDLE_ID%\*}"
@@ -95,6 +104,8 @@ jobs:
           fi
 
           echo "PROJECT_BUNDLE_ID=$PROJECT_BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "APP_TITLE=$APP_TITLE" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
 
       - name: Resolve Swift packages
         run: |
@@ -158,6 +169,198 @@ jobs:
           path: ${{ runner.temp }}/ipa/*.ipa
           if-no-files-found: error
 
+      - name: Prepare install site
+        env:
+          IOS_INSTALL_BASE_URL: ${{ vars.IOS_INSTALL_BASE_URL }}
+        run: |
+          SITE_DIR="$RUNNER_TEMP/install-site"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BASE_URL="${IOS_INSTALL_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}}"
+          BASE_URL="${BASE_URL%/}"
+          IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name '*.ipa' -print -quit)"
+          IPA_NAME="$(basename "$IPA_PATH")"
+          MANIFEST_URL="$BASE_URL/manifest.plist"
+          IPA_URL="$BASE_URL/$IPA_NAME"
+          BUILD_SHA="${GITHUB_SHA::7}"
+
+          if [[ -z "$IPA_PATH" || ! -f "$IPA_PATH" ]]; then
+            echo "No IPA found at $EXPORT_PATH"
+            exit 1
+          fi
+
+          mkdir -p "$SITE_DIR"
+          cp "$IPA_PATH" "$SITE_DIR/$IPA_NAME"
+
+          cat > "$SITE_DIR/manifest.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>items</key>
+            <array>
+              <dict>
+                <key>assets</key>
+                <array>
+                  <dict>
+                    <key>kind</key>
+                    <string>software-package</string>
+                    <key>url</key>
+                    <string>$IPA_URL</string>
+                  </dict>
+                </array>
+                <key>metadata</key>
+                <dict>
+                  <key>bundle-identifier</key>
+                  <string>$PROJECT_BUNDLE_ID</string>
+                  <key>bundle-version</key>
+                  <string>$GITHUB_RUN_NUMBER</string>
+                  <key>kind</key>
+                  <string>software</string>
+                  <key>title</key>
+                  <string>$APP_TITLE</string>
+                </dict>
+              </dict>
+            </array>
+          </dict>
+          </plist>
+          EOF
+
+          cat > "$SITE_DIR/index.html" <<EOF
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>$APP_TITLE Install</title>
+            <style>
+              :root {
+                color-scheme: light;
+                --bg: #f3f7fb;
+                --panel: #ffffff;
+                --text: #10233a;
+                --muted: #5c6d82;
+                --accent: #0a84ff;
+                --accent-strong: #0066cc;
+                --line: #dce6f0;
+              }
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                background:
+                  radial-gradient(circle at top, rgba(10, 132, 255, 0.14), transparent 32rem),
+                  linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+                color: var(--text);
+              }
+              main {
+                max-width: 42rem;
+                margin: 0 auto;
+                padding: 3rem 1.25rem 4rem;
+              }
+              .card {
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 1.5rem;
+                padding: 1.5rem;
+                box-shadow: 0 18px 48px rgba(16, 35, 58, 0.08);
+              }
+              h1 {
+                margin: 0 0 0.75rem;
+                font-size: clamp(2rem, 5vw, 2.8rem);
+                line-height: 1.05;
+              }
+              p {
+                margin: 0.75rem 0;
+                color: var(--muted);
+                line-height: 1.6;
+              }
+              .actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+                margin: 1.5rem 0;
+              }
+              .button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 3.25rem;
+                padding: 0 1.25rem;
+                border-radius: 999px;
+                border: 1px solid transparent;
+                font-weight: 700;
+                text-decoration: none;
+              }
+              .button.primary {
+                background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+                color: #fff;
+              }
+              .button.secondary {
+                background: #fff;
+                border-color: var(--line);
+                color: var(--text);
+              }
+              .meta {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+                gap: 0.75rem;
+                margin-top: 1.5rem;
+              }
+              .meta div {
+                padding: 0.9rem 1rem;
+                border-radius: 1rem;
+                background: #f8fbff;
+                border: 1px solid var(--line);
+              }
+              .meta strong {
+                display: block;
+                margin-bottom: 0.3rem;
+                font-size: 0.78rem;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--muted);
+              }
+              code {
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                font-size: 0.92rem;
+              }
+            </style>
+          </head>
+          <body>
+            <main>
+              <section class="card">
+                <p>Open this page in Safari on your iPhone or iPad.</p>
+                <h1>Install $APP_TITLE</h1>
+                <p>This build is published from GitHub Actions as an Ad Hoc install package. If your device UDID is included in the provisioning profile, tap Install and iOS will start the app installation.</p>
+                <div class="actions">
+                  <a class="button primary" href="itms-services://?action=download-manifest&amp;url=$MANIFEST_URL">Install on iPhone/iPad</a>
+                  <a class="button secondary" href="$IPA_URL">Download IPA</a>
+                </div>
+                <div class="meta">
+                  <div>
+                    <strong>Version</strong>
+                    <span>$APP_VERSION</span>
+                  </div>
+                  <div>
+                    <strong>Build</strong>
+                    <span>$GITHUB_RUN_NUMBER</span>
+                  </div>
+                  <div>
+                    <strong>Commit</strong>
+                    <code>$BUILD_SHA</code>
+                  </div>
+                </div>
+              </section>
+            </main>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload install site artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/install-site
+
       - name: Cleanup signing assets
         if: ${{ always() }}
         run: |
@@ -170,3 +373,18 @@ jobs:
           if [[ -n "${PROFILE_UUID:-}" ]]; then
             rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           fi
+
+  deploy-install-page:
+    needs: build-ipa
+    if: ${{ github.ref == 'refs/heads/master' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

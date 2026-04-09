@@ -16,6 +16,7 @@ This repository now includes a GitHub Actions workflow that builds an Ad Hoc `.i
 3. Resolves the app bundle identifier from the Xcode project.
 4. Archives the app with manual signing.
 5. Exports the `.ipa` and uploads it as a GitHub Actions artifact.
+6. Publishes an install page, manifest, and IPA to GitHub Pages for direct iPhone/iPad installation.
 
 The workflow file is [`.github/workflows/ios.yml`](/root/ios-montior/.github/workflows/ios.yml) and the shared scheme used by CI is [`test.xcodeproj/xcshareddata/xcschemes/test.xcscheme`](/root/ios-montior/test/test.xcodeproj/xcshareddata/xcschemes/test.xcscheme).
 
@@ -38,3 +39,19 @@ base64 -w 0 profile.mobileprovision
 ## Triggering A Build
 
 The workflow runs on pushes to `master` and also supports manual triggering from the GitHub Actions UI. The exported IPA artifact is uploaded under the name `ios-adhoc-ipa`.
+
+## Direct Install Link
+
+After a successful build, the workflow also deploys a GitHub Pages install site. The default install URL for this repository is:
+
+`https://kangshifu2022.github.io/ios-montior/`
+
+Open that page in Safari on the device, then tap the install button. iOS will use the generated `manifest.plist` to install the app.
+
+If you want to serve the install page from a custom domain instead of the default GitHub Pages URL, add a repository variable named `IOS_INSTALL_BASE_URL`, for example:
+
+```text
+https://downloads.example.com/ios-montior
+```
+
+If the deploy job fails the first time, enable GitHub Pages for the repository and use GitHub Actions as the deployment source. GitHub's official Pages deployment actions are [`actions/upload-pages-artifact`](https://github.com/actions/upload-pages-artifact) and [`actions/deploy-pages`](https://github.com/actions/deploy-pages).
