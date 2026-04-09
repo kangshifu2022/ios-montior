@@ -604,6 +604,11 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
 private struct ExperimentalHorizontalPanState {
     let translation: CGSize
     let velocity: CGSize
+
+    init(translation: CGPoint, velocity: CGPoint) {
+        self.translation = CGSize(width: translation.x, height: translation.y)
+        self.velocity = CGSize(width: velocity.x, height: velocity.y)
+    }
 }
 
 // Install a UIKit pan recognizer on the host view so vertical drags can be rejected
