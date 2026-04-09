@@ -180,12 +180,12 @@ struct DevicesExperimentalView: View {
                     swipeActionServerID = nil
                 }
                 .task(id: store.servers.map(\.id)) {
-                    triggerHomeRefresh()
+                    await triggerHomeRefresh()
 
                     while !Task.isCancelled {
                         try? await Task.sleep(nanoseconds: 3_000_000_000)
                         guard !Task.isCancelled else { break }
-                        triggerHomeRefresh(forceDynamic: true)
+                        await triggerHomeRefresh(forceDynamic: true)
                     }
                 }
                 .onDisappear {
@@ -406,13 +406,11 @@ struct DevicesExperimentalView: View {
     private func triggerHomeRefresh(
         forceDynamic: Bool = false,
         forceStatic: Bool = false
-    ) {
-        Task {
-            await store.refreshAllIfNeeded(
-                forceDynamic: forceDynamic,
-                forceStatic: forceStatic
-            )
-        }
+    ) async {
+        await store.refreshAllIfNeeded(
+            forceDynamic: forceDynamic,
+            forceStatic: forceStatic
+        )
     }
 
     @ViewBuilder

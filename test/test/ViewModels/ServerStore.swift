@@ -10,6 +10,12 @@ final class ServerStore: ObservableObject {
         let memUsage: Double
     }
 
+    private struct CachedInfoSnapshot: Sendable {
+        let staticInfoByServerID: [UUID: ServerStaticInfo]
+        let dynamicInfoByServerID: [UUID: ServerDynamicInfo]
+        let remoteAlertStatusByServerID: [UUID: RemoteAlertStatus]
+    }
+
     private enum RefreshRequest: Sendable {
         case full(ServerConfig)
         case dynamic(ServerConfig)
@@ -47,6 +53,8 @@ final class ServerStore: ObservableObject {
     private let metricHistoryWindow: TimeInterval = 60
     private let refreshBatchStaggerInterval: TimeInterval = 0.18
     private let maxRefreshBatchStaggerSlots = 6
+    private var cachePersistenceTask: Task<Void, Never>?
+    nonisolated private static let cachePersistenceDebounceNanoseconds: UInt64 = 350_000_000
 
     init() {
         load()
@@ -350,6 +358,8 @@ final class ServerStore: ObservableObject {
                 }
             }
 
+            var shouldPersistCachedInfo = false
+
             for await result in group {
                 guard let result else { continue }
                 let receivedAt = Date()
@@ -373,6 +383,7 @@ final class ServerStore: ObservableObject {
                     recordMetricSample(for: id, dynamicInfo: resolvedDynamicInfo, capturedAt: receivedAt)
                     lastDynamicRefreshDates[id] = batchStartedAt
                     refreshingServerIDs.remove(id)
+                    shouldPersistCachedInfo = true
                 case .dynamic(let id, let dynamic):
                     let resolvedDynamicInfo = resolvedDynamicInfoUpdate(
                         serverID: id,
@@ -384,11 +395,15 @@ final class ServerStore: ObservableObject {
                     recordMetricSample(for: id, dynamicInfo: resolvedDynamicInfo, capturedAt: receivedAt)
                     lastDynamicRefreshDates[id] = batchStartedAt
                     refreshingServerIDs.remove(id)
+                    shouldPersistCachedInfo = true
                 }
                 switch result {
                 case .full(let id, _), .dynamic(let id, _):
                     pendingIDs.remove(id)
                 }
+            }
+
+            if shouldPersistCachedInfo {
                 saveCachedInfo()
             }
         }
@@ -412,14 +427,17 @@ final class ServerStore: ObservableObject {
     }
 
     private func saveCachedInfo() {
-        if let data = try? JSONEncoder().encode(staticInfoByServerID) {
-            UserDefaults.standard.set(data, forKey: staticInfoKey)
-        }
-        if let data = try? JSONEncoder().encode(dynamicInfoByServerID) {
-            UserDefaults.standard.set(data, forKey: dynamicInfoKey)
-        }
-        if let data = try? JSONEncoder().encode(remoteAlertStatusByServerID) {
-            UserDefaults.standard.set(data, forKey: remoteAlertStatusKey)
+        let snapshot = CachedInfoSnapshot(
+            staticInfoByServerID: staticInfoByServerID,
+            dynamicInfoByServerID: dynamicInfoByServerID,
+            remoteAlertStatusByServerID: remoteAlertStatusByServerID
+        )
+
+        cachePersistenceTask?.cancel()
+        cachePersistenceTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: Self.cachePersistenceDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            Self.persistCachedInfo(snapshot)
         }
     }
 
@@ -1041,5 +1059,19 @@ final class ServerStore: ObservableObject {
         status.lastError = message
         status.lastMessage = ""
         remoteAlertStatusByServerID[id] = status
+    }
+
+    nonisolated private static func persistCachedInfo(_ snapshot: CachedInfoSnapshot) {
+        let defaults = UserDefaults.standard
+
+        if let data = try? JSONEncoder().encode(snapshot.staticInfoByServerID) {
+            defaults.set(data, forKey: "cached_server_static_info")
+        }
+        if let data = try? JSONEncoder().encode(snapshot.dynamicInfoByServerID) {
+            defaults.set(data, forKey: "cached_server_dynamic_info")
+        }
+        if let data = try? JSONEncoder().encode(snapshot.remoteAlertStatusByServerID) {
+            defaults.set(data, forKey: "cached_remote_alert_status")
+        }
     }
 }
