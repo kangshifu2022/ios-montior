@@ -688,17 +688,7 @@ private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
-                return true
-            }
-
-            let velocity = gestureRecognizer.velocity(in: gestureRecognizer.view)
-            if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
-                return abs(velocity.x) > abs(velocity.y)
-            }
-
-            let translation = gestureRecognizer.translation(in: gestureRecognizer.view)
-            return abs(translation.x) > abs(translation.y)
+            true
         }
 
         func gestureRecognizer(
@@ -728,11 +718,19 @@ private struct ExperimentalHorizontalPanGestureOverlay: UIViewRepresentable {
 }
 
 private struct ExperimentalSwipeActionCard<Content: View>: View {
+    private enum PanAxisLock {
+        case undecided
+        case horizontal
+        case vertical
+    }
+
     private enum Layout {
         static var actionWidth: CGFloat { 62 }
         static var actionSpacing: CGFloat { 8 }
         static var actionHorizontalInset: CGFloat { 10 }
         static var minimumActionHeight: CGFloat { 34 }
+        static var axisDecisionDistance: CGFloat { 10 }
+        static var axisDominanceRatio: CGFloat { 1.12 }
 
         static var totalActionWidth: CGFloat {
             (actionWidth * 2) + actionSpacing + (actionHorizontalInset * 2)
@@ -748,6 +746,7 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     @State private var dragOffset: CGFloat = 0
+    @State private var panAxisLock: PanAxisLock = .undecided
 
     private var baseOffset: CGFloat {
         openCardID == id ? -Layout.totalActionWidth : 0
@@ -798,6 +797,7 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
         .onChange(of: openCardID) { _, newValue in
             if newValue != id {
                 dragOffset = 0
+                panAxisLock = .undecided
             }
         }
     }
@@ -871,10 +871,40 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
     }
 
     private func handleSwipePanChanged(_ state: ExperimentalHorizontalPanState) {
+        if panAxisLock == .vertical {
+            return
+        }
+
+        if panAxisLock == .undecided {
+            let axisLock = resolvedPanAxisLock(for: state)
+            guard axisLock != .undecided else {
+                return
+            }
+
+            panAxisLock = axisLock
+            if axisLock == .vertical {
+                dragOffset = 0
+                return
+            }
+        }
+
         dragOffset = state.translation.width
     }
 
     private func handleSwipePanEnded(_ state: ExperimentalHorizontalPanState) {
+        defer {
+            dragOffset = 0
+            panAxisLock = .undecided
+        }
+
+        if panAxisLock == .undecided {
+            panAxisLock = resolvedPanAxisLock(for: state)
+        }
+
+        guard panAxisLock == .horizontal else {
+            return
+        }
+
         let projectedOffset = baseOffset + projectedTranslationWidth(for: state)
         let revealedEnough = projectedOffset <= (-Layout.totalActionWidth * 0.55)
         let closingEnough = projectedOffset >= (-Layout.totalActionWidth * 0.35)
@@ -893,6 +923,39 @@ private struct ExperimentalSwipeActionCard<Content: View>: View {
     private func projectedTranslationWidth(for state: ExperimentalHorizontalPanState) -> CGFloat {
         let projectedVelocityContribution = state.velocity.width * 0.12
         return state.translation.width + projectedVelocityContribution
+    }
+
+    private func resolvedPanAxisLock(for state: ExperimentalHorizontalPanState) -> PanAxisLock {
+        let absWidth = abs(state.translation.width)
+        let absHeight = abs(state.translation.height)
+
+        if max(absWidth, absHeight) < Layout.axisDecisionDistance {
+            let absVelocityWidth = abs(state.velocity.width)
+            let absVelocityHeight = abs(state.velocity.height)
+            guard max(absVelocityWidth, absVelocityHeight) >= 140 else {
+                return .undecided
+            }
+
+            if absVelocityWidth > absVelocityHeight * Layout.axisDominanceRatio {
+                return .horizontal
+            }
+
+            if absVelocityHeight > absVelocityWidth * Layout.axisDominanceRatio {
+                return .vertical
+            }
+
+            return .undecided
+        }
+
+        if absWidth > absHeight * Layout.axisDominanceRatio {
+            return .horizontal
+        }
+
+        if absHeight > absWidth * Layout.axisDominanceRatio {
+            return .vertical
+        }
+
+        return .undecided
     }
 
     private func openActions() {
