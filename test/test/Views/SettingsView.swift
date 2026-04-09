@@ -12,25 +12,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             List {
-                Section(header: Text("界面实验")) {
-                    Text("首屏已经统一切到实验版，后续首页样式都只在这一套上继续迭代。")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-
-                    Picker("试验版主题", selection: $experimentalHomeThemeRawValue) {
-                        ForEach(ExperimentalHomeTheme.allCases) { theme in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(theme.title)
-                                Text(theme.subtitle)
-                            }
-                            .tag(theme.rawValue)
-                        }
-                    }
-
-                    Text(selectedExperimentalHomeTheme.subtitle)
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                }
+                serverManagementSection
 
                 Section(header: Text("终端")) {
                     Picker("默认连接模式", selection: $terminalDefaultConnectionModeRawValue) {
@@ -74,34 +56,24 @@ struct SettingsView: View {
                     }
                 }
 
-                Section(header: Text("服务器管理")) {
-                    ForEach(store.servers) { server in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(server.name)
-                                    .font(.headline)
-                                Text("\(server.username)@\(server.host):\(server.port)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                Section(header: Text("界面实验")) {
+                    Text("首屏已经统一切到实验版，后续首页样式都只在这一套上继续迭代。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    Picker("试验版主题", selection: $experimentalHomeThemeRawValue) {
+                        ForEach(ExperimentalHomeTheme.allCases) { theme in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(theme.title)
+                                Text(theme.subtitle)
                             }
-                            Spacer()
-                            Button(action: { editingServer = server }) {
-                                Image(systemName: "pencil")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .onDelete(perform: deleteServers)
-                    
-                    Button(action: { showAddServer = true }) {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(.blue)
-                            Text("添加服务器")
-                                .foregroundColor(.blue)
+                            .tag(theme.rawValue)
                         }
                     }
+
+                    Text(selectedExperimentalHomeTheme.subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                 }
             }
             .navigationTitle("设置")
@@ -116,6 +88,47 @@ struct SettingsView: View {
 
     private var selectedExperimentalHomeTheme: ExperimentalHomeTheme {
         ExperimentalHomeTheme(rawValue: experimentalHomeThemeRawValue) ?? .system
+    }
+
+    private var serverManagementSection: some View {
+        Section(header: Text("服务器管理")) {
+            ForEach(store.servers) { server in
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(server.name)
+                            .font(.headline)
+                        Text("\(server.username)@\(server.host):\(server.port)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button(action: { duplicateServer(server) }) {
+                        Image(systemName: "doc.on.doc")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("复制\(server.name)")
+
+                    Button(action: { editingServer = server }) {
+                        Image(systemName: "pencil")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("编辑\(server.name)")
+                }
+                .padding(.vertical, 4)
+            }
+            .onDelete(perform: deleteServers)
+
+            Button(action: { showAddServer = true }) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("添加服务器")
+                        .foregroundColor(.blue)
+                }
+            }
+        }
     }
 
     private var selectedTerminalDefaultConnectionMode: TerminalDefaultConnectionMode {
@@ -133,5 +146,19 @@ struct SettingsView: View {
             TerminalPersistenceStore.removeSessions(for: id)
         }
         store.delete(at: offsets)
+    }
+
+    private func duplicateServer(_ server: ServerConfig) {
+        let duplicatedServer = ServerConfig(
+            name: "\(server.name) 副本",
+            groupName: server.groupName,
+            host: server.host,
+            port: server.port,
+            username: server.username,
+            password: server.password,
+            barkURL: server.barkURL,
+            alertConfiguration: server.alertConfiguration
+        )
+        store.add(duplicatedServer)
     }
 }

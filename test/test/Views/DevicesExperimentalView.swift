@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import UIKit
 
 struct DevicesExperimentalView: View {
     fileprivate static let cardGroupIndicatorWidth: CGFloat = 2.5
@@ -200,7 +199,7 @@ struct DevicesExperimentalView: View {
     }
 
     private func homeLayout(for size: CGSize) -> HomeLayout {
-        let usesLandscapeMonitorMode = UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
+        let usesLandscapeMonitorMode = size.width > size.height
         let cardSpacing = homeCardView == .detailed ? 20.0 : 10.0
         let cardColumns: [GridItem]
 
