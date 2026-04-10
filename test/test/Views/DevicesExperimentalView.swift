@@ -116,30 +116,33 @@ struct DevicesExperimentalView: View {
             let layout = homeLayout(for: proxy.size)
 
             NavigationStack {
-                ScrollView {
-                    VStack(spacing: 18) {
-                        pageHeader
+                ZStack(alignment: .topTrailing) {
+                    palette.pageBackground
+                        .ignoresSafeArea()
 
-                        if store.servers.isEmpty {
-                            emptyState
-                        } else {
-                            cardsSection(layout: layout)
-                                .animation(.spring(response: 0.28, dampingFraction: 0.84), value: filteredServers)
-                                .onDrop(of: [UTType.text], delegate: ExperimentalServerListDropDelegate(draggedServerID: $draggedServerID))
+                    ScrollView {
+                        VStack(spacing: 18) {
+                            pageHeader
+
+                            if store.servers.isEmpty {
+                                emptyState
+                            } else {
+                                cardsSection(layout: layout)
+                                    .animation(.spring(response: 0.28, dampingFraction: 0.84), value: filteredServers)
+                                    .onDrop(of: [UTType.text], delegate: ExperimentalServerListDropDelegate(draggedServerID: $draggedServerID))
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 18)
-                }
-                .refreshable {
-                    await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
-                }
-                .background(palette.pageBackground)
-                .overlay(alignment: .topTrailing) {
+                    .refreshable {
+                        await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
+                    }
                     homeCardViewToggleButton
                         .padding(.top, 12)
                         .padding(.trailing, 16)
+                        .zIndex(1)
                 }
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(item: $selectedServer) { config in
@@ -289,7 +292,8 @@ struct DevicesExperimentalView: View {
         } label: {
             Image(systemName: homeCardViewToggleIconName)
                 .font(.system(size: 16, weight: .semibold))
-                .frame(width: 30, height: 30)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundColor(palette.primaryText)
