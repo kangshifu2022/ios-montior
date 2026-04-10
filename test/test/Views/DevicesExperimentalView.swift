@@ -136,6 +136,11 @@ struct DevicesExperimentalView: View {
                     await store.refreshAllIfNeeded(forceDynamic: true, forceStatic: true)
                 }
                 .background(palette.pageBackground)
+                .overlay(alignment: .topTrailing) {
+                    homeCardViewToggleButton
+                        .padding(.top, 12)
+                        .padding(.trailing, 16)
+                }
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(item: $selectedServer) { config in
                     DeviceDetailView(config: config, store: store)
@@ -236,19 +241,10 @@ struct DevicesExperimentalView: View {
 
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+            HStack {
                 Spacer(minLength: 0)
-
-                Button(action: toggleHomeCardView) {
-                    Image(systemName: homeCardViewToggleIconName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 30, height: 30)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(palette.primaryText)
-                .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
             }
+            .frame(height: 30)
 
             HStack(alignment: .top, spacing: 3) {
                 Text("概览")
@@ -267,6 +263,18 @@ struct DevicesExperimentalView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 16)
         .padding(.bottom, 8)
+    }
+
+    private var homeCardViewToggleButton: some View {
+        Button(action: toggleHomeCardView) {
+            Image(systemName: homeCardViewToggleIconName)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 30, height: 30)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(palette.primaryText)
+        .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
     }
 
     private var homeCardViewToggleIconName: String {
