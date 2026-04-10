@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import UniformTypeIdentifiers
 
 struct DevicesExperimentalView: View {
@@ -19,7 +18,6 @@ struct DevicesExperimentalView: View {
     @State private var selectedGroupName = ServerConfig.allGroupName
     @State private var showsExpandedGroupTags = false
     @State private var draggedServerID: UUID?
-    @State private var swipeActionServerID: UUID?
 
     private struct HomeLayout {
         let usesTwoColumnCards: Bool
@@ -170,15 +168,12 @@ struct DevicesExperimentalView: View {
                 }
                 .onChange(of: selectedServer?.id) { _, _ in
                     draggedServerID = nil
-                    swipeActionServerID = nil
                 }
                 .onChange(of: editingServer?.id) { _, _ in
                     draggedServerID = nil
-                    swipeActionServerID = nil
                 }
                 .onChange(of: terminalWorkspace.presentedSession?.id) { _, _ in
                     draggedServerID = nil
-                    swipeActionServerID = nil
                 }
                 .task(id: store.servers.map(\.id)) {
                     await triggerHomeRefresh()
@@ -191,7 +186,6 @@ struct DevicesExperimentalView: View {
                 }
                 .onDisappear {
                     draggedServerID = nil
-                    swipeActionServerID = nil
                 }
                 .toolbar(layout.hidesTabBar ? .hidden : .visible, for: .tabBar)
             }
@@ -370,7 +364,6 @@ struct DevicesExperimentalView: View {
     private func handleGroupTagTap(_ groupName: String) {
         if groupName == ServerConfig.allGroupName {
             withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
-                swipeActionServerID = nil
                 selectedGroupName = ServerConfig.allGroupName
                 showsExpandedGroupTags.toggle()
             }
@@ -378,7 +371,6 @@ struct DevicesExperimentalView: View {
         }
 
         guard selectedGroupName != groupName else { return }
-        swipeActionServerID = nil
         selectedGroupName = groupName
     }
 
@@ -426,19 +418,7 @@ struct DevicesExperimentalView: View {
         let isDragged = draggedServerID == serverID
         let showsDetailedCard = homeCardView == .detailed
 
-        ExperimentalSwipeActionCard(
-            id: serverID,
-            openCardID: $swipeActionServerID,
-            palette: palette,
-            cornerRadius: showsDetailedCard ? Self.detailedCardCornerRadius : 999,
-            onEdit: {
-                editingServer = server
-            },
-            onDelete: {
-                swipeActionServerID = nil
-                pendingDeletionServer = server
-            }
-        ) {
+        Group {
             if showsDetailedCard {
                 ExperimentalServerCard(
                     config: server,
@@ -463,6 +443,19 @@ struct DevicesExperimentalView: View {
                 } onOpenTerminal: {
                     terminalWorkspace.presentTerminal(for: server)
                 }
+            }
+        }
+        .contextMenu {
+            Button {
+                editingServer = server
+            } label: {
+                Label("编辑", systemImage: "square.and.pencil")
+            }
+
+            Button(role: .destructive) {
+                pendingDeletionServer = server
+            } label: {
+                Label("删除", systemImage: "trash")
             }
         }
         .scaleEffect(isDragged ? 1.02 : 1)
@@ -517,7 +510,6 @@ struct DevicesExperimentalView: View {
     private func toggleHomeCardView() {
         let nextMode: ExperimentalHomeCardView = homeCardView == .detailed ? .compact : .detailed
         withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-            swipeActionServerID = nil
             setHomeCardView(nextMode)
         }
     }
@@ -598,518 +590,6 @@ private struct ExperimentalServerListDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         draggedServerID = nil
         return true
-    }
-}
-
-private struct ExperimentalHorizontalPanState {
-    let translation: CGSize
-    let velocity: CGSize
-
-    init(translation: CGPoint, velocity: CGPoint) {
-        self.translation = CGSize(width: translation.x, height: translation.y)
-        self.velocity = CGSize(width: velocity.x, height: velocity.y)
-    }
-}
-
-private final class ExperimentalHorizontalPanContainerView: UIView, UIGestureRecognizerDelegate {
-    private let axisDominanceRatio: CGFloat = 1.08
-
-    var onChanged: ((ExperimentalHorizontalPanState) -> Void)?
-    var onEnded: ((ExperimentalHorizontalPanState) -> Void)?
-    var onTap: (() -> Void)?
-    var isTapEnabled = false
-
-    private(set) weak var hostedView: UIView?
-
-    private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
-        let gestureRecognizer = UIPanGestureRecognizer(
-            target: self,
-            action: #selector(handlePanStateChange(_:))
-        )
-        gestureRecognizer.delegate = self
-        gestureRecognizer.cancelsTouchesInView = false
-        gestureRecognizer.delaysTouchesBegan = false
-        gestureRecognizer.maximumNumberOfTouches = 1
-        return gestureRecognizer
-    }()
-    private lazy var tapGestureRecognizer: UITapGestureRecognizer = {
-        let gestureRecognizer = UITapGestureRecognizer(
-            target: self,
-            action: #selector(handleTap))
-        gestureRecognizer.delegate = self
-        gestureRecognizer.cancelsTouchesInView = false
-        return gestureRecognizer
-    }()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isOpaque = false
-        addGestureRecognizer(panGestureRecognizer)
-        addGestureRecognizer(tapGestureRecognizer)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func installHostedView(_ hostedView: UIView) {
-        guard hostedView.superview !== self else { return }
-        self.hostedView = hostedView
-        addSubview(hostedView)
-        NSLayoutConstraint.activate([
-            hostedView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            hostedView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hostedView.topAnchor.constraint(equalTo: topAnchor),
-            hostedView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-    }
-
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if gestureRecognizer === tapGestureRecognizer {
-            return isTapEnabled
-        }
-
-        guard let gestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
-            return true
-        }
-
-        let velocity = gestureRecognizer.velocity(in: self)
-        if abs(velocity.x) > 0.01 || abs(velocity.y) > 0.01 {
-            return abs(velocity.x) > abs(velocity.y) * axisDominanceRatio
-        }
-
-        let translation = gestureRecognizer.translation(in: self)
-        return abs(translation.x) > abs(translation.y) * axisDominanceRatio
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        false
-    }
-
-    @objc
-    private func handleTap() {
-        onTap?()
-    }
-
-    @objc
-    private func handlePanStateChange(_ gestureRecognizer: UIPanGestureRecognizer) {
-        let state = ExperimentalHorizontalPanState(
-            translation: gestureRecognizer.translation(in: self),
-            velocity: gestureRecognizer.velocity(in: self)
-        )
-
-        switch gestureRecognizer.state {
-        case .began, .changed:
-            onChanged?(state)
-        case .ended, .cancelled, .failed:
-            onEnded?(state)
-        default:
-            break
-        }
-    }
-}
-
-private final class ExperimentalHorizontalPanCoordinator {
-    private let hostingController: UIHostingController<AnyView>
-    private weak var containerView: ExperimentalHorizontalPanContainerView?
-
-    init(
-        rootView: AnyView,
-        isTapEnabled: Bool,
-        onTap: @escaping () -> Void,
-        onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
-        onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
-    ) {
-        hostingController = UIHostingController(rootView: rootView)
-        hostingController.view.backgroundColor = .clear
-        hostingController.view.isOpaque = false
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        self.isTapEnabled = isTapEnabled
-        self.onTap = onTap
-        self.onChanged = onChanged
-        self.onEnded = onEnded
-    }
-
-    var isTapEnabled: Bool {
-        didSet {
-            containerView?.isTapEnabled = isTapEnabled
-        }
-    }
-
-    var onTap: () -> Void {
-        didSet {
-            containerView?.onTap = onTap
-        }
-    }
-
-    var onChanged: (ExperimentalHorizontalPanState) -> Void {
-        didSet {
-            containerView?.onChanged = onChanged
-        }
-    }
-
-    var onEnded: (ExperimentalHorizontalPanState) -> Void {
-        didSet {
-            containerView?.onEnded = onEnded
-        }
-    }
-
-    func makeContainerView() -> ExperimentalHorizontalPanContainerView {
-        let container = ExperimentalHorizontalPanContainerView()
-        container.isTapEnabled = isTapEnabled
-        container.onTap = onTap
-        container.onChanged = onChanged
-        container.onEnded = onEnded
-        container.installHostedView(hostingController.view)
-        containerView = container
-        return container
-    }
-
-    func update(
-        rootView: AnyView,
-        isTapEnabled: Bool,
-        onTap: @escaping () -> Void,
-        onChanged: @escaping (ExperimentalHorizontalPanState) -> Void,
-        onEnded: @escaping (ExperimentalHorizontalPanState) -> Void
-    ) {
-        hostingController.rootView = rootView
-        self.isTapEnabled = isTapEnabled
-        self.onTap = onTap
-        self.onChanged = onChanged
-        self.onEnded = onEnded
-        containerView?.setNeedsLayout()
-        containerView?.layoutIfNeeded()
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
-        let targetWidth = proposal.width ?? UIScreen.main.bounds.width
-        let targetHeight = proposal.height ?? CGFloat.greatestFiniteMagnitude
-        let targetSize = CGSize(width: targetWidth, height: targetHeight)
-        let fittedSize = hostingController.sizeThatFits(in: targetSize)
-        return CGSize(
-            width: proposal.width ?? fittedSize.width,
-            height: max(1, fittedSize.height)
-        )
-    }
-
-    func detach() {
-        hostingController.view.removeFromSuperview()
-        containerView = nil
-    }
-}
-
-private struct ExperimentalHorizontalPanHost<Content: View>: UIViewRepresentable {
-    let content: Content
-    let isTapEnabled: Bool
-    let onTap: () -> Void
-    let onChanged: (ExperimentalHorizontalPanState) -> Void
-    let onEnded: (ExperimentalHorizontalPanState) -> Void
-
-    func makeCoordinator() -> ExperimentalHorizontalPanCoordinator {
-        ExperimentalHorizontalPanCoordinator(
-            rootView: AnyView(content),
-            isTapEnabled: isTapEnabled,
-            onTap: onTap,
-            onChanged: onChanged,
-            onEnded: onEnded
-        )
-    }
-
-    func makeUIView(context: Context) -> ExperimentalHorizontalPanContainerView {
-        context.coordinator.makeContainerView()
-    }
-
-    func updateUIView(_ uiView: ExperimentalHorizontalPanContainerView, context: Context) {
-        context.coordinator.update(
-            rootView: AnyView(content),
-            isTapEnabled: isTapEnabled,
-            onTap: onTap,
-            onChanged: onChanged,
-            onEnded: onEnded
-        )
-    }
-
-    func sizeThatFits(
-        _ proposal: ProposedViewSize,
-        uiView: ExperimentalHorizontalPanContainerView,
-        context: Context
-    ) -> CGSize? {
-        context.coordinator.sizeThatFits(proposal)
-    }
-
-    static func dismantleUIView(
-        _ uiView: ExperimentalHorizontalPanContainerView,
-        coordinator: ExperimentalHorizontalPanCoordinator
-    ) {
-        coordinator.detach()
-    }
-}
-
-private struct ExperimentalSwipeActionCard<Content: View>: View {
-    private enum PanAxisLock {
-        case undecided
-        case horizontal
-        case vertical
-    }
-
-    private enum Layout {
-        static var actionWidth: CGFloat { 62 }
-        static var actionSpacing: CGFloat { 8 }
-        static var actionHorizontalInset: CGFloat { 10 }
-        static var minimumActionHeight: CGFloat { 34 }
-        static var axisDecisionDistance: CGFloat { 12 }
-        static var axisDominanceRatio: CGFloat { 1.12 }
-
-        static var totalActionWidth: CGFloat {
-            (actionWidth * 2) + actionSpacing + (actionHorizontalInset * 2)
-        }
-    }
-
-    let id: UUID
-    @Binding var openCardID: UUID?
-    let palette: ExperimentalHomePalette
-    let cornerRadius: CGFloat
-    let onEdit: () -> Void
-    let onDelete: () -> Void
-    @ViewBuilder let content: () -> Content
-
-    @State private var dragOffset: CGFloat = 0
-    @State private var panAxisLock: PanAxisLock = .undecided
-
-    private var baseOffset: CGFloat {
-        openCardID == id ? -Layout.totalActionWidth : 0
-    }
-
-    private var contentOffset: CGFloat {
-        let proposedOffset = baseOffset + dragOffset
-        return min(0, max(-Layout.totalActionWidth, proposedOffset))
-    }
-
-    private var shouldShowSwipeActions: Bool {
-        contentOffset < -0.5
-    }
-
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            if shouldShowSwipeActions {
-                swipeActions
-            }
-
-            ExperimentalHorizontalPanHost(
-                content: content()
-                    .allowsHitTesting(openCardID != id),
-                isTapEnabled: openCardID == id,
-                onTap: {
-                    if openCardID == id {
-                        closeActions()
-                    }
-                },
-                onChanged: handleSwipePanChanged,
-                onEnded: handleSwipePanEnded
-            )
-                .offset(x: contentOffset)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .onChange(of: openCardID) { _, newValue in
-            if newValue != id {
-                dragOffset = 0
-                panAxisLock = .undecided
-            }
-        }
-    }
-
-    private var swipeActions: some View {
-        GeometryReader { proxy in
-            let actionHeight = max(Layout.minimumActionHeight, proxy.size.height / 3)
-
-            HStack(spacing: Layout.actionSpacing) {
-                swipeActionButton(
-                    title: "编辑",
-                    systemImage: "square.and.pencil",
-                    background: Color(red: 0.23, green: 0.49, blue: 0.94),
-                    height: actionHeight,
-                    action: {
-                        closeActions(animated: false)
-                        onEdit()
-                    }
-                )
-
-                swipeActionButton(
-                    title: "删除",
-                    systemImage: "trash",
-                    background: Color(red: 0.86, green: 0.22, blue: 0.20),
-                    height: actionHeight,
-                    action: {
-                        closeActions(animated: false)
-                        onDelete()
-                    }
-                )
-            }
-            .padding(.horizontal, Layout.actionHorizontalInset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-        }
-        .frame(width: Layout.totalActionWidth)
-    }
-
-    private func swipeActionButton(
-        title: String,
-        systemImage: String,
-        background: Color,
-        height: CGFloat,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .semibold))
-
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(RoundedRectangle(cornerRadius: min(16, height * 0.34), style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .frame(width: Layout.actionWidth)
-        .frame(height: height)
-        .background(
-            RoundedRectangle(cornerRadius: min(16, height * 0.34), style: .continuous)
-                .fill(background)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: min(16, height * 0.34), style: .continuous)
-                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.8)
-        )
-        .shadow(color: background.opacity(0.22), radius: 10, x: 0, y: 5)
-    }
-
-    private func handleSwipePanChanged(_ state: ExperimentalHorizontalPanState) {
-        if panAxisLock == .vertical {
-            return
-        }
-
-        if panAxisLock == .undecided {
-            let axisLock = resolvedPanAxisLock(for: state)
-            guard axisLock != .undecided else {
-                return
-            }
-
-            panAxisLock = axisLock
-            if axisLock == .vertical {
-                dragOffset = 0
-                return
-            }
-        }
-
-        dragOffset = clampedDragOffset(for: state.translation.width)
-    }
-
-    private func handleSwipePanEnded(_ state: ExperimentalHorizontalPanState) {
-        defer {
-            dragOffset = 0
-            panAxisLock = .undecided
-        }
-
-        if panAxisLock == .undecided {
-            panAxisLock = resolvedPanAxisLock(for: state)
-        }
-
-        guard panAxisLock == .horizontal else {
-            return
-        }
-
-        let projectedOffset = resolvedContentOffset(for: projectedTranslationWidth(for: state))
-        let revealedEnough = projectedOffset <= (-Layout.totalActionWidth * 0.55)
-        let closingEnough = projectedOffset >= (-Layout.totalActionWidth * 0.35)
-
-        if revealedEnough {
-            openActions()
-        } else if closingEnough {
-            closeActions()
-        } else if openCardID == id {
-            openActions()
-        } else {
-            closeActions()
-        }
-    }
-
-    private func clampedDragOffset(for translationWidth: CGFloat) -> CGFloat {
-        resolvedContentOffset(for: translationWidth) - baseOffset
-    }
-
-    private func resolvedContentOffset(for translationWidth: CGFloat) -> CGFloat {
-        let proposedOffset = baseOffset + translationWidth
-        return min(0, max(-Layout.totalActionWidth, proposedOffset))
-    }
-
-    private func projectedTranslationWidth(for state: ExperimentalHorizontalPanState) -> CGFloat {
-        let projectedVelocityContribution = state.velocity.width * 0.12
-        return state.translation.width + projectedVelocityContribution
-    }
-
-    private func resolvedPanAxisLock(for state: ExperimentalHorizontalPanState) -> PanAxisLock {
-        let absWidth = abs(state.translation.width)
-        let absHeight = abs(state.translation.height)
-
-        if max(absWidth, absHeight) < Layout.axisDecisionDistance {
-            let absVelocityWidth = abs(state.velocity.width)
-            let absVelocityHeight = abs(state.velocity.height)
-            guard max(absVelocityWidth, absVelocityHeight) >= 140 else {
-                return .undecided
-            }
-
-            if absVelocityWidth > absVelocityHeight * Layout.axisDominanceRatio {
-                return .horizontal
-            }
-
-            if absVelocityHeight > absVelocityWidth * Layout.axisDominanceRatio {
-                return .vertical
-            }
-
-            return .undecided
-        }
-
-        if absWidth > absHeight * Layout.axisDominanceRatio {
-            return .horizontal
-        }
-
-        if absHeight > absWidth * Layout.axisDominanceRatio {
-            return .vertical
-        }
-
-        return .undecided
-    }
-
-    private func openActions() {
-        setSwipeActionsOpen(true)
-    }
-
-    private func closeActions(animated: Bool = true) {
-        setSwipeActionsOpen(false, animated: animated)
-    }
-
-    private func setSwipeActionsOpen(_ isOpen: Bool, animated: Bool = true) {
-        let updates = {
-            dragOffset = 0
-            openCardID = isOpen ? id : nil
-        }
-
-        if animated {
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-                updates()
-            }
-        } else {
-            updates()
-        }
     }
 }
 
