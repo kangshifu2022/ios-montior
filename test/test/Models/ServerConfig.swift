@@ -2,8 +2,10 @@ import Foundation
 
 struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
     static let allGroupName = "All"
+    static let legacyPlaceholderCreatedAt = Date(timeIntervalSince1970: 0)
 
     var id = UUID()
+    var createdAt: Date
     var name: String
     var groupName: String
     var host: String
@@ -13,11 +15,12 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
     var barkURL: String = ""
     var alertConfiguration: AlertConfiguration = AlertConfiguration()
 
-    init(id: UUID = UUID(), name: String = "", groupName: String = ServerConfig.allGroupName, host: String = "",
+    init(id: UUID = UUID(), createdAt: Date = Date(), name: String = "", groupName: String = ServerConfig.allGroupName, host: String = "",
          port: Int = 22, username: String = "", password: String = "",
          barkURL: String = "",
          alertConfiguration: AlertConfiguration = AlertConfiguration()) {
         self.id = id
+        self.createdAt = createdAt
         self.name = name.isEmpty ? host : name
         self.groupName = Self.normalizedGroupName(groupName)
         self.host = host
@@ -43,6 +46,7 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case createdAt
         case name
         case groupName
         case host
@@ -63,6 +67,7 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Self.legacyPlaceholderCreatedAt
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? host
         if name.isEmpty {
@@ -92,6 +97,7 @@ struct ServerConfig: Identifiable, Codable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encode(createdAt, forKey: .createdAt)
         try container.encode(name, forKey: .name)
         try container.encode(Self.normalizedGroupName(groupName), forKey: .groupName)
         try container.encode(host, forKey: .host)

@@ -266,24 +266,38 @@ struct DevicesExperimentalView: View {
     }
 
     private var homeCardViewToggleButton: some View {
-        Button(action: toggleHomeCardView) {
+        Menu {
+            Button(action: toggleHomeCardView) {
+                Label(homeCardViewMenuPrimaryActionTitle, systemImage: homeCardViewMenuPrimaryActionIconName)
+            }
+
+            Button(action: { sortServersByName(ascending: true) }) {
+                Label("A-Z", systemImage: "arrow.up")
+            }
+
+            Button(action: { sortServersByName(ascending: false) }) {
+                Label("Z-A", systemImage: "arrow.down")
+            }
+
+            Button(action: { sortServersByCreatedAt(ascending: false) }) {
+                Label("newest to oldest", systemImage: "arrow.down.circle")
+            }
+
+            Button(action: { sortServersByCreatedAt(ascending: true) }) {
+                Label("oldest to newest", systemImage: "arrow.up.circle")
+            }
+        } label: {
             Image(systemName: homeCardViewToggleIconName)
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 30, height: 30)
-                .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
         .foregroundColor(palette.primaryText)
-        .accessibilityLabel(homeCardViewToggleAccessibilityLabel)
+        .accessibilityLabel("视图与排序")
     }
 
     private var homeCardViewToggleIconName: String {
-        switch homeCardView {
-        case .detailed:
-            return "square.grid.2x2"
-        case .compact:
-            return "list.bullet"
-        }
+        "square.grid.2x2"
     }
 
     private var buildLabel: some View {
@@ -294,12 +308,21 @@ struct DevicesExperimentalView: View {
             .accessibilityLabel("构建号 \(appBuildNumber)")
     }
 
-    private var homeCardViewToggleAccessibilityLabel: String {
+    private var homeCardViewMenuPrimaryActionTitle: String {
         switch homeCardView {
         case .detailed:
-            return "切换到缩略视图"
+            return "切换为列表模式"
         case .compact:
-            return "切换到详细视图"
+            return "切换为卡片模式"
+        }
+    }
+
+    private var homeCardViewMenuPrimaryActionIconName: String {
+        switch homeCardView {
+        case .detailed:
+            return "list.bullet"
+        case .compact:
+            return "square.grid.2x2"
         }
     }
 
@@ -519,6 +542,20 @@ struct DevicesExperimentalView: View {
         let nextMode: ExperimentalHomeCardView = homeCardView == .detailed ? .compact : .detailed
         withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
             setHomeCardView(nextMode)
+        }
+    }
+
+    private func sortServersByName(ascending: Bool) {
+        draggedServerID = nil
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+            store.sortServersByName(ascending: ascending)
+        }
+    }
+
+    private func sortServersByCreatedAt(ascending: Bool) {
+        draggedServerID = nil
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+            store.sortServersByCreatedAt(ascending: ascending)
         }
     }
 

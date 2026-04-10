@@ -185,6 +185,7 @@ struct AddServerView: View {
                     Button("保存") {
                         let config = ServerConfig(
                             id: editingServer?.id ?? UUID(),
+                            createdAt: editingServer?.createdAt ?? Date(),
                             name: name.isEmpty ? host : name,
                             groupName: ServerConfig.normalizedGroupName(groupName),
                             host: host,

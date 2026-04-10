@@ -132,6 +132,45 @@ final class ServerStore: ObservableObject {
         save()
     }
 
+    func sortServersByName(ascending: Bool) {
+        servers = stableSortedServers { lhs, rhs in
+            let lhsName = displayName(for: lhs)
+            let rhsName = displayName(for: rhs)
+            let nameComparison = lhsName.localizedStandardCompare(rhsName)
+
+            if nameComparison != .orderedSame {
+                return ascending
+                    ? nameComparison == .orderedAscending
+                    : nameComparison == .orderedDescending
+            }
+
+            let hostComparison = lhs.host.localizedStandardCompare(rhs.host)
+            if hostComparison != .orderedSame {
+                return ascending
+                    ? hostComparison == .orderedAscending
+                    : hostComparison == .orderedDescending
+            }
+
+            return nil
+        }
+
+        save()
+    }
+
+    func sortServersByCreatedAt(ascending: Bool) {
+        servers = stableSortedServers { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt {
+                return ascending
+                    ? lhs.createdAt < rhs.createdAt
+                    : lhs.createdAt > rhs.createdAt
+            }
+
+            return nil
+        }
+
+        save()
+    }
+
     func stats(for config: ServerConfig) -> ServerStats? {
         let staticInfo = staticInfoByServerID[config.id]
         let dynamicInfo = dynamicInfoByServerID[config.id]
@@ -445,6 +484,7 @@ final class ServerStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: serversKey),
            let decoded = try? JSONDecoder().decode([ServerConfig].self, from: data) {
             servers = decoded
+            migrateLegacyServerCreatedAtIfNeeded()
         }
     }
 
@@ -500,6 +540,41 @@ final class ServerStore: ObservableObject {
                 lastSuccessfulDynamicRefreshDates[id] = now
                 consecutiveDynamicFailureCounts[id] = 0
             }
+        }
+    }
+
+    private func displayName(for server: ServerConfig) -> String {
+        let trimmedName = server.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+
+        return server.host.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func stableSortedServers(
+        by comparator: (ServerConfig, ServerConfig) -> Bool?
+    ) -> [ServerConfig] {
+        servers.enumerated().sorted { lhs, rhs in
+            if let ordered = comparator(lhs.element, rhs.element) {
+                return ordered
+            }
+
+            return lhs.offset < rhs.offset
+        }
+        .map(\.element)
+    }
+
+    private func migrateLegacyServerCreatedAtIfNeeded() {
+        var didMigrate = false
+
+        for index in servers.indices where servers[index].createdAt == ServerConfig.legacyPlaceholderCreatedAt {
+            servers[index].createdAt = Date(timeIntervalSince1970: TimeInterval(index))
+            didMigrate = true
+        }
+
+        if didMigrate {
+            save()
         }
     }
 
