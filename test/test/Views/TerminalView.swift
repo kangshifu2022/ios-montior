@@ -39,15 +39,10 @@ struct TerminalView: View {
                     isError: viewModel.showsConnectionFailureNotice
                 )
                 .padding(.horizontal, 16)
-                .padding(.top, 56)
+                .padding(.top, 12)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .allowsHitTesting(false)
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            closeButton
-                .padding(.top, 12)
-                .padding(.trailing, 16)
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.connectionNoticeText)
         .background(screenBackground)
@@ -120,18 +115,6 @@ struct TerminalView: View {
         }
     }
 
-    private var closeButton: some View {
-        Button(action: closeTerminalView) {
-            Image(systemName: "xmark")
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 32, height: 32)
-                .background(.ultraThinMaterial)
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("关闭终端")
-    }
-
     private func suspendTerminalView() {
         guard viewModel.hasSessionToSuspend, let onSuspend else {
             closeTerminalView()
@@ -139,6 +122,7 @@ struct TerminalView: View {
         }
 
         onSuspend()
+        dismiss()
     }
 
     private func closeTerminalView() {
