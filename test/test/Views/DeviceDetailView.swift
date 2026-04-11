@@ -85,7 +85,7 @@ struct DeviceDetailView: View {
                 ],
                 viewportWidth: viewportWidth,
                 emptyMessage: "最近一分钟内还没有足够的 CPU 采样。",
-                yAxisMode: .percent
+                yAxisMode: .adaptive(unitSuffix: "%")
             )
         }
     }
@@ -112,7 +112,7 @@ struct DeviceDetailView: View {
                 ],
                 viewportWidth: viewportWidth,
                 emptyMessage: "最近一分钟内还没有足够的内存采样。",
-                yAxisMode: .percent
+                yAxisMode: .adaptive(unitSuffix: "%")
             )
         }
     }
@@ -699,50 +699,6 @@ struct DeviceDetailView: View {
                     title: "WiFi 5G",
                     color: .purple,
                     points: wifi5Points
-                )
-            )
-        }
-
-        let additionalSensorLabels = Array(
-            Set(
-                metricTimeline.flatMap { sample in
-                    sample.additionalTemperatureSensors.map(\.label)
-                }
-                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            )
-        )
-        .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-
-        let fallbackColors: [Color] = [
-            .red,
-            .teal,
-            .indigo,
-            .cyan,
-            .mint,
-            .brown
-        ]
-
-        for (index, label) in additionalSensorLabels.enumerated() {
-            let points = metricTimeline.compactMap { sample -> MetricTimelinePoint? in
-                guard let sensor = sample.additionalTemperatureSensors.first(where: {
-                    $0.label == label
-                }) else {
-                    return nil
-                }
-
-                return MetricTimelinePoint(
-                    capturedAt: sample.capturedAt,
-                    value: sensor.valueC
-                )
-            }
-
-            guard !points.isEmpty else { continue }
-
-            series.append(
-                MetricTimelineSeries(
-                    title: label,
-                    color: fallbackColors[index % fallbackColors.count],
-                    points: points
                 )
             )
         }
