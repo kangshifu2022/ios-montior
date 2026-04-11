@@ -77,6 +77,14 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showAddServer = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("添加服务器")
+                }
+            }
             .sheet(isPresented: $showAddServer) {
                 AddServerView(store: store)
             }
@@ -119,15 +127,6 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
             }
             .onDelete(perform: deleteServers)
-
-            Button(action: { showAddServer = true }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.blue)
-                    Text("添加服务器")
-                        .foregroundColor(.blue)
-                }
-            }
         }
     }
 
