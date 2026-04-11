@@ -4,6 +4,8 @@ import NIOCore
 import NIOSSH
 
 actor TerminalSession {
+    private static let sshHandshakePauseNanoseconds: UInt64 = 500_000_000
+
     enum Event: Sendable {
         case connecting(String)
         case awaitingInitialOutput(String)
@@ -68,12 +70,18 @@ actor TerminalSession {
                 category: "session",
                 server: server
             )
+            await onEvent(.connecting("SSH 已连接，正在打开终端…"))
+            TerminalDiagnosticsStore.record(
+                "holding after ssh handshake success before opening pty",
+                category: "session",
+                server: server
+            )
+            try await Task.sleep(nanoseconds: Self.sshHandshakePauseNanoseconds)
             TerminalDiagnosticsStore.record(
                 "requesting pty channel",
                 category: "session",
                 server: server
             )
-            await onEvent(.connecting("SSH 已连接，正在打开终端…"))
 
             setCloseConnection({
                 try? await client.close()
