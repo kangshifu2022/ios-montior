@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: ServerStore
-    @EnvironmentObject private var terminalWorkspace: TerminalWorkspace
     @AppStorage(ExperimentalHomeTheme.storageKey) private var experimentalHomeThemeRawValue = ExperimentalHomeTheme.system.rawValue
     @AppStorage(TerminalDefaultConnectionMode.storageKey) private var terminalDefaultConnectionModeRawValue = TerminalDefaultConnectionMode.directSSH.rawValue
     @AppStorage(TerminalRestorePolicy.storageKey) private var terminalRestorePolicyRawValue = TerminalRestorePolicy.alwaysStartNew.rawValue
@@ -110,23 +109,20 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Button(action: { duplicateServer(server) }) {
-                        Image(systemName: "doc.on.doc")
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("复制\(server.name)")
-
-                    Button(action: { editingServer = server }) {
-                        Image(systemName: "pencil")
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("编辑\(server.name)")
                 }
                 .padding(.vertical, 4)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(action: { duplicateServer(server) }) {
+                        Label("复制", systemImage: "doc.on.doc")
+                    }
+                    .tint(.blue)
+
+                    Button(action: { editingServer = server }) {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    .tint(.orange)
+                }
             }
-            .onDelete(perform: deleteServers)
         }
     }
 
@@ -136,15 +132,6 @@ struct SettingsView: View {
 
     private var selectedTerminalRestorePolicy: TerminalRestorePolicy {
         TerminalRestorePolicy(rawValue: terminalRestorePolicyRawValue) ?? .alwaysStartNew
-    }
-
-    private func deleteServers(at offsets: IndexSet) {
-        let deletedIDs = offsets.map { store.servers[$0].id }
-        for id in deletedIDs {
-            terminalWorkspace.closeSessions(forServerID: id)
-            TerminalPersistenceStore.removeSessions(for: id)
-        }
-        store.delete(at: offsets)
     }
 
     private func duplicateServer(_ server: ServerConfig) {
