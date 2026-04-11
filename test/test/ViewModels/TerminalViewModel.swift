@@ -2,6 +2,49 @@ import Foundation
 import Combine
 import SwiftUI
 
+enum TerminalConnectionStage: Int, CaseIterable, Sendable {
+    case idle
+    case preparing
+    case establishingSSH
+    case openingTerminal
+    case waitingForInitialOutput
+    case ready
+
+    var title: String {
+        switch self {
+        case .idle:
+            return "等待开始"
+        case .preparing:
+            return "准备连接"
+        case .establishingSSH:
+            return "建立 SSH 连接"
+        case .openingTerminal:
+            return "打开终端"
+        case .waitingForInitialOutput:
+            return "等待首屏输出"
+        case .ready:
+            return "连接完成"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .idle:
+            return "尚未开始当前终端会话。"
+        case .preparing:
+            return "正在整理会话信息并准备发起连接。"
+        case .establishingSSH:
+            return "正在与远端服务器建立 SSH 会话。"
+        case .openingTerminal:
+            return "SSH 已连通，正在申请 PTY 并打开终端。"
+        case .waitingForInitialOutput:
+            return "终端已打开，正在等待远端返回首屏内容。"
+        case .ready:
+            return "远端终端已就绪。"
+        }
+    }
+}
+
 @MainActor
 final class TerminalViewModel: ObservableObject {
     @Published var isConnected = false
@@ -13,6 +56,7 @@ final class TerminalViewModel: ObservableObject {
     @Published var isShowingLaunchSheet = false
     @Published var isShowingTmuxSessionPicker = false
     @Published private(set) var isAwaitingTerminalOutput = false
+    @Published private(set) var connectionStage: TerminalConnectionStage = .idle
     @Published private(set) var connectionStageText: String?
     @Published private(set) var lastConnectionIssueText: String?
     @Published private(set) var keyboardFocusRequestID = 0
@@ -132,6 +176,10 @@ final class TerminalViewModel: ObservableObject {
 
     var hasSessionToSuspend: Bool {
         activeSessionRecord != nil && (isConnected || isAwaitingTerminalOutput)
+    }
+
+    var isTerminalReadyForPresentation: Bool {
+        activeSessionRecord != nil && isConnected && !isAwaitingTerminalOutput
     }
 
     var shouldReuseWorkspaceSession: Bool {
@@ -459,6 +507,9 @@ final class TerminalViewModel: ObservableObject {
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         connectionStageText = nil
+        if clearError {
+            connectionStage = .idle
+        }
         isAwaitingTerminalOutput = false
         flushScrollbackNowIfNeeded()
         scrollbackFlushTask?.cancel()
@@ -671,6 +722,7 @@ final class TerminalViewModel: ObservableObject {
         isRefreshingRemoteTmuxSessions = false
         lastError = nil
         lastConnectionIssueText = nil
+        connectionStage = .idle
         connectionStageText = nil
         terminalTitle = nil
         shouldDismissTerminal = false
@@ -751,6 +803,7 @@ final class TerminalViewModel: ObservableObject {
             shouldDismissTerminal = false
             connectionTimeoutTask?.cancel()
             connectionTimeoutTask = nil
+            connectionStage = .ready
             connectionStageText = nil
             lastConnectionIssueText = nil
             Task {
@@ -794,6 +847,9 @@ final class TerminalViewModel: ObservableObject {
             connectionTimeoutTask?.cancel()
             connectionTimeoutTask = nil
             connectionStageText = nil
+            if lastConnectionIssueText == nil {
+                connectionStage = .idle
+            }
             sessionTask = nil
 
             refreshSessionSummaries()
@@ -894,8 +950,25 @@ final class TerminalViewModel: ObservableObject {
     }
 
     private func updateConnectionStage(_ message: String) {
+        connectionStage = Self.stage(for: message)
         connectionStageText = message
         scheduleConnectionTimeout(for: message)
+    }
+
+    private static func stage(for message: String) -> TerminalConnectionStage {
+        if message.contains("准备") {
+            return .preparing
+        }
+        if message.contains("首屏输出") {
+            return .waitingForInitialOutput
+        }
+        if message.contains("打开终端") {
+            return .openingTerminal
+        }
+        if message.contains("建立 SSH") {
+            return .establishingSSH
+        }
+        return .preparing
     }
 
     private func scheduleConnectionTimeout(for message: String) {

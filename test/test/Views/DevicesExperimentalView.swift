@@ -163,7 +163,7 @@ struct DevicesExperimentalView: View {
                     Text("确认删除“\(pendingDeletionServerDisplayName)”？删除后会移除这台设备的配置、监控缓存和本地终端会话数据。")
                 }
                 .fullScreenCover(item: $terminalWorkspace.presentedSession) { session in
-                    TerminalView(
+                    TerminalSessionHostView(
                         server: session.server,
                         viewModel: session.viewModel,
                         onSuspend: {
