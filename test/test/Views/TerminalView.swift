@@ -23,7 +23,7 @@ struct TerminalView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             terminalBackground
                 .ignoresSafeArea()
 
@@ -31,28 +31,26 @@ struct TerminalView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(terminalBackground)
 
-            VStack(spacing: 0) {
-                if let connectionNoticeText = viewModel.connectionNoticeText {
-                    TerminalConnectionStatusCard(
-                        title: viewModel.showsConnectionFailureNotice ? "连接失败" : viewModel.statusText,
-                        message: connectionNoticeText,
-                        showsProgress: viewModel.showsConnectionProgressNotice,
-                        isError: viewModel.showsConnectionFailureNotice
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                Spacer()
+            if let connectionNoticeText = viewModel.connectionNoticeText {
+                TerminalConnectionStatusCard(
+                    title: viewModel.showsConnectionFailureNotice ? "连接失败" : viewModel.statusText,
+                    message: connectionNoticeText,
+                    showsProgress: viewModel.showsConnectionProgressNotice,
+                    isError: viewModel.showsConnectionFailureNotice
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 56)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topTrailing) {
+            closeButton
+                .padding(.top, 12)
+                .padding(.trailing, 16)
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.connectionNoticeText)
         .background(screenBackground)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            headerBar
-        }
         .task {
             viewModel.prepareLaunchIfNeeded()
             viewModel.connectIfNeeded()
@@ -122,54 +120,16 @@ struct TerminalView: View {
         }
     }
 
-    private var headerBar: some View {
-        HStack(spacing: 12) {
-            Button(action: closeTerminalView) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("关闭终端")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.displayTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-
-                Text(viewModel.sessionSummaryText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            if viewModel.isPersistentSession {
-                Text("tmux")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.12))
-                    .clipShape(Capsule())
-            }
-
-            Text(viewModel.statusText)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.primary.opacity(0.08))
-                .clipShape(Capsule())
+    private var closeButton: some View {
+        Button(action: closeTerminalView) {
+            Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 32, height: 32)
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("关闭终端")
     }
 
     private func suspendTerminalView() {
