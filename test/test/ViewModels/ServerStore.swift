@@ -4,12 +4,6 @@ import Combine
 
 @MainActor
 final class ServerStore: ObservableObject {
-    private struct UsageTrendSample {
-        let capturedAt: Date
-        let cpuUsage: Double
-        let memUsage: Double
-    }
-
     private struct CachedInfoSnapshot: Sendable {
         let staticInfoByServerID: [UUID: ServerStaticInfo]
         let dynamicInfoByServerID: [UUID: ServerDynamicInfo]
@@ -33,7 +27,7 @@ final class ServerStore: ObservableObject {
     @Published private(set) var remoteAlertStatusByServerID: [UUID: RemoteAlertStatus] = [:]
     @Published private(set) var remoteAlertOperationServerIDs: Set<UUID> = []
     @Published private(set) var alertSettings = AlertSettings()
-    @Published private var metricHistoryByServerID: [UUID: [UsageTrendSample]] = [:]
+    @Published private var metricHistoryByServerID: [UUID: [ServerMetricTimelineSample]] = [:]
 
     private let serversKey = "saved_servers"
     private let alertSettingsKey = "saved_alert_settings"
@@ -194,6 +188,10 @@ final class ServerStore: ObservableObject {
 
     func memUsageHistory(for id: UUID) -> [Double] {
         metricHistoryByServerID[id]?.map(\.memUsage) ?? []
+    }
+
+    func metricTimeline(for id: UUID) -> [ServerMetricTimelineSample] {
+        metricHistoryByServerID[id] ?? []
     }
 
     func isPerformingRemoteAlertAction(_ id: UUID) -> Bool {
@@ -1030,10 +1028,14 @@ final class ServerStore: ObservableObject {
     ) {
         guard dynamicInfo.isOnline else { return }
 
-        let sample = UsageTrendSample(
+        let sample = ServerMetricTimelineSample(
             capturedAt: capturedAt,
             cpuUsage: min(max(dynamicInfo.cpuUsage, 0), 1),
-            memUsage: min(max(dynamicInfo.memUsage, 0), 1)
+            memUsage: min(max(dynamicInfo.memUsage, 0), 1),
+            cpuTemperatureC: dynamicInfo.cpuTemperatureC,
+            wifi24TemperatureC: dynamicInfo.wifi24TemperatureC,
+            wifi5TemperatureC: dynamicInfo.wifi5TemperatureC,
+            additionalTemperatureSensors: dynamicInfo.additionalTemperatureSensors
         )
 
         var history = metricHistoryByServerID[serverID] ?? []

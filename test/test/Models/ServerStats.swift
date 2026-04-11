@@ -65,6 +65,17 @@ struct PressureMetrics: Codable, Sendable {
     var ioFullAvg10: Double? = nil
 }
 
+struct ServerMetricTimelineSample: Sendable, Identifiable {
+    var id: Date { capturedAt }
+    var capturedAt: Date
+    var cpuUsage: Double
+    var memUsage: Double
+    var cpuTemperatureC: Double? = nil
+    var wifi24TemperatureC: Double? = nil
+    var wifi5TemperatureC: Double? = nil
+    var additionalTemperatureSensors: [ServerTemperatureSensor] = []
+}
+
 struct ServerLiveSample: Codable, Sendable {
     var capturedAt: Date? = nil
     var cpuTotalTicks: Double? = nil

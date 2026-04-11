@@ -5,29 +5,38 @@ struct DeviceDetailView: View {
     @ObservedObject var store: ServerStore
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                basicInfoCard
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    basicInfoCard
 
-                if let stats {
-                    cpuCard(stats)
-                    memoryCard(stats)
-                    diskCard(stats)
-                    networkCard(stats)
+                    if let stats {
+                        cpuCard(stats)
+                        cpuTrendCard(viewportWidth: proxy.size.width - 32)
+                        memoryCard(stats)
+                        memoryTrendCard(viewportWidth: proxy.size.width - 32)
 
-                    if shouldShowOpenWrtCards(for: stats) {
-                        connectedDevicesCard(stats)
-                        wifiInfoCard(stats)
+                        if shouldShowTemperatureTrend {
+                            temperatureTrendCard(viewportWidth: proxy.size.width - 32)
+                        }
+
+                        diskCard(stats)
+                        networkCard(stats)
+
+                        if shouldShowOpenWrtCards(for: stats) {
+                            connectedDevicesCard(stats)
+                            wifiInfoCard(stats)
+                        }
+
+                        if !stats.isOnline {
+                            detailError(stats)
+                        }
+                    } else {
+                        loadingCard
                     }
-
-                    if !stats.isOnline {
-                        detailError(stats)
-                    }
-                } else {
-                    loadingCard
                 }
+                .padding(16)
             }
-            .padding(16)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(config.name)
@@ -51,6 +60,76 @@ struct DeviceDetailView: View {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await store.refreshServer(config, forceDynamic: true)
             }
+        }
+    }
+
+    private func cpuTrendCard(viewportWidth: CGFloat) -> some View {
+        DetailSectionCard(
+            title: "CPU 趋势",
+            subtitle: "最近一分钟 CPU 占用率",
+            systemImage: "chart.line.uptrend.xyaxis",
+            tint: .green
+        ) {
+            MetricTimelineChart(
+                series: [
+                    MetricTimelineSeries(
+                        title: "CPU",
+                        color: .green,
+                        points: metricTimeline.map {
+                            MetricTimelinePoint(
+                                capturedAt: $0.capturedAt,
+                                value: $0.cpuUsage * 100
+                            )
+                        }
+                    )
+                ],
+                viewportWidth: viewportWidth,
+                emptyMessage: "最近一分钟内还没有足够的 CPU 采样。",
+                yAxisMode: .percent
+            )
+        }
+    }
+
+    private func memoryTrendCard(viewportWidth: CGFloat) -> some View {
+        DetailSectionCard(
+            title: "内存趋势",
+            subtitle: "最近一分钟内存占用率",
+            systemImage: "waveform.path.ecg",
+            tint: .blue
+        ) {
+            MetricTimelineChart(
+                series: [
+                    MetricTimelineSeries(
+                        title: "内存",
+                        color: .blue,
+                        points: metricTimeline.map {
+                            MetricTimelinePoint(
+                                capturedAt: $0.capturedAt,
+                                value: $0.memUsage * 100
+                            )
+                        }
+                    )
+                ],
+                viewportWidth: viewportWidth,
+                emptyMessage: "最近一分钟内还没有足够的内存采样。",
+                yAxisMode: .percent
+            )
+        }
+    }
+
+    private func temperatureTrendCard(viewportWidth: CGFloat) -> some View {
+        DetailSectionCard(
+            title: "温度趋势",
+            subtitle: temperatureTrendSubtitle,
+            systemImage: "thermometer.medium",
+            tint: .orange
+        ) {
+            MetricTimelineChart(
+                series: temperatureTrendSeries,
+                viewportWidth: viewportWidth,
+                emptyMessage: "最近一分钟内还没有足够的温度采样。",
+                yAxisMode: .adaptive(unitSuffix: "°C")
+            )
         }
     }
 
@@ -573,6 +652,113 @@ struct DeviceDetailView: View {
 
     private var stats: ServerStats? {
         store.stats(for: config)
+    }
+
+    private var metricTimeline: [ServerMetricTimelineSample] {
+        store.metricTimeline(for: config.id)
+    }
+
+    private var temperatureTrendSeries: [MetricTimelineSeries] {
+        var series: [MetricTimelineSeries] = []
+
+        let cpuPoints = metricTimeline.compactMap { sample -> MetricTimelinePoint? in
+            guard let value = sample.cpuTemperatureC else { return nil }
+            return MetricTimelinePoint(capturedAt: sample.capturedAt, value: value)
+        }
+        if !cpuPoints.isEmpty {
+            series.append(
+                MetricTimelineSeries(
+                    title: "CPU",
+                    color: .orange,
+                    points: cpuPoints
+                )
+            )
+        }
+
+        let wifi24Points = metricTimeline.compactMap { sample -> MetricTimelinePoint? in
+            guard let value = sample.wifi24TemperatureC else { return nil }
+            return MetricTimelinePoint(capturedAt: sample.capturedAt, value: value)
+        }
+        if !wifi24Points.isEmpty {
+            series.append(
+                MetricTimelineSeries(
+                    title: "WiFi 2.4G",
+                    color: .pink,
+                    points: wifi24Points
+                )
+            )
+        }
+
+        let wifi5Points = metricTimeline.compactMap { sample -> MetricTimelinePoint? in
+            guard let value = sample.wifi5TemperatureC else { return nil }
+            return MetricTimelinePoint(capturedAt: sample.capturedAt, value: value)
+        }
+        if !wifi5Points.isEmpty {
+            series.append(
+                MetricTimelineSeries(
+                    title: "WiFi 5G",
+                    color: .purple,
+                    points: wifi5Points
+                )
+            )
+        }
+
+        let additionalSensorLabels = Array(
+            Set(
+                metricTimeline.flatMap { sample in
+                    sample.additionalTemperatureSensors.map(\.label)
+                }
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            )
+        )
+        .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+
+        let fallbackColors: [Color] = [
+            .red,
+            .teal,
+            .indigo,
+            .cyan,
+            .mint,
+            .brown
+        ]
+
+        for (index, label) in additionalSensorLabels.enumerated() {
+            let points = metricTimeline.compactMap { sample -> MetricTimelinePoint? in
+                guard let sensor = sample.additionalTemperatureSensors.first(where: {
+                    $0.label == label
+                }) else {
+                    return nil
+                }
+
+                return MetricTimelinePoint(
+                    capturedAt: sample.capturedAt,
+                    value: sensor.valueC
+                )
+            }
+
+            guard !points.isEmpty else { continue }
+
+            series.append(
+                MetricTimelineSeries(
+                    title: label,
+                    color: fallbackColors[index % fallbackColors.count],
+                    points: points
+                )
+            )
+        }
+
+        return series
+    }
+
+    private var shouldShowTemperatureTrend: Bool {
+        !temperatureTrendSeries.isEmpty
+    }
+
+    private var temperatureTrendSubtitle: String {
+        if temperatureTrendSeries.count > 1 {
+            return "最近一分钟 CPU 与 WiFi 温度"
+        }
+        return "最近一分钟温度变化"
     }
 
     private var isRefreshing: Bool {
