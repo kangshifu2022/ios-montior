@@ -1028,14 +1028,14 @@ private struct ExperimentalServerCard: View {
     }
 
     private var memMetricCell: some View {
-        ExperimentalMetricTile(
-            label: "MEM %",
+        ExperimentalMemoryFlipTile(
             percentage: displayedPercentageValue(stats?.memUsage),
             isActive: isOnline && stats?.memUsage != nil,
             valueTint: memUsageTint,
             trendValues: memTrendSeries,
-            sparklineYAxisMode: .absolute,
-            palette: palette
+            palette: palette,
+            usedMegabytes: usedMemoryMegabytes,
+            totalMegabytes: totalMemoryMegabytes
         )
     }
 
@@ -1132,6 +1132,20 @@ private struct ExperimentalServerCard: View {
 
     private var memUsageTint: Color {
         usageTint(for: stats?.memUsage)
+    }
+
+    private var usedMemoryMegabytes: Int {
+        guard let stats, stats.memTotal > 0 else {
+            return 0
+        }
+        return max(stats.memTotal - stats.memAvailable, 0)
+    }
+
+    private var totalMemoryMegabytes: Int {
+        guard let stats, stats.memTotal > 0 else {
+            return 0
+        }
+        return stats.memTotal
     }
 
     private func usageTint(for value: Double?) -> Color {
@@ -1249,6 +1263,174 @@ private struct ExperimentalMetricTile: View {
         .frame(width: 76)
         .frame(maxHeight: .infinity, alignment: .center)
         .opacity(isActive ? 1 : 0.82)
+    }
+}
+
+private struct ExperimentalMemoryFlipTile: View {
+    let percentage: Int
+    let isActive: Bool
+    let valueTint: Color
+    let trendValues: [Double]
+    let palette: ExperimentalHomePalette
+    let usedMegabytes: Int
+    let totalMegabytes: Int
+
+    @State private var isShowingBreakdown = false
+
+    private let flipAxis = (x: CGFloat(0), y: CGFloat(1), z: CGFloat(0))
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
+                isShowingBreakdown.toggle()
+            }
+        } label: {
+            ZStack {
+                frontFace
+                    .opacity(isShowingBreakdown ? 0 : 1)
+                    .rotation3DEffect(.degrees(isShowingBreakdown ? 180 : 0), axis: flipAxis)
+
+                backFace
+                    .opacity(isShowingBreakdown ? 1 : 0)
+                    .rotation3DEffect(.degrees(isShowingBreakdown ? 0 : -180), axis: flipAxis)
+            }
+            .frame(width: 76)
+            .frame(maxHeight: .infinity, alignment: .center)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityLabel(isShowingBreakdown ? "显示内存占用率" : "显示内存已用和总量")
+        .accessibilityHint("点击翻转内存卡片")
+    }
+
+    private var frontFace: some View {
+        ExperimentalMetricTile(
+            label: "MEM %",
+            percentage: percentage,
+            isActive: isActive,
+            valueTint: valueTint,
+            trendValues: trendValues,
+            sparklineYAxisMode: .absolute,
+            palette: palette
+        )
+    }
+
+    private var backFace: some View {
+        VStack(alignment: .center, spacing: 13) {
+            ExperimentalMemoryBreakdownMetric(
+                label: "used",
+                megabytes: usedMegabytes,
+                isActive: isActive,
+                accent: valueTint,
+                palette: palette
+            )
+
+            ExperimentalMemoryBreakdownMetric(
+                label: "total",
+                megabytes: totalMegabytes,
+                isActive: isActive,
+                accent: valueTint,
+                palette: palette
+            )
+        }
+        .frame(width: 76)
+        .frame(maxHeight: .infinity, alignment: .center)
+        .opacity(isActive ? 1 : 0.82)
+    }
+}
+
+private struct ExperimentalMemoryBreakdownMetric: View {
+    let label: String
+    let megabytes: Int
+    let isActive: Bool
+    let accent: Color
+    let palette: ExperimentalHomePalette
+
+    private var display: ExperimentalCompactCapacityDisplay {
+        ExperimentalCompactCapacityDisplay(megabytes: megabytes)
+    }
+
+    private var valueColor: Color {
+        isActive && display.hasRenderableValue ? accent : palette.secondaryText.opacity(0.42)
+    }
+
+    private var metaColor: Color {
+        palette.secondaryText.opacity(0.86)
+    }
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(display.numberText)
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundColor(valueColor)
+                    .monospacedDigit()
+                    .tracking(-0.9)
+                    .contentTransition(.numericText(value: display.animationValue))
+                    .animation(.spring(response: 0.34, dampingFraction: 0.84), value: display.animationValue)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+
+                if !display.compactUnitText.isEmpty {
+                    Text(display.compactUnitText)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundColor(metaColor)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(metaColor)
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
+private struct ExperimentalCompactCapacityDisplay {
+    let numberText: String
+    let compactUnitText: String
+    let animationValue: Double
+    let hasRenderableValue: Bool
+
+    init(megabytes: Int) {
+        guard megabytes > 0 else {
+            numberText = "--"
+            compactUnitText = ""
+            animationValue = 0
+            hasRenderableValue = false
+            return
+        }
+
+        hasRenderableValue = true
+        if megabytes >= 1024 {
+            let gigabytes = Double(megabytes) / 1024
+            numberText = Self.displayText(from: gigabytes)
+            compactUnitText = "G"
+            animationValue = gigabytes
+        } else {
+            numberText = "\(megabytes)"
+            compactUnitText = "M"
+            animationValue = Double(megabytes)
+        }
+    }
+
+    private static func displayText(from amount: Double) -> String {
+        let roundedAmount = amount.rounded()
+        if abs(amount - roundedAmount) < 0.05 {
+            return String(Int(roundedAmount))
+        }
+
+        if amount < 10 {
+            return String(format: "%.1f", amount)
+        }
+
+        return String(Int(amount.rounded()))
     }
 }
 
