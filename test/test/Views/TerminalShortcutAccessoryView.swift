@@ -232,16 +232,10 @@ final class TerminalShortcutAccessoryView: UIInputView {
         }
     }
 
-    private struct ButtonWidthConstraint {
-        let columnSpan: Int
-        let constraint: NSLayoutConstraint
-    }
-
     private let rows: [[ShortcutItem]]
     private let gridColumnCount: Int
     private let preferredHeight: CGFloat
     private let topBorderView = UIView()
-    private var buttonWidthConstraints: [ButtonWidthConstraint] = []
     private var observationTokens: [NSObjectProtocol] = []
 
     init(rows: [[ShortcutItem]]) {
@@ -287,11 +281,6 @@ final class TerminalShortcutAccessoryView: UIInputView {
         invalidateIntrinsicContentSize()
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateButtonWidths()
-    }
-
     private func setupUI() {
         topBorderView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(topBorderView)
@@ -301,76 +290,13 @@ final class TerminalShortcutAccessoryView: UIInputView {
         contentStack.axis = .vertical
         contentStack.spacing = Self.verticalSpacing
         contentStack.alignment = .fill
-        contentStack.distribution = .fillEqually
+        contentStack.distribution = .fill
         contentStack.layoutMargins = Self.contentInsets
         contentStack.isLayoutMarginsRelativeArrangement = true
         addSubview(contentStack)
 
         for rowItems in rows where !rowItems.isEmpty {
-            let rowStack = UIStackView()
-            rowStack.axis = .horizontal
-            rowStack.spacing = Self.horizontalSpacing
-            rowStack.alignment = .fill
-            rowStack.distribution = .fill
-
-            for item in rowItems {
-                let button = ShortcutButton(frame: .zero)
-                button.translatesAutoresizingMaskIntoConstraints = false
-                var configuration = UIButton.Configuration.plain()
-                configuration.buttonSize = .mini
-                configuration.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 2, bottom: 5, trailing: 2)
-                configuration.baseForegroundColor = .label
-                if let title = item.title {
-                    configuration.title = title
-                    configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-                        var outgoing = incoming
-                        outgoing.font = Self.buttonFont
-                        return outgoing
-                    }
-                } else if let systemImageName = item.systemImageName {
-                    configuration.image = UIImage(systemName: systemImageName)
-                    configuration.preferredSymbolConfigurationForImage = Self.buttonSymbolConfiguration
-                }
-                button.configuration = configuration
-                button.shortcutStyle = item.style
-                button.accessibilityLabel = item.accessibilityLabel
-                button.titleLabel?.font = Self.buttonFont
-                button.titleLabel?.adjustsFontForContentSizeCategory = false
-                button.titleLabel?.adjustsFontSizeToFitWidth = true
-                button.titleLabel?.minimumScaleFactor = 0.6
-                button.titleLabel?.lineBreakMode = .byClipping
-                button.isSelected = item.isSelected?() ?? false
-                button.setContentCompressionResistancePriority(.required, for: .horizontal)
-                button.setContentHuggingPriority(.required, for: .horizontal)
-                button.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
-                let widthConstraint = button.widthAnchor.constraint(
-                    equalToConstant: Self.fallbackButtonWidth(forColumnSpan: item.columnSpan)
-                )
-                widthConstraint.isActive = true
-                buttonWidthConstraints.append(
-                    ButtonWidthConstraint(columnSpan: item.columnSpan, constraint: widthConstraint)
-                )
-                button.addAction(UIAction { [weak button] _ in
-                    button?.flashActivation()
-                    item.action()
-                    button?.isSelected = item.isSelected?() ?? false
-                }, for: .touchUpInside)
-
-                for observedNotification in item.observedNotifications {
-                    let token = NotificationCenter.default.addObserver(
-                        forName: observedNotification.name,
-                        object: observedNotification.objectProvider(),
-                        queue: .main
-                    ) { [weak button] _ in
-                        button?.isSelected = item.isSelected?() ?? false
-                    }
-                    observationTokens.append(token)
-                }
-
-                rowStack.addArrangedSubview(button)
-            }
-
-            contentStack.addArrangedSubview(rowStack)
+            contentStack.addArrangedSubview(makeRowView(for: rowItems))
         }
 
         NSLayoutConstraint.activate([
@@ -392,18 +318,107 @@ final class TerminalShortcutAccessoryView: UIInputView {
         return totalVerticalInsets + totalRowSpacing + (CGFloat(clampedRowCount) * rowHeight)
     }
 
-    private func updateButtonWidths() {
-        let availableWidth = bounds.width - Self.contentInsets.left - Self.contentInsets.right
-        guard availableWidth > 0 else { return }
+    private func makeRowView(for rowItems: [ShortcutItem]) -> UIView {
+        let rowView = UIView()
+        rowView.translatesAutoresizingMaskIntoConstraints = false
+        rowView.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
 
-        let totalSpacing = CGFloat(max(gridColumnCount - 1, 0)) * Self.horizontalSpacing
-        let singleColumnWidth = max((availableWidth - totalSpacing) / CGFloat(gridColumnCount), 0)
+        let columnGuides = makeColumnGuides(in: rowView)
+        var currentColumn = 0
 
-        for buttonWidthConstraint in buttonWidthConstraints {
-            let span = max(buttonWidthConstraint.columnSpan, 1)
-            buttonWidthConstraint.constraint.constant =
-                (singleColumnWidth * CGFloat(span)) + (CGFloat(span - 1) * Self.horizontalSpacing)
+        for item in rowItems {
+            guard currentColumn < columnGuides.count else { break }
+
+            let button = makeButton(for: item)
+            let span = min(max(item.columnSpan, 1), columnGuides.count - currentColumn)
+            let trailingColumn = currentColumn + span - 1
+            rowView.addSubview(button)
+
+            NSLayoutConstraint.activate([
+                button.leadingAnchor.constraint(equalTo: columnGuides[currentColumn].leadingAnchor),
+                button.trailingAnchor.constraint(equalTo: columnGuides[trailingColumn].trailingAnchor),
+                button.topAnchor.constraint(equalTo: rowView.topAnchor),
+                button.bottomAnchor.constraint(equalTo: rowView.bottomAnchor)
+            ])
+
+            currentColumn += span
         }
+
+        return rowView
+    }
+
+    private func makeColumnGuides(in rowView: UIView) -> [UILayoutGuide] {
+        let guides = (0..<gridColumnCount).map { _ in UILayoutGuide() }
+        guard let firstGuide = guides.first else { return guides }
+
+        for guide in guides {
+            rowView.addLayoutGuide(guide)
+            NSLayoutConstraint.activate([
+                guide.topAnchor.constraint(equalTo: rowView.topAnchor),
+                guide.bottomAnchor.constraint(equalTo: rowView.bottomAnchor)
+            ])
+        }
+
+        firstGuide.leadingAnchor.constraint(equalTo: rowView.leadingAnchor).isActive = true
+
+        for index in 1..<guides.count {
+            NSLayoutConstraint.activate([
+                guides[index].leadingAnchor.constraint(equalTo: guides[index - 1].trailingAnchor, constant: Self.horizontalSpacing),
+                guides[index].widthAnchor.constraint(equalTo: firstGuide.widthAnchor)
+            ])
+        }
+
+        if let lastGuide = guides.last {
+            lastGuide.trailingAnchor.constraint(equalTo: rowView.trailingAnchor).isActive = true
+        }
+        return guides
+    }
+
+    private func makeButton(for item: ShortcutItem) -> ShortcutButton {
+        let button = ShortcutButton(frame: .zero)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        var configuration = UIButton.Configuration.plain()
+        configuration.buttonSize = .mini
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 2, bottom: 5, trailing: 2)
+        configuration.baseForegroundColor = .label
+        if let title = item.title {
+            configuration.title = title
+            configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                var outgoing = incoming
+                outgoing.font = Self.buttonFont
+                return outgoing
+            }
+        } else if let systemImageName = item.systemImageName {
+            configuration.image = UIImage(systemName: systemImageName)
+            configuration.preferredSymbolConfigurationForImage = Self.buttonSymbolConfiguration
+        }
+        button.configuration = configuration
+        button.shortcutStyle = item.style
+        button.accessibilityLabel = item.accessibilityLabel
+        button.titleLabel?.font = Self.buttonFont
+        button.titleLabel?.adjustsFontForContentSizeCategory = false
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.6
+        button.titleLabel?.lineBreakMode = .byClipping
+        button.isSelected = item.isSelected?() ?? false
+        button.addAction(UIAction { [weak button] _ in
+            button?.flashActivation()
+            item.action()
+            button?.isSelected = item.isSelected?() ?? false
+        }, for: .touchUpInside)
+
+        for observedNotification in item.observedNotifications {
+            let token = NotificationCenter.default.addObserver(
+                forName: observedNotification.name,
+                object: observedNotification.objectProvider(),
+                queue: .main
+            ) { [weak button] _ in
+                button?.isSelected = item.isSelected?() ?? false
+            }
+            observationTokens.append(token)
+        }
+
+        return button
     }
 
     private func updateContainerAppearance() {
@@ -421,12 +436,6 @@ final class TerminalShortcutAccessoryView: UIInputView {
             }.max() ?? 1,
             1
         )
-    }
-
-    private static func fallbackButtonWidth(forColumnSpan columnSpan: Int) -> CGFloat {
-        let singleColumnWidth: CGFloat = 38
-        return (singleColumnWidth * CGFloat(max(columnSpan, 1)))
-            + (CGFloat(max(columnSpan - 1, 0)) * horizontalSpacing)
     }
 
     private static func keyboardPalette(for traitCollection: UITraitCollection) -> KeyboardPalette {
