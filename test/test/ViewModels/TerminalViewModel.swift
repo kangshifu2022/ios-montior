@@ -89,8 +89,10 @@ final class TerminalViewModel: ObservableObject {
     private var connectionTimeoutTask: Task<Void, Never>?
     private var launchKickoffWatchdogTask: Task<Void, Never>?
     private var disconnectTask: Task<Void, Never>?
+    private var disconnectWatchdogTask: Task<Void, Never>?
     private var scrollbackReplayTask: Task<Void, Never>?
     private var activeConnectionAttemptID = 0
+    private var activeDisconnectAttemptID = 0
     private var isDisconnectingSession = false
     private var pendingConnectAfterDisconnect = false
     private var launchKickoffRecoveryCount = 0
@@ -100,6 +102,7 @@ final class TerminalViewModel: ObservableObject {
     private static let replayChunkBytes = 4096
     private static let connectionStageTimeoutNanoseconds: UInt64 = 15_000_000_000
     private static let launchKickoffWatchdogNanoseconds: UInt64 = 1_500_000_000
+    private static let disconnectWatchdogNanoseconds: UInt64 = 2_500_000_000
     private static let maxLaunchKickoffRecoveries = 1
 
     private struct BootstrapCommandOverride {
@@ -541,14 +544,50 @@ final class TerminalViewModel: ObservableObject {
         sessionTask = nil
         pendingConnectAfterDisconnect = false
         disconnectTask?.cancel()
+        disconnectWatchdogTask?.cancel()
         isDisconnectingSession = true
+        activeDisconnectAttemptID &+= 1
+        let disconnectAttemptID = activeDisconnectAttemptID
 
         disconnectTask = Task { [weak self] in
             guard let self else { return }
             await self.session.stop()
             await MainActor.run {
+                guard self.activeDisconnectAttemptID == disconnectAttemptID else { return }
+                self.disconnectWatchdogTask?.cancel()
+                self.disconnectWatchdogTask = nil
                 self.isDisconnectingSession = false
                 self.disconnectTask = nil
+                if self.pendingConnectAfterDisconnect {
+                    self.pendingConnectAfterDisconnect = false
+                    self.connectIfNeeded()
+                }
+            }
+        }
+
+        disconnectWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.disconnectWatchdogNanoseconds)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard let self,
+                      self.activeDisconnectAttemptID == disconnectAttemptID,
+                      self.isDisconnectingSession else {
+                    return
+                }
+
+                TerminalDiagnosticsStore.record(
+                    "disconnect teardown timed out; forcing local disconnect completion",
+                    level: .warning,
+                    category: "connection",
+                    server: self.server,
+                    session: self.activeSessionRecord
+                )
+
+                self.disconnectTask = nil
+                self.disconnectWatchdogTask = nil
+                self.isDisconnectingSession = false
+
                 if self.pendingConnectAfterDisconnect {
                     self.pendingConnectAfterDisconnect = false
                     self.connectIfNeeded()

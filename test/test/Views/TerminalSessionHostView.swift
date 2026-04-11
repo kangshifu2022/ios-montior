@@ -31,8 +31,7 @@ struct TerminalSessionHostView: View {
             } else {
                 TerminalLaunchTransitionView(
                     server: server,
-                    viewModel: viewModel,
-                    onClose: closeSession
+                    viewModel: viewModel
                 )
             }
         }
@@ -40,6 +39,16 @@ struct TerminalSessionHostView: View {
         .task {
             viewModel.prepareLaunchIfNeeded()
             viewModel.connectIfNeeded()
+        }
+        .onChange(of: viewModel.shouldDismissTerminal) { _, shouldDismiss in
+            guard shouldDismiss, !shouldShowTerminalView else { return }
+            viewModel.acknowledgeDismissRequest()
+            closeSession()
+        }
+        .onChange(of: viewModel.shouldSuspendTerminal) { _, shouldSuspend in
+            guard shouldSuspend, !shouldShowTerminalView else { return }
+            viewModel.acknowledgeSuspendRequest()
+            suspendSession()
         }
     }
 
@@ -61,12 +70,21 @@ struct TerminalSessionHostView: View {
         viewModel.disconnect(clearError: true)
         dismiss()
     }
+
+    private func suspendSession() {
+        guard let onSuspend else {
+            closeSession()
+            return
+        }
+
+        onSuspend()
+        dismiss()
+    }
 }
 
 private struct TerminalLaunchTransitionView: View {
     let server: ServerConfig
     @ObservedObject var viewModel: TerminalViewModel
-    let onClose: () -> Void
     @Environment(\.colorScheme) private var colorScheme
 
     private let steps: [TerminalConnectionStage] = [
@@ -147,7 +165,7 @@ private struct TerminalLaunchTransitionView: View {
 
             Spacer(minLength: 0)
 
-            Button(action: onClose) {
+            Button(action: viewModel.closeTerminal) {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(closeButtonForeground)
@@ -157,6 +175,7 @@ private struct TerminalLaunchTransitionView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("关闭连接过渡窗口")
+            .contentShape(Rectangle())
             .frame(width: 54, alignment: .trailing)
         }
         .padding(.horizontal, 16)
