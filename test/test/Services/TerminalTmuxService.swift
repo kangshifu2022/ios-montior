@@ -6,6 +6,7 @@ import NIOSSH
 struct TerminalRemoteTmuxSnapshot: Sendable {
     var sessions: [TerminalRemoteTmuxSession]
     var notice: String?
+    var isTmuxAvailable: Bool
 }
 
 struct TerminalRemoteTmuxDeleteResult: Sendable {
@@ -241,22 +242,26 @@ private func parseTmuxSnapshot(_ output: String) -> TerminalRemoteTmuxSnapshot {
     case "missing":
         return TerminalRemoteTmuxSnapshot(
             sessions: [],
-            notice: "服务器未安装 tmux，无法读取远端会话列表。"
+            notice: "服务器未安装 tmux，无法读取远端会话列表。可以先按下方命令安装后再刷新。",
+            isTmuxAvailable: false
         )
     case "empty":
         return TerminalRemoteTmuxSnapshot(
             sessions: [],
-            notice: "远端暂时没有 tmux 会话。"
+            notice: "远端暂时没有 tmux 会话。",
+            isTmuxAvailable: true
         )
     case "ok":
         return TerminalRemoteTmuxSnapshot(
             sessions: sessions,
-            notice: sessions.isEmpty ? "远端没有可附着的 tmux 会话。" : nil
+            notice: sessions.isEmpty ? "远端没有可附着的 tmux 会话。" : nil,
+            isTmuxAvailable: true
         )
     default:
         return TerminalRemoteTmuxSnapshot(
             sessions: sessions,
-            notice: sessions.isEmpty ? "未能识别远端 tmux 列表返回内容。" : nil
+            notice: sessions.isEmpty ? "未能识别远端 tmux 列表返回内容。" : nil,
+            isTmuxAvailable: true
         )
     }
 }
@@ -388,7 +393,7 @@ private func parseTmuxCreateResult(
         return .success(
             TerminalRemoteTmuxCreateResult(
                 status: .tmuxUnavailable,
-                notice: "服务器未安装 tmux，无法创建新会话。"
+                notice: "服务器未安装 tmux，无法创建新会话。可以先按下方命令安装后再刷新。"
             )
         )
     case "failed":

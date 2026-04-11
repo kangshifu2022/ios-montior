@@ -67,6 +67,7 @@ final class TerminalViewModel: ObservableObject {
     @Published private(set) var creatingRemoteTmuxSessionName: String?
     @Published private(set) var deletingRemoteTmuxSessionName: String?
     @Published private(set) var remoteTmuxStatusText: String?
+    @Published private(set) var isRemoteTmuxAvailable = true
 
     let server: ServerConfig
 
@@ -390,6 +391,12 @@ final class TerminalViewModel: ObservableObject {
                 switch result {
                 case .success(let createResult):
                     self.remoteTmuxStatusText = createResult.notice
+                    switch createResult.status {
+                    case .tmuxUnavailable:
+                        self.isRemoteTmuxAvailable = false
+                    case .created, .alreadyExists:
+                        self.isRemoteTmuxAvailable = true
+                    }
 
                     switch createResult.status {
                     case .created:
@@ -422,6 +429,12 @@ final class TerminalViewModel: ObservableObject {
                 switch result {
                 case .success(let deleteResult):
                     self.remoteTmuxStatusText = deleteResult.notice
+                    switch deleteResult.status {
+                    case .tmuxUnavailable:
+                        self.isRemoteTmuxAvailable = false
+                    case .deleted, .alreadyMissing:
+                        self.isRemoteTmuxAvailable = true
+                    }
                     self.remoteTmuxSessions.removeAll { $0.name == sessionName }
                     TerminalPersistenceStore.removePersistentSession(
                         for: self.server.id,
@@ -469,6 +482,7 @@ final class TerminalViewModel: ObservableObject {
                 case .success(let snapshot):
                     self.remoteTmuxSessions = snapshot.sessions
                     self.remoteTmuxStatusText = snapshot.notice
+                    self.isRemoteTmuxAvailable = snapshot.isTmuxAvailable
                 case .failure(let error):
                     self.remoteTmuxStatusText = error.message
                 }

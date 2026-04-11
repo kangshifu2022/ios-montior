@@ -26,6 +26,10 @@ struct TerminalTmuxSessionPickerSheet: View {
                             .foregroundColor(.secondary)
                     }
 
+                    if !viewModel.isRemoteTmuxAvailable {
+                        tmuxInstallGuide
+                    }
+
                     if !viewModel.isRefreshingRemoteTmuxSessions,
                        viewModel.remoteTmuxSessions.isEmpty,
                        (viewModel.remoteTmuxStatusText?.isEmpty ?? true) {
@@ -91,10 +95,10 @@ struct TerminalTmuxSessionPickerSheet: View {
 
                 Section {
                     VStack(alignment: .leading, spacing: 10) {
-                        TextField("手动输入新的 tmux 会话名", text: $newSessionName)
+                        TextField(newSessionPlaceholder, text: $newSessionName)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .disabled(createSessionActionsLocked)
+                            .disabled(createSessionActionsLocked || !viewModel.isRemoteTmuxAvailable)
                             .submitLabel(.go)
                             .onSubmit {
                                 guard let normalizedNewSessionName else { return }
@@ -123,13 +127,17 @@ struct TerminalTmuxSessionPickerSheet: View {
                             .padding(.vertical, 4)
                         }
                         .buttonStyle(.plain)
-                        .disabled(normalizedNewSessionName == nil || createSessionActionsLocked)
+                        .disabled(
+                            normalizedNewSessionName == nil ||
+                            createSessionActionsLocked ||
+                            !viewModel.isRemoteTmuxAvailable
+                        )
                     }
                     .padding(.vertical, 4)
                 } header: {
                     Text("新建 tmux 会话")
                 } footer: {
-                    Text("会话名不能为空；创建成功后会结束当前终端并连接到这个新会话。")
+                    Text(createSessionFooterText)
                 }
             }
             .navigationTitle("Tmux")
@@ -231,6 +239,54 @@ struct TerminalTmuxSessionPickerSheet: View {
     private var createSessionActionsLocked: Bool {
         viewModel.creatingRemoteTmuxSessionName != nil ||
         viewModel.deletingRemoteTmuxSessionName != nil
+    }
+
+    private var newSessionPlaceholder: String {
+        if viewModel.isRemoteTmuxAvailable {
+            return "手动输入新的 tmux 会话名"
+        }
+        return "服务器未安装 tmux，暂时不能新建会话"
+    }
+
+    private var createSessionFooterText: String {
+        if viewModel.isRemoteTmuxAvailable {
+            return "会话名不能为空；创建成功后会结束当前终端并连接到这个新会话。"
+        }
+        return "检测到目标服务器尚未安装 tmux；安装完成后点右上角“刷新”，这里会恢复可编辑。"
+    }
+
+    private var tmuxInstallGuide: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("常见 Linux 安装命令")
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(.primary)
+
+            ForEach(Array(tmuxInstallCommands.enumerated()), id: \.offset) { entry in
+                let item = entry.element
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+
+                    Text(item.command)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var tmuxInstallCommands: [(title: String, command: String)] {
+        [
+            ("Debian / Ubuntu", "sudo apt update && sudo apt install -y tmux"),
+            ("CentOS / RHEL / Rocky / AlmaLinux", "sudo yum install -y tmux"),
+            ("Fedora", "sudo dnf install -y tmux"),
+            ("Alpine", "sudo apk add tmux"),
+            ("Arch Linux", "sudo pacman -S --needed tmux"),
+            ("openSUSE", "sudo zypper install -y tmux")
+        ]
     }
 
     private var normalizedNewSessionName: String? {
