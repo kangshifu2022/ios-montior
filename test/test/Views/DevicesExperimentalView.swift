@@ -861,11 +861,11 @@ private struct ExperimentalCompactServerCard: View {
         }
 
         switch value {
-        case ..<0.20:
+        case ..<0.50:
             return Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0)
-        case ..<0.40:
-            return Color(red: 0.53, green: 0.82, blue: 0.18)
         case ..<0.60:
+            return Color(red: 0.53, green: 0.82, blue: 0.18)
+        case ..<0.70:
             return Color(red: 0.95, green: 0.78, blue: 0.18)
         case ..<0.80:
             return Color(red: 0.96, green: 0.52, blue: 0.20)
@@ -1154,11 +1154,11 @@ private struct ExperimentalServerCard: View {
         }
 
         switch value {
-        case ..<0.20:
+        case ..<0.50:
             return Color(red: 48.0 / 255.0, green: 209.0 / 255.0, blue: 88.0 / 255.0)
-        case ..<0.40:
-            return Color(red: 0.53, green: 0.82, blue: 0.18)
         case ..<0.60:
+            return Color(red: 0.53, green: 0.82, blue: 0.18)
+        case ..<0.70:
             return Color(red: 0.95, green: 0.78, blue: 0.18)
         case ..<0.80:
             return Color(red: 0.96, green: 0.52, blue: 0.20)
