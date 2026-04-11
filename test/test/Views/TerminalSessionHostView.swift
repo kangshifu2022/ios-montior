@@ -54,6 +54,7 @@ struct TerminalSessionHostView: View {
     private func closeSession() {
         if let onClose {
             onClose()
+            dismiss()
             return
         }
 

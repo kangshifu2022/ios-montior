@@ -86,16 +86,20 @@ final class TerminalViewModel: ObservableObject {
     private var scrollbackBuffer = Data()
     private var scrollbackFlushTask: Task<Void, Never>?
     private var connectionTimeoutTask: Task<Void, Never>?
+    private var launchKickoffWatchdogTask: Task<Void, Never>?
     private var disconnectTask: Task<Void, Never>?
     private var scrollbackReplayTask: Task<Void, Never>?
     private var activeConnectionAttemptID = 0
     private var isDisconnectingSession = false
     private var pendingConnectAfterDisconnect = false
+    private var launchKickoffRecoveryCount = 0
 
     private static let maxScrollbackBytes = 96 * 1024
     private static let replayInspectionWindowBytes = 2048
     private static let replayChunkBytes = 4096
     private static let connectionStageTimeoutNanoseconds: UInt64 = 15_000_000_000
+    private static let launchKickoffWatchdogNanoseconds: UInt64 = 1_500_000_000
+    private static let maxLaunchKickoffRecoveries = 1
 
     private struct BootstrapCommandOverride {
         let recordID: String
@@ -183,7 +187,8 @@ final class TerminalViewModel: ObservableObject {
     }
 
     var shouldReuseWorkspaceSession: Bool {
-        activeSessionRecord != nil && (isConnected || isAwaitingTerminalOutput || isConnecting)
+        guard activeSessionRecord != nil else { return false }
+        return isConnected || isAwaitingTerminalOutput || (isConnecting && sessionTask != nil)
     }
 
     var connectionNoticeText: String? {
@@ -268,6 +273,7 @@ final class TerminalViewModel: ObservableObject {
         let bootstrapCommand = self.connectBootstrapCommand(for: activeSessionRecord)
         activeConnectionAttemptID &+= 1
         let attemptID = activeConnectionAttemptID
+        scheduleLaunchKickoffWatchdog(for: attemptID)
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
@@ -479,6 +485,7 @@ final class TerminalViewModel: ObservableObject {
             server: server,
             session: activeSessionRecord
         )
+        launchKickoffRecoveryCount = 0
         exitRequestedByUser = false
         suppressNextDisconnectDismiss = true
         disconnect(clearError: true)
@@ -506,6 +513,8 @@ final class TerminalViewModel: ObservableObject {
         creatingRemoteTmuxSessionName = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
+        launchKickoffWatchdogTask?.cancel()
+        launchKickoffWatchdogTask = nil
         connectionStageText = nil
         if clearError {
             connectionStage = .idle
@@ -732,6 +741,9 @@ final class TerminalViewModel: ObservableObject {
         isConnected = false
         isConnecting = false
         isAwaitingTerminalOutput = false
+        launchKickoffWatchdogTask?.cancel()
+        launchKickoffWatchdogTask = nil
+        launchKickoffRecoveryCount = 0
         activeSessionRecord = record
         scrollbackBuffer = record.scrollback
         scrollbackFlushTask?.cancel()
@@ -797,6 +809,8 @@ final class TerminalViewModel: ObservableObject {
                 server: server,
                 session: activeSessionRecord
             )
+            launchKickoffWatchdogTask?.cancel()
+            launchKickoffWatchdogTask = nil
             isConnecting = false
             isConnected = true
             isAwaitingTerminalOutput = false
@@ -822,6 +836,8 @@ final class TerminalViewModel: ObservableObject {
                 server: server,
                 session: activeSessionRecord
             )
+            launchKickoffWatchdogTask?.cancel()
+            launchKickoffWatchdogTask = nil
             isConnecting = false
             isConnected = false
             isAwaitingTerminalOutput = false
@@ -841,6 +857,8 @@ final class TerminalViewModel: ObservableObject {
                 session: activeSessionRecord
             )
             flushScrollbackNowIfNeeded()
+            launchKickoffWatchdogTask?.cancel()
+            launchKickoffWatchdogTask = nil
             isConnecting = false
             isConnected = false
             isAwaitingTerminalOutput = false
@@ -952,7 +970,55 @@ final class TerminalViewModel: ObservableObject {
     private func updateConnectionStage(_ message: String) {
         connectionStage = Self.stage(for: message)
         connectionStageText = message
+        if connectionStage != .preparing {
+            launchKickoffWatchdogTask?.cancel()
+            launchKickoffWatchdogTask = nil
+            launchKickoffRecoveryCount = 0
+        }
         scheduleConnectionTimeout(for: message)
+    }
+
+    private func scheduleLaunchKickoffWatchdog(for attemptID: Int) {
+        launchKickoffWatchdogTask?.cancel()
+        launchKickoffWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.launchKickoffWatchdogNanoseconds)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard let self,
+                      self.activeConnectionAttemptID == attemptID,
+                      self.activeSessionRecord != nil,
+                      self.isConnecting,
+                      self.connectionStage == .preparing,
+                      self.lastConnectionIssueText == nil else {
+                    return
+                }
+
+                TerminalDiagnosticsStore.record(
+                    "launch stalled before ssh stage, sessionTaskActive=\(self.sessionTask != nil), recoveryCount=\(self.launchKickoffRecoveryCount)",
+                    level: .warning,
+                    category: "connection",
+                    server: self.server,
+                    session: self.activeSessionRecord
+                )
+
+                self.launchKickoffWatchdogTask?.cancel()
+                self.launchKickoffWatchdogTask = nil
+
+                if self.launchKickoffRecoveryCount < Self.maxLaunchKickoffRecoveries {
+                    self.launchKickoffRecoveryCount += 1
+                    self.suppressNextDisconnectDismiss = true
+                    self.disconnect(clearError: true)
+                    self.connectIfNeeded()
+                    return
+                }
+
+                let issue = "终端启动卡住：还没进入 SSH 连接阶段"
+                self.lastConnectionIssueText = issue
+                self.lastError = issue
+                self.disconnect(clearError: false)
+            }
+        }
     }
 
     private static func stage(for message: String) -> TerminalConnectionStage {

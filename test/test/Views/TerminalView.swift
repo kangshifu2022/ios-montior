@@ -184,6 +184,7 @@ struct TerminalView: View {
     private func closeTerminalView() {
         if let onClose {
             onClose()
+            dismiss()
             return
         }
 
